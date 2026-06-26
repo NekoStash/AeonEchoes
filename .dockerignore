@@ -1,0 +1,38 @@
+# Dependencies
+node_modules
+apps/web/node_modules
+infra/fake-provider/node_modules
+
+# Nuxt / Nitro build output
+.nuxt
+.output
+apps/web/.nuxt
+apps/web/.output
+apps/web/dist
+
+# Go build/test artifacts
+dist
+*.exe
+*.test
+*.out
+coverage.out
+
+# Local runtime data and secrets
+data
+apps/server/data
+.env
+.env.*
+!.env.example
+
+# Git and editor metadata
+.git
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Logs and temporary artifacts
+*.log
+logs
+artifacts
+*.tmp

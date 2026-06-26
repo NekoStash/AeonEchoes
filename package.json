@@ -1,0 +1,31 @@
+{
+  "name": "aeon-echoes",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Development workspace for Aeon Echoes.",
+  "packageManager": "yarn@4.17.0",
+  "workspaces": [
+    "apps/web",
+    "infra/fake-provider"
+  ],
+  "scripts": {
+    "dev": "concurrently \"yarn dev:web\" \"yarn dev:server\"",
+    "dev:web": "sh ./scripts/dev-web.sh",
+    "dev:server": "sh ./scripts/go-server.sh run",
+    "test:server": "sh ./scripts/go-server.sh test",
+    "build:web": "yarn workspace @aeon-echoes/web build",
+    "generate:web": "yarn workspace @aeon-echoes/web generate",
+    "typecheck:web": "yarn workspace @aeon-echoes/web typecheck",
+    "build:server": "sh ./scripts/go-server.sh build",
+    "infra:base": "docker compose -f docker-compose.dev.yml --profile base up -d postgres qdrant",
+    "infra:fake-ai": "docker compose -f docker-compose.dev.yml --profile fake-ai up -d fake-provider",
+    "infra:down": "docker compose -f docker-compose.dev.yml down",
+    "fake-provider": "yarn workspace aeon-fake-provider start"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

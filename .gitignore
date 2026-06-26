@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+apps/web/node_modules/
+infra/fake-provider/node_modules/
+.yarn/install-state.gz
+
+# Nuxt / Nitro build output
+.nuxt/
+.output/
+apps/web/.nuxt/
+apps/web/.output/
+apps/web/dist/
+
+# Go build/test artifacts
+*.exe
+*.test
+*.out
+coverage.out
+dist/
+
+# Local runtime data
+data/
+apps/server/data/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporary artifacts generated for previews/screenshots
+artifacts/
+
+# NarraFork/tool temp files
+*.tmp

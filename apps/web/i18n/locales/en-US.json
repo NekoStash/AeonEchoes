@@ -1,0 +1,700 @@
+{
+  "product": {
+    "name": "Aeon Echoes",
+    "tagline": "Long-form writing workspace"
+  },
+  "common": {
+    "emptyValue": "—",
+    "listSeparator": ", ",
+    "pathSeparator": " / "
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "models": "Models",
+    "newProject": "New project",
+    "project": "Project overview",
+    "editor": "Editor",
+    "graph": "Story graph",
+    "openedProjects": "Open projects",
+    "emptyOpenedProjects": "Open projects from the project list to pin them here.",
+    "openMenu": "Open navigation menu",
+    "closeProject": "Close project: {title}"
+  },
+  "actions": {
+    "refresh": "Refresh",
+    "save": "Save",
+    "saved": "Saved",
+    "saving": "Saving",
+    "saveConfig": "Save configuration",
+    "saveVersion": "Save version",
+    "createProject": "Create project",
+    "open": "Open",
+    "viewAll": "View all",
+    "organizeBrief": "Organize brief",
+    "generateDraft": "Generate draft",
+    "generatePlan": "Generate idea / plan",
+    "continueDraft": "Continue prose",
+    "runIndex": "Run index",
+    "reload": "Reload",
+    "back": "Back",
+    "reset": "Reset",
+    "add": "Add",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "theme": {
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "language": {
+    "label": "Language"
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "ready": "Ready",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "provider": {
+      "online": "Online",
+      "degraded": "Degraded",
+      "offline": "Offline",
+      "unknown": "Unknown"
+    },
+    "projectBible": {
+      "missing": "Missing",
+      "draft": "Draft",
+      "ready": "Ready"
+    },
+    "chapter": {
+      "planned": "Planned",
+      "drafting": "Drafting",
+      "reviewing": "Reviewing",
+      "locked": "Locked"
+    },
+    "foreshadow": {
+      "planted": "Planted",
+      "active": "Active",
+      "paid_off": "Paid off"
+    },
+    "workflow": {
+      "idle": "Idle",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "author": {
+      "human": "Human",
+      "ai": "AI"
+    },
+    "indexJob": {
+      "pending": "Pending",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "superseded": "Superseded"
+    },
+    "indexFreshness": {
+      "missing": "Missing indexed version",
+      "pending": "Pending index",
+      "stale": "Index stale",
+      "fresh": "Index fresh"
+    },
+    "modelResolution": {
+      "explicit_setting": "Explicit route",
+      "role_fallback": "Role fallback",
+      "kind_fallback": "Kind fallback"
+    },
+    "graphNode": {
+      "stable": "Stable",
+      "draft": "Draft",
+      "conflict": "Conflict",
+      "resolved": "Resolved"
+    },
+    "latency": {
+      "fast": "Fast",
+      "balanced": "Balanced",
+      "deep": "Deep"
+    }
+  },
+  "apiError": {
+    "title": "Backend request failed",
+    "saveFailed": "Save request failed"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "description": "Monitor projects, model providers, and indexing tasks.",
+    "quickStart": "Quick start",
+    "systemStatus": "System status",
+    "projects": "Projects",
+    "models": "Models",
+    "indexQueue": "Index queue",
+    "emptyProjects": "No projects yet. Created projects will appear here.",
+    "recentProjects": "Recently opened",
+    "recentProjectsDescription": "Continue from opened projects.",
+    "emptyRecentProjects": "No opened projects yet. Open one from the projects page.",
+    "metricHints": {
+      "readyProjects": "{count} story bibles ready",
+      "enabledProviders": "{count} providers enabled",
+      "totalJobs": "{count} total jobs"
+    }
+  },
+  "projects": {
+    "title": "Projects",
+    "description": "Manage writing projects, review status, and enter project workspaces.",
+    "emptyTitle": "No projects yet",
+    "emptyDescription": "After creating a project, you can review story bible status, chapter count, and open it here.",
+    "opened": "Opened",
+    "notOpened": "Not opened",
+    "noTags": "No tags",
+    "chapterCount": "Chapters",
+    "chapterCountValue": "{count} chapters",
+    "storyBibleStatus": "Story bible status"
+  },
+  "projectNew": {
+    "title": "Create project",
+    "description": "Start with the story direction. The system will turn it into a maintainable story bible.",
+    "name": "Project name",
+    "brief": "One-line brief",
+    "tags": "Genre tags",
+    "world": "World background",
+    "protagonist": "Protagonist",
+    "conflict": "Central conflict",
+    "style": "Writing style",
+    "avoid": "Avoid",
+    "outline": "Project setup",
+    "result": "Organized brief",
+    "defaults": {
+      "title": "Public Records",
+      "brief": "A records clerk discovers that public archives and private memory contradict each other.",
+      "tags": {
+        "mystery": "Mystery",
+        "timeline": "Timeline"
+      },
+      "world": "The city's public archive system preserves every key event, but unexplained record conflicts have begun to appear.",
+      "protagonist": "A records clerk responsible for auditing the city's public archive.",
+      "conflict": "The protagonist must find a verifiable truth between personal memory and public records.",
+      "style": "Calm, restrained, and suspenseful.",
+      "avoid": "Avoid deus ex machina, over-explaining, and unsupported key reversals."
+    },
+    "errors": {
+      "organizeFailed": "Failed to organize brief",
+      "createFailed": "Failed to create project",
+      "titleRequired": "Project name is required"
+    }
+  },
+  "projectOverview": {
+    "loadingDescription": "Loading project details.",
+    "storyBible": "Story bible",
+    "worldRules": "World rules",
+    "characters": "Characters",
+    "foreshadowing": "Foreshadowing",
+    "chapters": "Chapters",
+    "saveStoryBible": "Save Story Bible",
+    "openChapter": "Open in editor",
+    "fields": {
+      "premise": "Premise",
+      "themes": "Themes",
+      "characterName": "Name",
+      "characterRole": "Role",
+      "characterDesire": "Desire / goal",
+      "characterWound": "Wound / gap",
+      "characterSecret": "Secret",
+      "foreshadowTitle": "Foreshadowing title",
+      "foreshadowStatus": "Status",
+      "plantedIn": "Planted in",
+      "payoffHint": "Payoff hint",
+      "chapterTitle": "Chapter title",
+      "chapterStatus": "Status",
+      "chapterSummary": "Chapter summary"
+    },
+    "placeholders": {
+      "theme": "Theme keyword",
+      "worldRule": "Write a canon rule or constraint."
+    },
+    "resultScopes": {
+      "storyBibleSave": "Story Bible save"
+    },
+    "metrics": {
+      "themes": "Themes",
+      "rules": "Rules",
+      "rulesHint": "Canon constraints",
+      "characters": "Characters",
+      "charactersHint": "Initial cast",
+      "progress": "Progress",
+      "chapterCount": "{count} chapters"
+    },
+    "empty": {
+      "themes": "No themes yet.",
+      "worldRules": "No world rules yet.",
+      "characters": "No characters yet.",
+      "foreshadowing": "No foreshadowing items yet.",
+      "chapters": "No chapters yet."
+    }
+  },
+  "models": {
+    "title": "Model settings",
+    "description": "Manage provider connections, the real model catalog, and the routing rules that actually take effect.",
+    "providers": "Providers",
+    "providersEyebrow": "Providers",
+    "providerConfig": "Provider configuration",
+    "newProvider": "Add provider",
+    "configurationEyebrow": "Configuration",
+    "providerConnectionEyebrow": "Provider connection",
+    "providerConnectionTitle": "Provider connection",
+    "providerConnectionDescription": "Configure real upstream connection details and model discovery here. Provider-level default model values are no longer treated as primary routing controls.",
+    "providerConnectionNoteTitle": "About provider default model",
+    "providerConnectionNoteDescription": "Provider.default_model_id is still stored in configuration, but it does not participate in the current backend routing priority. It is shown here only as a note.",
+    "providerDraftDescription": "Create a new upstream provider connection.",
+    "modelCatalogEyebrow": "Model catalog",
+    "modelCatalogTitle": "Model catalog",
+    "modelCatalogDescription": "Only real backend-backed model fields are shown and edited here: kind, context window, output limit, dimension, routing weight, and role restrictions.",
+    "modelCatalogNoteTitle": "Catalog note",
+    "modelCatalogNoteDescription": "This page no longer shows guessed capability tags, tiers, or best-for labels. Model refresh only syncs fields the backend can actually provide.",
+    "modelFormEyebrow": "Model configuration",
+    "routingEyebrow": "Routing",
+    "routingTitle": "Routing settings",
+    "routingDescription": "Configure the routing inputs that actually take effect, and keep vector rebuild maintenance in the same place.",
+    "refreshModels": "Refresh models",
+    "addProvider": "Add",
+    "addAnotherProvider": "Add another provider",
+    "allProviders": "All providers",
+    "allProvidersDescription": "View and manage models from every provider.",
+    "name": "Provider name",
+    "type": "API type",
+    "baseUrl": "Base URL",
+    "apiKey": "API key",
+    "apiKeyEnv": "API key environment variable",
+    "apiKeyPlaceholder": "Leave blank to keep the saved key",
+    "streaming": "Streaming",
+    "enabled": "Enabled",
+    "providerId": "Provider ID",
+    "displayName": "Display name",
+    "providerType": "Provider type",
+    "defaultModelId": "Default model ID",
+    "defaultModelIdStored": "Stored but not used for current routing:",
+    "apiKeyHint": "Saved key",
+    "apiKeyHintPlaceholder": "sk-... suffix or key location",
+    "apiKeyEnvPlaceholder": "OPENAI_API_KEY",
+    "noApiKeyHint": "Not configured",
+    "enableProvider": "Enable Provider",
+    "lastCheckedAt": "Last checked at",
+    "notChecked": "Not checked yet",
+    "saveFailed": "Save request failed",
+    "modelCount": "{count} models",
+    "contextWindow": "Context window",
+    "maxOutputTokens": "Max output tokens",
+    "dimension": "Vector dimension",
+    "routingWeight": "Routing weight",
+    "streamingOn": "Streaming on",
+    "streamingOff": "Streaming off",
+    "emptyProviders": "No provider configurations yet. Click add to create multiple providers.",
+    "emptyModels": "No models yet. Add one manually or refresh a selected provider.",
+    "addModel": "Add model",
+    "editModel": "Edit model",
+    "newModel": "New model",
+    "saveModel": "Save model",
+    "modelId": "Model record ID",
+    "modelProvider": "Provider",
+    "selectProvider": "Select provider",
+    "kind": "Model kind",
+    "upstreamModelId": "Upstream model ID",
+    "defaultForKind": "Default for kind",
+    "supportsTools": "Supports tools",
+    "supportsStreaming": "Supports streaming",
+    "allowedAgentRoles": "Allowed agent roles",
+    "allowedAgentRolesDescription": "Leave all roles unselected to allow every role to use this model.",
+    "allRoles": "All roles",
+    "usageSettings": "Feature-specific models",
+    "usageSettingsDescription": "Explicitly assign providerId:modelId per feature. Leave blank to fall back to backend model selection.",
+    "routingPriorityTitle": "Real routing priority",
+    "routingPriorityDescription": "This is the actual backend selection order, and the page wording now follows it directly.",
+    "routingPriorityFirst": "An explicit model stored in settings(model_routing) for the specific feature.",
+    "routingPrioritySecond": "If no explicit route exists, prefer models marked with default_for_kind within the same kind.",
+    "routingPriorityThird": "If multiple candidates still remain, choose by routing_weight from high to low.",
+    "saveUsageSettings": "Save feature routing",
+    "inheritRouting": "Use default routing",
+    "inheritRoutingDescription": "Do not store an explicit route. Let default_for_kind + routing_weight decide.",
+    "storedValue": "Stored value",
+    "currentStoredValue": "Current stored value",
+    "providerModelBreakdown": "{text} text / {embedding} embedding",
+    "unknownModel": "Not found in current model list",
+    "confirmDeleteModel": "Delete model “{name}”?",
+    "confirmDeleteProvider": "Delete provider “{name}”? Associated models will also be removed.",
+    "defaults": {
+      "providerName": "New Provider"
+    },
+    "summary": {
+      "providers": "Providers",
+      "enabledProviders": "{count} enabled",
+      "models": "Models",
+      "enabledModels": "{count} enabled",
+      "textModels": "Text models",
+      "embeddingModels": "Embedding models"
+    },
+    "embeddingMaintenanceEyebrow": "Vector maintenance",
+    "embeddingMaintenanceTitle": "Vector maintenance after embedding routing changes",
+    "embeddingMaintenanceDescription": "These are explicit maintenance actions, not automatic routing changes. Rebuild the vector set first, then run pending indexing.",
+    "rebuildVectorsTitle": "Rebuild vector set",
+    "rebuildVectorsDescription": "After changing embedding routing, use the backend rebuild-vectors entry to enqueue items that must be re-vectorized.",
+    "rebuildVectorsAction": "Rebuild vector set",
+    "indexMaintenanceTitle": "Run pending index jobs",
+    "indexMaintenanceDescription": "After rebuild jobs are queued, continue by running pending index jobs to write the actual vectors back into storage.",
+    "runPendingIndex": "Run pending index",
+    "indexJobsTotal": "Total {count}",
+    "indexJobsPending": "Pending {count}",
+    "indexJobsRunning": "Running {count}",
+    "indexJobsCompleted": "Completed {count}",
+    "indexJobsFailed": "Failed {count}",
+    "resultScopes": {
+      "providerSave": "Provider save",
+      "providerDelete": "Provider delete",
+      "modelSave": "Model save",
+      "modelDelete": "Model delete",
+      "settingsLoad": "Feature model settings load",
+      "settingsSave": "Feature model settings save",
+      "rebuildVectors": "Vector rebuild",
+      "runPendingIndex": "Run pending index"
+    },
+    "providerTypes": {
+      "openaiResponses": "OpenAI Responses",
+      "openai": "OpenAI Chat Completions",
+      "anthropic": "Anthropic Messages",
+      "gemini": "Gemini Generate Content"
+    },
+    "kinds": {
+      "text": "Text generation",
+      "embedding": "Embedding"
+    },
+    "roles": {
+      "writer": "Writer agent",
+      "editor": "Editor agent",
+      "genesis_optimizer": "Genesis optimizer",
+      "plot_architect": "Plot architect",
+      "world_builder": "World builder",
+      "character_keeper": "Character keeper",
+      "continuity_auditor": "Continuity auditor",
+      "fact_extractor": "Fact extractor",
+      "graph_curator": "Graph curator"
+    },
+    "usage": {
+      "embedding": "Embedding"
+    },
+    "errors": {
+      "providerRequired": "Select a provider for this model first.",
+      "modelNameRequired": "Upstream model ID is required.",
+      "invalidNumber": "{field} must be a number greater than or equal to 0.",
+      "providerNameRequired": "Provider name is required.",
+      "baseUrlRequired": "Provider Base URL is required."
+    }
+  },
+  "editor": {
+    "title": "Chapter",
+    "description": "Edit content, save versions, and inspect real context hits plus execution diagnostics.",
+    "reference": "Reference",
+    "referenceDescription": "This panel shows the real reference materials available for the chapter, with this request's focused scope highlighted.",
+    "emptyReference": "No reference material is available yet.",
+    "referenceFocusEyebrow": "Advanced reference scope",
+    "referenceFocusTitle": "Focused scope for this request",
+    "referenceFocusDescription": "This is the focused scope for the current generation request, not a full fine-grained retrieval system. Unchecked items may still enter the system through normal project context retrieval.",
+    "referenceFocusDefault": "Use the current project context by default",
+    "referenceFocusSelected": "Focused now",
+    "referenceFocusClear": "Clear characters",
+    "referenceFocusEmptyCharacters": "There are no selectable characters in the Story Bible yet.",
+    "referenceFocusLabels": {
+      "chapterPlan": "Current chapter plan",
+      "chapterSummary": "Current chapter summary",
+      "worldRules": "World rules"
+    },
+    "referenceFocusOptions": {
+      "chapterPlan": {
+        "label": "Current chapter plan",
+        "description": "Use the editable chapter plan above as a focused reference for this request."
+      },
+      "chapterSummary": {
+        "label": "Current chapter summary",
+        "description": "Use the current chapter summary from the Story Bible as a focused reference."
+      },
+      "worldRules": {
+        "label": "World rules",
+        "description": "Explicitly require this request to prioritize world rules."
+      },
+      "characters": {
+        "label": "Characters",
+        "description": "Choose the Story Bible characters to focus on for this request."
+      }
+    },
+    "referenceSections": {
+      "chapterPlan": "Current chapter plan",
+      "premise": "Premise",
+      "chapterSummary": "Current chapter summary",
+      "worldRules": "World rules",
+      "characters": "Characters",
+      "foreshadows": "Foreshadows"
+    },
+    "selectionBrief": {
+      "chapterPlan": "Focused chapter plan:\n{content}",
+      "chapterSummary": "Focused chapter summary: {content}",
+      "worldRules": "Focused world rules: {content}",
+      "characters": "Focused characters: {content}"
+    },
+    "workflowHintTitle": "Writing workflow",
+    "workflowHintDescription": "Confirm the focused reference scope first, then generate a plan or continue prose. Index jobs are advanced by the backend in the background; this page only shows the real state.",
+    "backgroundIndex": {
+      "loading": "Refreshing index status",
+      "running": "Background indexing running",
+      "failed": "Background indexing has failures",
+      "pending": "Background indexing pending",
+      "superseded": "Older index jobs superseded",
+      "completed": "Background indexing completed",
+      "idle": "No background indexing activity"
+    },
+    "context": "Context",
+    "plan": "Idea / plan",
+    "draft": "Generate",
+    "review": "Review",
+    "versions": "Chapter versions",
+    "versionsEyebrow": "Versions",
+    "indexJobs": "Index jobs",
+    "indexJobsEyebrow": "Index jobs",
+    "instruction": "Instruction",
+    "style": "Style constraints",
+    "chapterPlan": "Story idea / chapter plan",
+    "planDescription": "Generate a current-chapter idea first. Edit it until it is usable, then continue prose from that plan.",
+    "draftDescription": "The prose continuation uses the editable chapter plan above as the primary brief.",
+    "currentPlanPreview": "Current plan",
+    "planPromptPrefix": "Create a story idea and chapter plan for the current chapter. Return beats, emotional turn, continuity notes, and ending hook. Do not write final prose yet.",
+    "draftPromptPrefix": "Continue the chapter prose based on the approved chapter plan below.",
+    "chapterSummaryLine": "Chapter summary: {summary}",
+    "chapterPlanLine": "Editable chapter plan:\n{plan}",
+    "content": "Content",
+    "noIndexJobs": "No index jobs for this project yet. Saving a chapter version will create a re-indexing task.",
+    "emptyVersions": "No chapter versions yet. Saved versions will appear here.",
+    "versionLabel": "v{version} · {title}",
+    "jobAttempts": "{id} · {count} attempts",
+    "preview": {
+      "eyebrow": "Context preview",
+      "title": "Actual context hit",
+      "description": "Preview the real ContextPack, index freshness, and model routing result that the backend will use for the current selection.",
+      "loading": "Generating context preview…",
+      "empty": "No preview result yet. Pick a focused scope, then preview plan or draft context.",
+      "actualContext": "Actual context hit",
+      "structuredContextTitle": "Structured retrieved context",
+      "emptyStructuredContext": "This preview returned no structured retrieval content to display.",
+      "freshnessTitle": "Index freshness",
+      "modelResolutionTitle": "Model resolution",
+      "estimatedTokens": "Estimated {count} tokens",
+      "summaryText": "{chapterSummaryCount} chapter summaries, {entityCount} entities, {factCount} facts, {plotThreadCount} plot threads, {worldRuleCount} world rules",
+      "targets": {
+        "chapter_idea": "Plan generation context",
+        "draft": "Draft generation context"
+      },
+      "actions": {
+        "chapter_idea": "Preview plan context",
+        "draft": "Preview draft context"
+      },
+      "sections": {
+        "chapterSummaries": "Chapter summaries",
+        "worldRules": "World rules",
+        "entities": "Entities",
+        "facts": "Facts",
+        "plotThreads": "Plot threads"
+      },
+      "counts": {
+        "chapterSummaries": "Chapter summaries {count}",
+        "entities": "Entities {count}",
+        "facts": "Facts {count}",
+        "plotThreads": "Plot threads {count}",
+        "worldRules": "World rules {count}"
+      }
+    },
+    "continuityAudit": {
+      "title": "Continuity audit",
+      "description": "Shows the real continuity_audit payload returned by the backend. The frontend does not generate or infer extra conclusions.",
+      "empty": "No continuity audit result is available yet. Generate a draft to see the real audit output.",
+      "passed": "This continuity audit returned no issues.",
+      "summary": {
+        "empty": "No continuity audit result is available yet. Generate a draft to see the real audit output.",
+        "passed": "A continuity audit result is available and no issues were found.",
+        "hasIssues": "A continuity audit result is available with {count} issues."
+      },
+      "issueCount": "{count} issues",
+      "message": "Message",
+      "excerpt": "Draft excerpt",
+      "suggestion": "Suggestion",
+      "evidence": "Evidence",
+      "status": {
+        "passed": "Passed",
+        "warning": "Warning",
+        "failed": "Failed"
+      },
+      "types": {
+        "hard_conflict": "Hard conflict",
+        "soft_drift": "Soft drift",
+        "missing_followup": "Missing follow-up",
+        "unsupported_new_claim": "Unsupported new claim"
+      },
+      "severity": {
+        "error": "Error",
+        "warning": "Warning"
+      },
+      "evidenceKinds": {
+        "world_rule": "World rule",
+        "fact": "Fact",
+        "entity": "Entity",
+        "plot_thread": "Plot thread",
+        "chapter_summary": "Chapter summary",
+        "chapter_idea": "Chapter idea",
+        "brief": "Chapter brief",
+        "draft_observation": "Draft observation"
+      }
+
+    },
+    "diagnostics": {
+      "eyebrow": "Diagnostics",
+      "title": "Execution diagnostics",
+      "description": "Shows the real model route, index freshness, and latest index job states currently in effect.",
+      "empty": "No execution diagnostics are available yet.",
+      "modelResolution": "Model resolution",
+      "freshness": "Index freshness",
+      "latestIndexJobs": "Latest index jobs",
+      "emptyModelResolution": "No model resolution is available yet.",
+      "emptyFreshness": "No freshness result is available yet.",
+      "emptyIndexJobs": "There are no recent index jobs yet.",
+      "provider": "Actual provider",
+      "model": "Actual model",
+      "route": "Actual route",
+      "routeSource": "Route source",
+      "executionTargets": {
+        "chapterIdea": "Chapter plan generation",
+        "draft": "Chapter draft generation"
+      }
+    },
+    "freshness": {
+      "pendingJobs": "Pending index jobs",
+      "latestChapterVersion": "Latest chapter version",
+      "latestIndexedVersion": "Latest indexed version"
+    },
+    "defaults": {
+      "title": "Chapter One",
+      "content": "The protagonist wakes at dawn and realizes last night's records do not match his memory.\n\nAn unsigned note sits on the desk, warning him not to trust the first testimony.",
+      "prompt": "Expand the opening of this chapter: establish the central conflict and preserve one recoverable clue.",
+      "chapterPlan": "Story idea:\n- Establish the chapter question.\n- Let the protagonist act on a concrete clue.\n- End with a recoverable hook.\n\nChapter plan:\n1. Re-anchor the scene and viewpoint.\n2. Escalate through one new discovery.\n3. Preserve continuity and stop before over-revealing.",
+      "titleForChapter": "Chapter {id}",
+      "emptyContent": "No saved content for this chapter yet. Start from the plan, or generate prose after editing it.",
+      "chapterPlanFromSummary": "Story idea:\n{summary}\n\nChapter plan:\n1. Clarify the scene goal.\n2. Develop the conflict around the summary.\n3. End with a concrete hook.",
+      "styleConstraints": "Restrained, clear, short paragraphs, avoid exposition dumps"
+    },
+    "outline": {
+      "title": "Outline",
+      "currentChapter": {
+        "title": "Current chapter",
+        "description": "Confirm the chapter title and where you are writing now."
+      },
+      "chapterGoal": {
+        "title": "Chapter goal",
+        "description": "Advance the conflict and leave a verifiable clue."
+      },
+      "nextAction": {
+        "title": "Next action",
+        "description": "Confirm the focused reference scope, then generate a plan or continue prose."
+      }
+    },
+    "workflow": {
+      "context": {
+        "name": "Prepare context",
+        "message": "Waiting for a generation request."
+      },
+      "plan": {
+        "name": "Generate idea / plan",
+        "message": "Waiting to create or refine the chapter plan."
+      },
+      "draft": {
+        "name": "Generate draft",
+        "message": "The system will generate prose from the current project context."
+      },
+      "review": {
+        "name": "Check consistency",
+        "message": "Review results will appear after generation."
+      }
+    },
+    "metrics": {
+      "words": "{count} words",
+      "paragraphs": "{count} paragraphs",
+      "continuityRisk": "Continuity risk {value}%",
+      "selected": "{count} selected",
+      "tension": "Tension {value}",
+      "risk": "Risk {value}"
+    },
+    "resultScopes": {
+      "chapterVersions": "Chapter versions",
+      "aiPlan": "AI chapter plan",
+      "aiDraft": "AI chapter draft",
+      "saveVersion": "Chapter version save",
+      "previewContext": "Context preview"
+    },
+    "changeNotes": {
+      "manualSave": "Manual save"
+    },
+    "errors": {
+      "loadVersionsFailed": "Failed to load chapter versions",
+      "loadIndexJobsFailed": "Failed to load index jobs",
+      "generatePlanFailed": "Failed to generate chapter plan",
+      "generateDraftFailed": "Failed to generate AI draft",
+      "saveVersionFailed": "Failed to save chapter version",
+      "previewContextFailed": "Failed to preview context"
+    }
+  },
+  "graph": {
+    "title": "Story graph",
+    "description": "Explore relationships between characters, events, and story facts.",
+    "controls": "Filters",
+    "details": "Details panel",
+    "reload": "Reload",
+    "depth": "Depth",
+    "timeline": "Timeline",
+    "root": "Root node",
+    "filters": "Filters",
+    "node": "Node",
+    "edge": "Edge",
+    "metadata": "Metadata",
+    "source": "Source",
+    "target": "Target",
+    "visibleEdges": "Visible edges",
+    "resultScope": "Story graph",
+    "counts": "{nodes} nodes / {edges} edges",
+    "timelineValue": "T+{value}",
+    "rootValue": "root={value}",
+    "timelineLimit": "timeline≤{value}",
+    "depthLimit": "depth≤{value}",
+    "nodeSummary": "{id} · depth {depth} · T+{timeline}",
+    "weightValue": "weight {value}",
+    "emptyDetails": "Select a node or edge in the graph to view details. If Cytoscape cannot load in this environment, use the node list in the center panel to verify data.",
+    "emptyEdges": "No visible edges for the current filters.",
+    "listUnavailableMessage": "Graph rendering is temporarily unavailable. You can still inspect node data in the list below.",
+    "errors": {
+      "loadFailed": "Failed to load story graph",
+      "cytoscapeFailed": "Cytoscape could not load; list view is shown instead."
+    },
+    "nodeTypes": {
+      "story_start": "Story start",
+      "character": "Character",
+      "location": "Location",
+      "event": "Event",
+      "clue": "Clue",
+      "rule": "Rule",
+      "chapter": "Chapter"
+    },
+    "edgeTypes": {
+      "causes": "Causes",
+      "reveals": "Reveals",
+      "depends_on": "Depends on",
+      "appears_in": "Appears in",
+      "contradicts": "Contradicts",
+      "foreshadows": "Foreshadows"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "aeon-fake-provider",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local deterministic fake AI provider for development and tests.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}
