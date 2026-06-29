@@ -167,7 +167,7 @@ type RawDraftResponse = Omit<AIDraftResponse, 'content' | 'warnings' | 'context_
 export interface ApiClient {
   health(): Promise<ApiResult<HealthStatus>>
   listProviders(): Promise<ApiResult<ProviderConfig[]>>
-  saveProvider(provider: ProviderConfig): Promise<ApiResult<ProviderConfig>>
+  saveProvider(provider: ProviderConfig, mode?: 'create' | 'edit'): Promise<ApiResult<ProviderConfig>>
   deleteProvider(id: string): Promise<ApiResult<ProviderDeleteResponse>>
   listModels(kind?: string): Promise<ApiResult<ModelConfig[]>>
   saveModel(model: ModelConfig): Promise<ApiResult<ModelConfig>>
@@ -865,9 +865,9 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     listProviders() {
       return requestMapped<ProviderConfig[], ProviderConfig[]>(baseUrl, '/providers', {}, (items) => items.map(normalizeProvider))
     },
-    saveProvider(provider) {
+    saveProvider(provider, mode) {
       const request = providerToBackend(provider)
-      const isExisting = Boolean(provider.created_at)
+      const isExisting = mode === 'edit' || (!mode && Boolean(provider.id && provider.created_at))
       const endpoint = isExisting ? `/providers/${encodeURIComponent(request.id || provider.id.trim())}` : '/providers'
       const method = isExisting ? 'PUT' : 'POST'
       return requestMapped<ProviderConfig, ProviderConfig>(baseUrl, endpoint, { method, body: request }, normalizeProvider)

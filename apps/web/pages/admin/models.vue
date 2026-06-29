@@ -21,6 +21,12 @@ const { providers, models, errors, loading, indexJobs } = storeToRefs(workspace)
 const api = useApi()
 
 const providerTypeValues: ProviderType[] = ['openai-responses', 'openai', 'anthropic', 'gemini']
+const providerExampleKeyByType: Record<ProviderType, string> = {
+  'openai-responses': 'openaiResponses',
+  openai: 'openai',
+  anthropic: 'anthropic',
+  gemini: 'gemini'
+}
 const modelKindValues: ModelKind[] = ['text', 'embedding']
 const agentRoles: AgentRole[] = [
   'writer',
@@ -52,6 +58,7 @@ const providerSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const modelSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const settingsSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const maintenanceState = ref<'idle' | 'running' | 'saved' | 'failed'>('idle')
+const providerMode = ref<'create' | 'edit'>('create')
 const modelMode = ref<'create' | 'edit'>('create')
 
 const usageSettings = reactive<ModelUsageSettings>({
@@ -79,7 +86,8 @@ const providerFilterOptions = computed(() => [
 ])
 
 const selectedProvider = computed(() => providers.value.find((provider) => provider.id === selectedProviderId.value))
-const isProviderDraft = computed(() => !localProvider.created_at)
+const isProviderDraft = computed(() => providerMode.value === 'create')
+const selectedProviderExampleKey = computed(() => providerExampleKeyByType[localProvider.provider_type || 'openai-responses'])
 const selectedRefreshLoading = computed(() => selectedProviderId.value ? loading.value[`models:${selectedProviderId.value}`] : false)
 const maintenanceLoading = computed(() =>
   maintenanceState.value === 'running'
@@ -149,10 +157,19 @@ function createProviderDraft(): ProviderConfig {
     name: t('models.defaults.providerName'),
     provider_type: 'openai-responses',
     type: 'openai-responses',
-    base_url: 'https://api.openai.com/v1',
+    base_url: t('models.placeholders.providers.openaiResponses.baseUrl'),
     api_key: '',
     api_key_env: '',
+    api_key_hint: undefined,
+    trace_enabled: undefined,
+    trace_retention_days: undefined,
+    default_request_timeout_sec: undefined,
     default_model_id: '',
+    metadata: undefined,
+    created_at: undefined,
+    updated_at: undefined,
+    last_checked_at: undefined,
+    last_model_refresh_at: undefined,
     streaming: true,
     enabled: true,
     status: 'unknown'
@@ -166,10 +183,10 @@ function createModelDraft(providerId = '') {
     name: '',
     display_name: '',
     kind: 'text' as ModelKind,
-    context_window: '128000',
-    max_output_tokens: '4096',
+    context_window: t('models.placeholders.model.contextWindow'),
+    max_output_tokens: t('models.placeholders.model.maxOutputTokens'),
     dimension: '',
-    routing_weight: '100',
+    routing_weight: t('models.placeholders.model.routingWeight'),
     default_for_kind: false,
     enabled: true,
     supports_tools: true,
@@ -188,11 +205,13 @@ function loadProviderIntoForm(provider: ProviderConfig) {
     api_key_hint: provider.api_key_hint,
     default_model_id: provider.default_model_id || ''
   })
+  providerMode.value = 'edit'
   providerSaveState.value = 'idle'
 }
 
 function startNewProvider() {
   selectedProviderId.value = ''
+  providerMode.value = 'create'
   Object.assign(localProvider, createProviderDraft())
   providerSaveState.value = 'idle'
   if (modelMode.value === 'create') resetModelForm('')
@@ -226,14 +245,15 @@ function providerPayloadFromForm(): ProviderConfig {
     api_key: localProvider.api_key?.trim() || undefined,
     api_key_env: localProvider.api_key_env?.trim() || '',
     default_model_id: localProvider.default_model_id?.trim() || undefined,
-    type: localProvider.provider_type
+    type: localProvider.provider_type,
+    created_at: isProviderDraft.value ? undefined : localProvider.created_at
   }
 }
 
 async function saveProvider() {
   providerSaveState.value = 'saving'
   try {
-    const result = await api.saveProvider(providerPayloadFromForm())
+    const result = await api.saveProvider(providerPayloadFromForm(), providerMode.value)
     workspace.recordResult(t('models.resultScopes.providerSave'), result)
     const index = providers.value.findIndex((provider) => provider.id === result.data.id)
     if (index >= 0) providers.value[index] = result.data
@@ -525,6 +545,47 @@ function modelOptionDescription(model: ModelConfig) {
   return hints.join(' · ')
 }
 
+function providerPlaceholderKey(type: ProviderType | undefined = localProvider.provider_type) {
+  return `models.placeholders.providers.${providerExampleKeyByType[type || 'openai-responses']}`
+}
+
+function providerIdPlaceholder() {
+  return t(`${providerPlaceholderKey()}.id`)
+}
+
+function providerNamePlaceholder() {
+  return t(`${providerPlaceholderKey()}.name`)
+}
+
+function providerBaseUrlPlaceholder() {
+  return t(`${providerPlaceholderKey()}.baseUrl`)
+}
+
+function providerApiKeyEnvPlaceholder() {
+  return t(`${providerPlaceholderKey()}.apiKeyEnv`)
+}
+
+function modelPlaceholder(field: 'id' | 'upstreamModelId' | 'displayName' | 'contextWindow' | 'maxOutputTokens' | 'dimension') {
+  const providerKey = selectedProviderExampleKey.value
+  const kindKey = modelForm.kind === 'embedding' ? 'embedding' : 'text'
+  const key = `models.placeholders.model.providers.${providerKey}.${kindKey}.${field}`
+  const value = t(key)
+  return value === key ? t(`models.placeholders.model.${field}`) : value
+}
+
+function routingWeightPlaceholder() {
+  return t('models.placeholders.model.routingWeight')
+}
+
+function apiKeyConfigurationLabel() {
+  const keyHint = localProvider.api_key_hint?.trim()
+  const envName = localProvider.api_key_env?.trim()
+  if (envName && (!keyHint || keyHint === envName)) return t('models.apiKeyEnvConfiguredUnverified', { env: envName })
+  if (keyHint) return t('models.apiKeySavedUnverified', { hint: keyHint })
+  if (envName) return t('models.apiKeyEnvConfiguredUnverified', { env: envName })
+  return t('models.noApiKeyHint')
+}
+
 function modelFeatureSummary(model: ModelConfig) {
   const features = [
     kindLabel(model.kind),
@@ -676,14 +737,18 @@ function formatInteger(value?: number) {
             <PlugZap class="h-5 w-5 text-muted-foreground" />
           </div>
 
+          <div class="rounded-2xl border border-amber-300/40 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+            {{ t('models.protocolCompatibilityHint') }}
+          </div>
+
           <div class="grid gap-4 md:grid-cols-2">
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.providerId') }}</span>
-              <UiInput v-model="localProvider.id" placeholder="provider-openai-responses" :disabled="Boolean(localProvider.created_at)" />
+              <UiInput v-model="localProvider.id" :placeholder="providerIdPlaceholder()" :disabled="providerMode === 'edit'" />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.displayName') }}</span>
-              <UiInput v-model="localProvider.name" placeholder="OpenAI Responses Gateway" />
+              <UiInput v-model="localProvider.name" :placeholder="providerNamePlaceholder()" />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.providerType') }}</span>
@@ -691,15 +756,15 @@ function formatInteger(value?: number) {
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.baseUrl') }}</span>
-              <UiInput v-model="localProvider.base_url" placeholder="https://api.openai.com/v1" />
+              <UiInput v-model="localProvider.base_url" :placeholder="providerBaseUrlPlaceholder()" />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.apiKey') }}</span>
-              <UiInput v-model="localProvider.api_key" type="password" :placeholder="localProvider.api_key_hint || t('models.apiKeyPlaceholder')" />
+              <UiInput v-model="localProvider.api_key" type="password" :placeholder="t('models.apiKeyPlaceholder')" />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.apiKeyEnv') }}</span>
-              <UiInput v-model="localProvider.api_key_env" :placeholder="t('models.apiKeyEnvPlaceholder')" />
+              <UiInput v-model="localProvider.api_key_env" :placeholder="providerApiKeyEnvPlaceholder()" />
             </label>
           </div>
 
@@ -714,7 +779,7 @@ function formatInteger(value?: number) {
 
           <div class="rounded-2xl border border-border bg-muted/35 px-4 py-3 text-sm text-muted-foreground">
             {{ t('models.apiKeyHint') }}
-            <p class="mt-1 text-foreground">{{ localProvider.api_key_hint || t('models.noApiKeyHint') }}</p>
+            <p class="mt-1 text-foreground">{{ apiKeyConfigurationLabel() }}</p>
           </div>
 
           <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -779,7 +844,7 @@ function formatInteger(value?: number) {
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.modelId') }}</span>
-              <UiInput v-model="modelForm.id" :disabled="modelMode === 'edit'" placeholder="provider-openai:gpt-4.1" />
+              <UiInput v-model="modelForm.id" :disabled="modelMode === 'edit'" :placeholder="modelPlaceholder('id')" />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.modelProvider') }}</span>
@@ -791,27 +856,27 @@ function formatInteger(value?: number) {
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.upstreamModelId') }}</span>
-              <UiInput v-model="modelForm.name" placeholder="gpt-4.1" />
+              <UiInput v-model="modelForm.name" :placeholder="modelPlaceholder('upstreamModelId')" />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.displayName') }}</span>
-              <UiInput v-model="modelForm.display_name" placeholder="GPT-4.1" />
+              <UiInput v-model="modelForm.display_name" :placeholder="modelPlaceholder('displayName')" />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.contextWindow') }}</span>
-              <UiInput v-model="modelForm.context_window" type="number" placeholder="128000" />
+              <UiInput v-model="modelForm.context_window" type="number" :placeholder="modelPlaceholder('contextWindow')" />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.maxOutputTokens') }}</span>
-              <UiInput v-model="modelForm.max_output_tokens" type="number" placeholder="4096" />
+              <UiInput v-model="modelForm.max_output_tokens" type="number" :placeholder="modelPlaceholder('maxOutputTokens')" />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.dimension') }}</span>
-              <UiInput v-model="modelForm.dimension" type="number" placeholder="1536" />
+              <UiInput v-model="modelForm.dimension" type="number" :placeholder="modelPlaceholder('dimension')" />
             </label>
             <label class="space-y-2 md:col-span-2 xl:col-span-1 2xl:col-span-2">
               <span class="text-sm text-muted-foreground">{{ t('models.routingWeight') }}</span>
-              <UiInput v-model="modelForm.routing_weight" type="number" placeholder="100" />
+              <UiInput v-model="modelForm.routing_weight" type="number" :placeholder="routingWeightPlaceholder()" />
             </label>
           </div>
 

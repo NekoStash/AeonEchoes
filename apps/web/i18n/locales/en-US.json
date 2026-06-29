@@ -130,15 +130,35 @@
     "quickStart": "Quick start",
     "systemStatus": "System status",
     "projects": "Projects",
+    "openedProjects": "Opened projects",
+    "providers": "Providers",
     "models": "Models",
     "indexQueue": "Index queue",
     "emptyProjects": "No projects yet. Created projects will appear here.",
     "recentProjects": "Recently opened",
     "recentProjectsDescription": "Continue from opened projects.",
     "emptyRecentProjects": "No opened projects yet. Open one from the projects page.",
+    "primaryFlowEyebrow": "Primary flow",
+    "primaryFlowTitle": "From story setup to prose",
+    "primaryFlowDescription": "Create a project, organize the Story Bible, then open the editor to generate a plan or continue prose with the right context.",
+    "flow": {
+      "create": {
+        "title": "Create project",
+        "description": "Capture the story core, genre tags, and key constraints."
+      },
+      "prepare": {
+        "title": "Prepare canon",
+        "description": "Review the premise, world rules, characters, and chapter plan."
+      },
+      "write": {
+        "title": "Write chapters",
+        "description": "Pick a chapter, preview context, then generate a plan or prose."
+      }
+    },
     "metricHints": {
       "readyProjects": "{count} story bibles ready",
-      "enabledProviders": "{count} providers enabled",
+      "openedProjectsHint": "{count} total projects",
+      "enabledProviders": "{count} total providers",
       "totalJobs": "{count} total jobs"
     }
   },
@@ -167,6 +187,41 @@
     "avoid": "Avoid",
     "outline": "Project setup",
     "result": "Organized brief",
+    "assistant": {
+      "title": "AI setup assistant",
+      "description": "Optional: let the system refine the current inputs into a cleaner project seed."
+    },
+    "checklist": {
+      "title": "Project name",
+      "brief": "One-line brief",
+      "protagonist": "Protagonist",
+      "conflict": "Central conflict",
+      "tags": "Genre tags"
+    },
+    "createdDescription": "The project has been created and opened. Continue in the workspace to refine setup and chapters.",
+    "finalizeTitle": "Create workspace",
+    "finalizeDescription": "Confirm the key inputs, then create the project and generate the initial Story Bible for ongoing edits.",
+    "openWorkspace": "Open workspace",
+    "pending": "Pending",
+    "pendingHint": "Some required story inputs are still missing. Fill them in before creating the project.",
+    "readyHint": "Core inputs are ready. You can create the project and generate the initial setup.",
+    "stepLabel": "Step {number}",
+    "steps": {
+      "core": {
+        "title": "Story core",
+        "description": "Set the project name, one-line brief, and genre tags."
+      },
+      "setup": {
+        "title": "World and conflict",
+        "description": "Add the world background, protagonist, and central conflict for a stable setup."
+      },
+      "style": {
+        "title": "Style and boundaries",
+        "description": "Describe the target style and what to avoid so generation stays on track."
+      }
+    },
+    "summaryTitle": "Preflight checklist",
+    "summaryDescription": "Review the core information that will initialize the project.",
     "defaults": {
       "title": "Public Records",
       "brief": "A records clerk discovers that public archives and private memory contradict each other.",
@@ -195,6 +250,50 @@
     "chapters": "Chapters",
     "saveStoryBible": "Save Story Bible",
     "openChapter": "Open in editor",
+    "summary": {
+      "premise": "Premise",
+      "themes": "Themes",
+      "worldRules": "World rules"
+    },
+    "workspaceEyebrow": "Workspace",
+    "workspaceTitle": "Project setup overview",
+    "nextActionEyebrow": "Next action",
+    "nextActionTitle": "Continue chapters",
+    "chapterSummary": "{active} / {total} chapters in progress",
+    "continueWriting": "Continue writing",
+    "reviewChapters": "Review chapters",
+    "prepTitle": "Writing preparation",
+    "prepDescription": "Before writing prose, confirm that core canon, characters, and foreshadowing are usable.",
+    "prepCount": "{count} items",
+    "prep": {
+      "rules": {
+        "title": "World rules",
+        "description": "Maintain rules, limits, and canon constraints that affect continuity checks."
+      },
+      "characters": {
+        "title": "Character files",
+        "description": "Review character goals, wounds, secrets, and current roles."
+      },
+      "foreshadows": {
+        "title": "Foreshadowing",
+        "description": "Confirm planted details, payoff hints, and current status."
+      }
+    },
+    "sections": {
+      "overview": "Overview",
+      "story": "Story setup",
+      "characters": "Characters",
+      "chapters": "Chapters"
+    },
+    "sectionDescriptions": {
+      "story": "Edit the premise, themes, world rules, and foreshadowing.",
+      "characters": "Maintain the cast list and writing constraints for each character."
+    },
+    "openStorySetup": "Open story setup",
+    "openCharacters": "Open characters",
+    "quickActions": "Quick actions",
+    "editStoryBible": "Edit Story Bible",
+    "planChapters": "Plan chapters",
     "fields": {
       "premise": "Premise",
       "themes": "Themes",
@@ -268,7 +367,10 @@
     "baseUrl": "Base URL",
     "apiKey": "API key",
     "apiKeyEnv": "API key environment variable",
-    "apiKeyPlaceholder": "Leave blank to keep the saved key",
+    "apiKeyPlaceholder": "Leave blank to keep the saved key; enter a new key only when replacing it",
+    "apiKeySavedUnverified": "Saved key hint: {hint} (unverified; a wrong protocol or Base URL can also look like a credential error)",
+    "apiKeyEnvConfiguredUnverified": "Environment variable configured: {env} (unverified; a wrong protocol or Base URL can also look like a credential error)",
+    "protocolCompatibilityHint": "Provider type is the upstream protocol. The API key, Base URL, and model refresh endpoint must match that protocol; for example, an Anthropic key cannot be used with the OpenAI Chat protocol. Choosing the wrong protocol often appears as a credential error.",
     "streaming": "Streaming",
     "enabled": "Enabled",
     "providerId": "Provider ID",
@@ -276,10 +378,10 @@
     "providerType": "Provider type",
     "defaultModelId": "Default model ID",
     "defaultModelIdStored": "Stored but not used for current routing:",
-    "apiKeyHint": "Saved key",
+    "apiKeyHint": "Key configuration status",
     "apiKeyHintPlaceholder": "sk-... suffix or key location",
     "apiKeyEnvPlaceholder": "OPENAI_API_KEY",
-    "noApiKeyHint": "Not configured",
+    "noApiKeyHint": "No key or environment variable configured",
     "enableProvider": "Enable Provider",
     "lastCheckedAt": "Last checked at",
     "notChecked": "Not checked yet",
@@ -326,6 +428,117 @@
     "confirmDeleteProvider": "Delete provider “{name}”? Associated models will also be removed.",
     "defaults": {
       "providerName": "New Provider"
+    },
+    "placeholders": {
+      "providers": {
+        "openaiResponses": {
+          "id": "provider-openai-responses",
+          "name": "OpenAI Responses Gateway",
+          "baseUrl": "https://api.openai.com/v1",
+          "apiKeyEnv": "OPENAI_API_KEY"
+        },
+        "openai": {
+          "id": "provider-openai-chat",
+          "name": "OpenAI Chat Gateway",
+          "baseUrl": "https://api.openai.com/v1",
+          "apiKeyEnv": "OPENAI_API_KEY"
+        },
+        "anthropic": {
+          "id": "provider-anthropic",
+          "name": "Anthropic Messages Gateway",
+          "baseUrl": "https://api.anthropic.com/v1",
+          "apiKeyEnv": "ANTHROPIC_API_KEY"
+        },
+        "gemini": {
+          "id": "provider-gemini",
+          "name": "Gemini Gateway",
+          "baseUrl": "https://generativelanguage.googleapis.com",
+          "apiKeyEnv": "GEMINI_API_KEY"
+        }
+      },
+      "model": {
+        "id": "provider-openai:gpt-4.1",
+        "upstreamModelId": "gpt-4.1",
+        "displayName": "GPT-4.1",
+        "contextWindow": "128000",
+        "maxOutputTokens": "4096",
+        "dimension": "1536",
+        "routingWeight": "100",
+        "providers": {
+          "openaiResponses": {
+            "text": {
+              "id": "provider-openai-responses:gpt-4.1",
+              "upstreamModelId": "gpt-4.1",
+              "displayName": "GPT-4.1",
+              "contextWindow": "128000",
+              "maxOutputTokens": "4096",
+              "dimension": "0"
+            },
+            "embedding": {
+              "id": "provider-openai-responses:text-embedding-3-small",
+              "upstreamModelId": "text-embedding-3-small",
+              "displayName": "Text Embedding 3 Small",
+              "contextWindow": "8191",
+              "maxOutputTokens": "0",
+              "dimension": "1536"
+            }
+          },
+          "openai": {
+            "text": {
+              "id": "provider-openai:gpt-4.1",
+              "upstreamModelId": "gpt-4.1",
+              "displayName": "GPT-4.1",
+              "contextWindow": "128000",
+              "maxOutputTokens": "4096",
+              "dimension": "0"
+            },
+            "embedding": {
+              "id": "provider-openai:text-embedding-3-small",
+              "upstreamModelId": "text-embedding-3-small",
+              "displayName": "Text Embedding 3 Small",
+              "contextWindow": "8191",
+              "maxOutputTokens": "0",
+              "dimension": "1536"
+            }
+          },
+          "anthropic": {
+            "text": {
+              "id": "provider-anthropic:claude-sonnet-4-5",
+              "upstreamModelId": "claude-sonnet-4-5",
+              "displayName": "Claude Sonnet 4.5",
+              "contextWindow": "200000",
+              "maxOutputTokens": "8192",
+              "dimension": "0"
+            },
+            "embedding": {
+              "id": "provider-anthropic:embedding-model",
+              "upstreamModelId": "embedding-model",
+              "displayName": "Anthropic Embedding Model",
+              "contextWindow": "8191",
+              "maxOutputTokens": "0",
+              "dimension": "1536"
+            }
+          },
+          "gemini": {
+            "text": {
+              "id": "provider-gemini:gemini-2.5-pro",
+              "upstreamModelId": "gemini-2.5-pro",
+              "displayName": "Gemini 2.5 Pro",
+              "contextWindow": "1000000",
+              "maxOutputTokens": "8192",
+              "dimension": "0"
+            },
+            "embedding": {
+              "id": "provider-gemini:text-embedding-004",
+              "upstreamModelId": "text-embedding-004",
+              "displayName": "Text Embedding 004",
+              "contextWindow": "2048",
+              "maxOutputTokens": "0",
+              "dimension": "768"
+            }
+          }
+        }
+      }
     },
     "summary": {
       "providers": "Providers",
@@ -675,6 +888,9 @@
     "emptyDetails": "Select a node or edge in the graph to view details. If Cytoscape cannot load in this environment, use the node list in the center panel to verify data.",
     "emptyEdges": "No visible edges for the current filters.",
     "listUnavailableMessage": "Graph rendering is temporarily unavailable. You can still inspect node data in the list below.",
+    "placeholders": {
+      "root": "story_start"
+    },
     "errors": {
       "loadFailed": "Failed to load story graph",
       "cytoscapeFailed": "Cytoscape could not load; list view is shown instead."

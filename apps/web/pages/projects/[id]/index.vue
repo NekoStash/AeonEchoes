@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowRight, BookMarked, CheckCircle2, FileText, GitFork, Loader2, PenLine, Plus, Save, ShieldCheck, Trash2, UserRound, WifiOff } from '@lucide/vue'
+import { ArrowRight, BookMarked, CheckCircle2, FilePenLine, FileText, GitFork, Loader2, PenLine, Plus, Save, ShieldCheck, Trash2, UserRound, WifiOff } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
 import type { StoryBible } from '~/lib/types'
 

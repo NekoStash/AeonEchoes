@@ -130,15 +130,35 @@
     "quickStart": "快速开始",
     "systemStatus": "系统状态",
     "projects": "项目",
+    "openedProjects": "已打开项目",
+    "providers": "Provider",
     "models": "模型",
     "indexQueue": "索引队列",
     "emptyProjects": "暂无项目。创建一个项目后会在这里显示。",
     "recentProjects": "最近打开",
     "recentProjectsDescription": "继续处理已打开的项目。",
     "emptyRecentProjects": "暂无已打开项目。前往项目页打开一个项目。",
+    "primaryFlowEyebrow": "主要流程",
+    "primaryFlowTitle": "从设定到正文的创作路径",
+    "primaryFlowDescription": "先创建项目并整理 Story Bible，再确认章节准备情况，最后进入编辑器生成方案或续写正文。",
+    "flow": {
+      "create": {
+        "title": "创建项目",
+        "description": "写下故事核心、类型标签和基本约束。"
+      },
+      "prepare": {
+        "title": "整理设定",
+        "description": "检查故事前提、世界规则、角色和章节规划。"
+      },
+      "write": {
+        "title": "进入写作",
+        "description": "选择章节，预览上下文，再生成方案或正文。"
+      }
+    },
     "metricHints": {
       "readyProjects": "{count} 个设定已就绪",
-      "enabledProviders": "{count} 个提供商已启用",
+      "openedProjectsHint": "共 {count} 个项目",
+      "enabledProviders": "共 {count} 个 Provider",
       "totalJobs": "共 {count} 个任务"
     }
   },
@@ -167,6 +187,41 @@
     "avoid": "避免事项",
     "outline": "项目设置",
     "result": "整理后的设定",
+    "assistant": {
+      "title": "AI 设定助手",
+      "description": "可选：让系统根据当前填写内容整理成更清晰的项目种子。"
+    },
+    "checklist": {
+      "title": "项目名称",
+      "brief": "一句话简介",
+      "protagonist": "主角",
+      "conflict": "核心冲突",
+      "tags": "类型标签"
+    },
+    "createdDescription": "项目已创建并加入已打开项目，可以进入工作区继续整理设定和章节。",
+    "finalizeTitle": "创建工作区",
+    "finalizeDescription": "确认关键信息后创建项目，系统会生成初始 Story Bible 供后续维护。",
+    "openWorkspace": "打开工作区",
+    "pending": "待补充",
+    "pendingHint": "仍有必要信息未填写完整，建议补齐后再创建项目。",
+    "readyHint": "核心信息已就绪，可以创建项目并生成初始设定。",
+    "stepLabel": "步骤 {number}",
+    "steps": {
+      "core": {
+        "title": "故事核心",
+        "description": "明确项目名称、一句话简介与类型标签。"
+      },
+      "setup": {
+        "title": "世界与冲突",
+        "description": "补充世界背景、主角和核心冲突，方便后续生成稳定设定。"
+      },
+      "style": {
+        "title": "风格与边界",
+        "description": "说明期望文风和需要避免的内容，降低生成偏移。"
+      }
+    },
+    "summaryTitle": "创建前检查",
+    "summaryDescription": "快速核对将用于初始化项目的核心信息。",
     "defaults": {
       "title": "记忆档案",
       "brief": "一名记录员发现公共档案与私人记忆互相冲突。",
@@ -195,6 +250,50 @@
     "chapters": "章节",
     "saveStoryBible": "保存 Story Bible",
     "openChapter": "在编辑器打开",
+    "summary": {
+      "premise": "故事前提",
+      "themes": "主题",
+      "worldRules": "世界规则"
+    },
+    "workspaceEyebrow": "工作区",
+    "workspaceTitle": "项目设定概览",
+    "nextActionEyebrow": "下一步",
+    "nextActionTitle": "继续推进章节",
+    "chapterSummary": "已推进 {active} / {total} 章",
+    "continueWriting": "继续写作",
+    "reviewChapters": "检查章节",
+    "prepTitle": "写作准备",
+    "prepDescription": "在进入正文前，确认关键设定、角色和伏笔已经可用。",
+    "prepCount": "{count} 项",
+    "prep": {
+      "rules": {
+        "title": "世界规则",
+        "description": "维护会影响连续性判断的规则、限制和设定约束。"
+      },
+      "characters": {
+        "title": "角色档案",
+        "description": "检查角色目标、创伤、秘密和当前定位。"
+      },
+      "foreshadows": {
+        "title": "伏笔线索",
+        "description": "确认已埋设内容、回收提示和当前状态。"
+      }
+    },
+    "sections": {
+      "overview": "概览",
+      "story": "故事设定",
+      "characters": "角色",
+      "chapters": "章节"
+    },
+    "sectionDescriptions": {
+      "story": "编辑故事前提、主题、世界规则和伏笔线索。",
+      "characters": "维护角色清单和每个角色的创作约束。"
+    },
+    "openStorySetup": "打开故事设定",
+    "openCharacters": "打开角色",
+    "quickActions": "快捷操作",
+    "editStoryBible": "编辑 Story Bible",
+    "planChapters": "规划章节",
     "fields": {
       "premise": "故事前提",
       "themes": "主题",
@@ -268,7 +367,10 @@
     "baseUrl": "Base URL",
     "apiKey": "API Key",
     "apiKeyEnv": "API Key 环境变量",
-    "apiKeyPlaceholder": "留空则不覆盖已保存密钥",
+    "apiKeyPlaceholder": "留空以保留已保存密钥；输入新密钥才会覆盖",
+    "apiKeySavedUnverified": "已保存密钥线索：{hint}（未验证；协议或 Base URL 错误也可能表现为凭证错误）",
+    "apiKeyEnvConfiguredUnverified": "已配置环境变量：{env}（未验证；协议或 Base URL 错误也可能表现为凭证错误）",
+    "protocolCompatibilityHint": "Provider 类型代表上游协议。API Key、Base URL 与模型刷新接口必须匹配该协议；例如 Anthropic Key 不能配 OpenAI Chat 协议，协议选错时常会表现为凭证错误。",
     "streaming": "流式输出",
     "enabled": "启用",
     "providerId": "Provider ID",
@@ -276,10 +378,10 @@
     "providerType": "Provider 类型",
     "defaultModelId": "默认模型 ID",
     "defaultModelIdStored": "已保存但不参与当前路由：",
-    "apiKeyHint": "已保存密钥",
+    "apiKeyHint": "密钥配置状态",
     "apiKeyHintPlaceholder": "sk-... 尾号或密钥位置",
     "apiKeyEnvPlaceholder": "OPENAI_API_KEY",
-    "noApiKeyHint": "未配置",
+    "noApiKeyHint": "未配置密钥或环境变量",
     "enableProvider": "启用 Provider",
     "lastCheckedAt": "最后探测时间",
     "notChecked": "尚未探测",
@@ -326,6 +428,117 @@
     "confirmDeleteProvider": "确定删除 Provider“{name}”吗？关联模型也会一起删除。",
     "defaults": {
       "providerName": "新 Provider"
+    },
+    "placeholders": {
+      "providers": {
+        "openaiResponses": {
+          "id": "provider-openai-responses",
+          "name": "OpenAI Responses Gateway",
+          "baseUrl": "https://api.openai.com/v1",
+          "apiKeyEnv": "OPENAI_API_KEY"
+        },
+        "openai": {
+          "id": "provider-openai-chat",
+          "name": "OpenAI Chat Gateway",
+          "baseUrl": "https://api.openai.com/v1",
+          "apiKeyEnv": "OPENAI_API_KEY"
+        },
+        "anthropic": {
+          "id": "provider-anthropic",
+          "name": "Anthropic Messages Gateway",
+          "baseUrl": "https://api.anthropic.com/v1",
+          "apiKeyEnv": "ANTHROPIC_API_KEY"
+        },
+        "gemini": {
+          "id": "provider-gemini",
+          "name": "Gemini Gateway",
+          "baseUrl": "https://generativelanguage.googleapis.com",
+          "apiKeyEnv": "GEMINI_API_KEY"
+        }
+      },
+      "model": {
+        "id": "provider-openai:gpt-4.1",
+        "upstreamModelId": "gpt-4.1",
+        "displayName": "GPT-4.1",
+        "contextWindow": "128000",
+        "maxOutputTokens": "4096",
+        "dimension": "1536",
+        "routingWeight": "100",
+        "providers": {
+          "openaiResponses": {
+            "text": {
+              "id": "provider-openai-responses:gpt-4.1",
+              "upstreamModelId": "gpt-4.1",
+              "displayName": "GPT-4.1",
+              "contextWindow": "128000",
+              "maxOutputTokens": "4096",
+              "dimension": "0"
+            },
+            "embedding": {
+              "id": "provider-openai-responses:text-embedding-3-small",
+              "upstreamModelId": "text-embedding-3-small",
+              "displayName": "Text Embedding 3 Small",
+              "contextWindow": "8191",
+              "maxOutputTokens": "0",
+              "dimension": "1536"
+            }
+          },
+          "openai": {
+            "text": {
+              "id": "provider-openai:gpt-4.1",
+              "upstreamModelId": "gpt-4.1",
+              "displayName": "GPT-4.1",
+              "contextWindow": "128000",
+              "maxOutputTokens": "4096",
+              "dimension": "0"
+            },
+            "embedding": {
+              "id": "provider-openai:text-embedding-3-small",
+              "upstreamModelId": "text-embedding-3-small",
+              "displayName": "Text Embedding 3 Small",
+              "contextWindow": "8191",
+              "maxOutputTokens": "0",
+              "dimension": "1536"
+            }
+          },
+          "anthropic": {
+            "text": {
+              "id": "provider-anthropic:claude-sonnet-4-5",
+              "upstreamModelId": "claude-sonnet-4-5",
+              "displayName": "Claude Sonnet 4.5",
+              "contextWindow": "200000",
+              "maxOutputTokens": "8192",
+              "dimension": "0"
+            },
+            "embedding": {
+              "id": "provider-anthropic:embedding-model",
+              "upstreamModelId": "embedding-model",
+              "displayName": "Anthropic Embedding Model",
+              "contextWindow": "8191",
+              "maxOutputTokens": "0",
+              "dimension": "1536"
+            }
+          },
+          "gemini": {
+            "text": {
+              "id": "provider-gemini:gemini-2.5-pro",
+              "upstreamModelId": "gemini-2.5-pro",
+              "displayName": "Gemini 2.5 Pro",
+              "contextWindow": "1000000",
+              "maxOutputTokens": "8192",
+              "dimension": "0"
+            },
+            "embedding": {
+              "id": "provider-gemini:text-embedding-004",
+              "upstreamModelId": "text-embedding-004",
+              "displayName": "Text Embedding 004",
+              "contextWindow": "2048",
+              "maxOutputTokens": "0",
+              "dimension": "768"
+            }
+          }
+        }
+      }
     },
     "summary": {
       "providers": "Provider",
@@ -675,6 +888,9 @@
     "emptyDetails": "点击图谱中的节点或边查看详情。若当前环境无法加载 Cytoscape，可使用中间面板的节点列表核对数据。",
     "emptyEdges": "当前筛选条件下没有可见边。",
     "listUnavailableMessage": "图谱渲染暂不可用。你仍然可以通过下方列表查看节点数据。",
+    "placeholders": {
+      "root": "story_start"
+    },
     "errors": {
       "loadFailed": "关系图谱加载失败",
       "cytoscapeFailed": "Cytoscape 未能加载，已显示列表视图。"

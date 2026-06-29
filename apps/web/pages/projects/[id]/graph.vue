@@ -264,7 +264,7 @@ function edgeTypeLabel(type: string) {
         <div class="mt-5 space-y-5">
           <label class="space-y-2">
             <span class="text-sm text-muted-foreground">{{ t('graph.root') }}</span>
-            <UiInput v-model="root" placeholder="story_start" />
+            <UiInput v-model="root" :placeholder="t('graph.placeholders.root')" />
           </label>
 
           <label class="space-y-2">
