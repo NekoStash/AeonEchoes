@@ -58,6 +58,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/projects/seed/optimize", s.optimizeProjectSeed)
 	mux.HandleFunc("GET /api/projects/{projectID}/story-bible", s.getStoryBible)
 	mux.HandleFunc("PUT /api/projects/{projectID}/story-bible", s.updateStoryBible)
+	mux.HandleFunc("POST /api/projects/{projectID}/characters/sync", s.syncCharacters)
 	mux.HandleFunc("POST /api/projects/{projectID}/chapter-versions", s.createChapterVersion)
 	mux.HandleFunc("GET /api/projects/{projectID}/chapter-versions", s.listChapterVersions)
 	mux.HandleFunc("GET /api/workflows", s.listWorkflows)
@@ -68,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/system/status", s.systemStatus)
 	mux.HandleFunc("GET /api/graph/expand", s.expandGraph)
 	mux.HandleFunc("POST /api/ai/chapter-idea", s.generateChapterIdea)
+	mux.HandleFunc("POST /api/ai/character-profiles", s.generateCharacterProfiles)
 	mux.HandleFunc("POST /api/ai/context-selection/preview", s.previewContextSelection)
 	mux.HandleFunc("POST /api/ai/draft", s.draft)
 	mux.HandleFunc("POST /api/ai/draft-with-idea", s.draftWithIdea)
@@ -453,6 +455,20 @@ func (s *Server) updateStoryBible(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, updated)
 }
 
+func (s *Server) syncCharacters(w http.ResponseWriter, r *http.Request) {
+	var input characterSyncRequest
+	if !decodeRequest(w, r, &input) {
+		return
+	}
+	input.ProjectID = firstNonEmpty(r.PathValue("projectID"), input.ProjectID)
+	result, err := syncStoryBibleCharacters(s.store, input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) createChapterVersion(w http.ResponseWriter, r *http.Request) {
 	var input domain.ChapterVersion
 	if !decodeRequest(w, r, &input) {
@@ -506,6 +522,23 @@ func (s *Server) generateChapterIdea(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.workflow.GenerateChapterIdea(r.Context(), input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, result)
+}
+
+func (s *Server) generateCharacterProfiles(w http.ResponseWriter, r *http.Request) {
+	if s.workflow == nil {
+		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("workflow runner is not configured"))
+		return
+	}
+	var input agent.CharacterProfilesRequest
+	if !decodeRequest(w, r, &input) {
+		return
+	}
+	result, err := s.workflow.GenerateCharacterProfiles(r.Context(), input)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -632,6 +665,203 @@ func (s *Server) notifyIndexWorker() {
 		return
 	}
 	s.indexWake.Notify()
+}
+
+type characterSyncRequest struct {
+	ProjectID    string                    `json:"project_id,omitempty"`
+	StoryBibleID string                    `json:"story_bible_id,omitempty"`
+	Source       string                    `json:"source,omitempty"`
+	Characters   []domain.CharacterProfile `json:"characters"`
+	Metadata     map[string]string         `json:"metadata,omitempty"`
+}
+
+type characterSyncMapping struct {
+	Name     string `json:"name"`
+	EntityID string `json:"entity_id"`
+	Action   string `json:"action"`
+}
+
+type characterSyncResult struct {
+	ProjectID    string                 `json:"project_id"`
+	StoryBibleID string                 `json:"story_bible_id,omitempty"`
+	Characters   []domain.Entity        `json:"characters"`
+	Mappings     []characterSyncMapping `json:"mappings"`
+}
+
+func syncStoryBibleCharacters(store repository.AppStore, input characterSyncRequest) (characterSyncResult, error) {
+	if store == nil {
+		return characterSyncResult{}, fmt.Errorf("character sync store is not configured")
+	}
+	projectID := strings.TrimSpace(input.ProjectID)
+	if projectID == "" {
+		return characterSyncResult{}, fmt.Errorf("character sync project_id must not be empty")
+	}
+	if _, err := store.GetProject(projectID); err != nil {
+		return characterSyncResult{}, err
+	}
+	if len(input.Characters) == 0 {
+		return characterSyncResult{}, fmt.Errorf("character sync characters must not be empty")
+	}
+	characters, err := normalizeCharacterSyncProfiles(input.Characters)
+	if err != nil {
+		return characterSyncResult{}, err
+	}
+	requestedNames := characterNameSet(characters)
+	existing, err := store.ListEntities(projectID)
+	if err != nil {
+		return characterSyncResult{}, err
+	}
+	byName := make(map[string]domain.Entity, len(existing))
+	for _, entity := range existing {
+		nameKey := normalizedCharacterName(entity.Name)
+		if nameKey == "" {
+			continue
+		}
+		if entity.Type != "" && entity.Type != "character" {
+			if _, requested := requestedNames[nameKey]; requested {
+				return characterSyncResult{}, fmt.Errorf("character sync name %q conflicts with existing non-character entity %q of type %q", entity.Name, entity.ID, entity.Type)
+			}
+			continue
+		}
+		if previous, ok := byName[nameKey]; ok {
+			return characterSyncResult{}, fmt.Errorf("character sync found duplicate existing character name %q for entities %q and %q", entity.Name, previous.ID, entity.ID)
+		}
+		byName[nameKey] = entity
+	}
+	result := characterSyncResult{ProjectID: projectID, StoryBibleID: strings.TrimSpace(input.StoryBibleID), Characters: make([]domain.Entity, 0, len(characters)), Mappings: make([]characterSyncMapping, 0, len(characters))}
+	for _, profile := range characters {
+		nameKey := normalizedCharacterName(profile.Name)
+		existingEntity, exists := byName[nameKey]
+		entity := characterProfileEntity(projectID, profile, existingEntity, input)
+		saved, err := store.SaveEntity(entity)
+		if err != nil {
+			return characterSyncResult{}, err
+		}
+		action := "created"
+		if exists {
+			action = "updated"
+		}
+		byName[nameKey] = saved
+		result.Characters = append(result.Characters, saved)
+		result.Mappings = append(result.Mappings, characterSyncMapping{Name: saved.Name, EntityID: saved.ID, Action: action})
+	}
+	return result, nil
+}
+
+func normalizeCharacterSyncProfiles(input []domain.CharacterProfile) ([]domain.CharacterProfile, error) {
+	characters := make([]domain.CharacterProfile, 0, len(input))
+	seen := map[string]struct{}{}
+	for i, character := range input {
+		character.Name = strings.TrimSpace(character.Name)
+		character.Role = strings.TrimSpace(character.Role)
+		character.Desire = strings.TrimSpace(character.Desire)
+		character.Wound = strings.TrimSpace(character.Wound)
+		character.Secret = strings.TrimSpace(character.Secret)
+		character.Summary = strings.TrimSpace(character.Summary)
+		if character.Name == "" {
+			return nil, fmt.Errorf("character sync characters[%d].name must not be empty", i)
+		}
+		if character.Role == "" {
+			return nil, fmt.Errorf("character sync characters[%d].role must not be empty", i)
+		}
+		if character.Desire == "" {
+			return nil, fmt.Errorf("character sync characters[%d].desire must not be empty", i)
+		}
+		if character.Wound == "" {
+			return nil, fmt.Errorf("character sync characters[%d].wound must not be empty", i)
+		}
+		if character.Secret == "" {
+			return nil, fmt.Errorf("character sync characters[%d].secret must not be empty", i)
+		}
+		nameKey := normalizedCharacterName(character.Name)
+		if _, ok := seen[nameKey]; ok {
+			return nil, fmt.Errorf("character sync duplicate character name %q", character.Name)
+		}
+		seen[nameKey] = struct{}{}
+		characters = append(characters, character)
+	}
+	return characters, nil
+}
+
+func characterNameSet(characters []domain.CharacterProfile) map[string]struct{} {
+	set := make(map[string]struct{}, len(characters))
+	for _, character := range characters {
+		set[normalizedCharacterName(character.Name)] = struct{}{}
+	}
+	return set
+}
+
+func characterProfileEntity(projectID string, profile domain.CharacterProfile, existing domain.Entity, input characterSyncRequest) domain.Entity {
+	entity := existing
+	entity.ProjectID = projectID
+	entity.Name = profile.Name
+	entity.Type = "character"
+	entity.Summary = characterProfileSummary(profile)
+	if entity.Status == "" {
+		entity.Status = "active"
+	}
+	if entity.Importance <= 0 {
+		entity.Importance = characterImportance(profile.Role)
+	}
+	traits := map[string]string{}
+	for key, value := range entity.Traits {
+		traits[key] = value
+	}
+	traits["role"] = profile.Role
+	traits["desire"] = profile.Desire
+	traits["wound"] = profile.Wound
+	traits["secret"] = profile.Secret
+	if profile.Summary != "" {
+		traits["summary"] = profile.Summary
+	}
+	entity.Traits = traits
+	metadata := map[string]string{}
+	for key, value := range entity.Metadata {
+		metadata[key] = value
+	}
+	for key, value := range input.Metadata {
+		metadata["sync_"+key] = value
+	}
+	if strings.TrimSpace(input.StoryBibleID) != "" {
+		metadata["story_bible_id"] = strings.TrimSpace(input.StoryBibleID)
+	}
+	if strings.TrimSpace(input.Source) != "" {
+		metadata["source"] = strings.TrimSpace(input.Source)
+	}
+	metadata["source_layer"] = "story_bible"
+	metadata["character_profile_json"] = mustMarshalCharacterProfile(profile)
+	entity.Metadata = metadata
+	return entity
+}
+
+func characterProfileSummary(profile domain.CharacterProfile) string {
+	if strings.TrimSpace(profile.Summary) != "" {
+		return strings.TrimSpace(profile.Summary)
+	}
+	return fmt.Sprintf("角色定位：%s；欲望：%s；创伤：%s；秘密：%s。", profile.Role, profile.Desire, profile.Wound, profile.Secret)
+}
+
+func characterImportance(role string) int {
+	role = strings.ToLower(strings.TrimSpace(role))
+	if strings.Contains(role, "主角") || strings.Contains(role, "protagonist") || strings.Contains(role, "main") {
+		return 100
+	}
+	if strings.Contains(role, "反派") || strings.Contains(role, "antagonist") || strings.Contains(role, "主要") || strings.Contains(role, "配角") {
+		return 80
+	}
+	return 60
+}
+
+func mustMarshalCharacterProfile(profile domain.CharacterProfile) string {
+	payload, err := json.Marshal(profile)
+	if err != nil {
+		panic(fmt.Sprintf("marshal character profile: %v", err))
+	}
+	return string(payload)
+}
+
+func normalizedCharacterName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 type providerConfigRequest struct {

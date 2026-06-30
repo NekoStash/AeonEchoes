@@ -315,7 +315,29 @@
       "worldRule": "Write a canon rule or constraint."
     },
     "resultScopes": {
-      "storyBibleSave": "Story Bible save"
+      "storyBibleSave": "Story Bible save",
+      "characterSync": "Character sync",
+      "characterGeneration": "Character generation"
+    },
+    "characterSync": {
+      "syncing": "Syncing characters",
+      "synced": "Characters synced",
+      "failed": "Character sync failed",
+      "pending": "Pending real character sync",
+      "realCharacter": "Real character"
+    },
+    "characterGenerator": {
+      "eyebrow": "Character generator",
+      "title": "Generate syncable character profiles",
+      "description": "Generate a complete protagonist profile or a new key character. The result is written into the current Story Bible and synced to real backend characters after save.",
+      "generateProtagonist": "Generate protagonist",
+      "generateCharacter": "Generate character",
+      "latestResult": "Latest generated result",
+      "failed": "Character generation failed. Check the backend character-profile endpoint.",
+      "prompts": {
+        "protagonist": "Generate or complete the protagonist profile. Include name, role, desire/goal, wound/gap, and secret, and anchor it tightly to the current premise.",
+        "character": "Generate one key character suitable for the next stage of this story. Include name, role, desire/goal, wound/gap, and secret."
+      }
     },
     "metrics": {
       "themes": "Themes",
@@ -548,6 +570,11 @@
       "textModels": "Text models",
       "embeddingModels": "Embedding models"
     },
+    "search": {
+      "provider": "Search provider name or type",
+      "model": "Search model name, provider, or ID",
+      "empty": "No matching results"
+    },
     "embeddingMaintenanceEyebrow": "Vector maintenance",
     "embeddingMaintenanceTitle": "Vector maintenance after embedding routing changes",
     "embeddingMaintenanceDescription": "These are explicit maintenance actions, not automatic routing changes. Rebuild the vector set first, then run pending indexing.",
@@ -652,8 +679,25 @@
       "chapterPlan": "Focused chapter plan:\n{content}",
       "chapterSummary": "Focused chapter summary: {content}",
       "worldRules": "Focused world rules: {content}",
-      "characters": "Focused characters: {content}"
+      "characters": "Focused characters: {content}",
+      "autoCharacters": "Chapter focus characters: {content}",
+      "protagonistPriority": "Prioritize this chapter around: {name}"
     },
+    "autoCharacters": {
+      "title": "Auto-recommended characters",
+      "description": "When no manual character focus is selected, requests automatically include 1–3 key characters based on the chapter summary, plan, and instruction. Manual choices take priority.",
+      "active": "Auto-included in request",
+      "manualOverride": "Manual focus takes priority",
+      "empty": "No character can be auto-recommended yet.",
+      "chip": "Auto: {name}"
+    },
+    "characterAnchor": {
+      "role": "role: {value}",
+      "desire": "desire: {value}",
+      "wound": "wound: {value}",
+      "secret": "secret: {value}"
+    },
+    "invalidChapterLabel": "Invalid chapter {id}; using {fallback}",
     "workflowHintTitle": "Writing workflow",
     "workflowHintDescription": "Confirm the focused reference scope first, then generate a plan or continue prose. Index jobs are advanced by the backend in the background; this page only shows the real state.",
     "backgroundIndex": {

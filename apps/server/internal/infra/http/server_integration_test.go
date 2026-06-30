@@ -178,6 +178,91 @@ func TestHandlerRebuildVectorsEndpoint(t *testing.T) {
 	}
 }
 
+func TestHandlerCharacterSyncUpsertsStoryBibleProfiles(t *testing.T) {
+	store := memory.NewStore()
+	project, bible, err := store.CreateProject(domain.Project{Title: "角色同步", Slug: "characters", Status: "active"}, domain.StoryBible{Title: "角色同步", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	existing, err := store.SaveEntity(domain.Entity{ProjectID: project.ID, Name: "林烬", Type: "character", Summary: "旧摘要", Traits: map[string]string{"role": "旧定位"}, Metadata: map[string]string{"kept": "true"}})
+	if err != nil {
+		t.Fatalf("SaveEntity(existing) error: %v", err)
+	}
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/projects/"+project.ID+"/characters/sync", map[string]any{
+		"story_bible_id": bible.ID,
+		"source":         "story_bible_editor",
+		"characters": []map[string]any{
+			{"name": "林烬", "role": "主角", "desire": "找回失落舰队真相", "wound": "曾在撤离中放弃同伴", "secret": "携带舰队核心坐标", "summary": "背负旧债的远航者。"},
+			{"name": "苏九", "role": "主要配角", "desire": "破解灰塔钟声", "wound": "家族因灰塔蒙冤", "secret": "她能听懂钟声里的坐标"},
+		},
+	})
+	assertStatus(t, response, http.StatusOK)
+	var body struct {
+		ProjectID    string          `json:"project_id"`
+		StoryBibleID string          `json:"story_bible_id"`
+		Characters   []domain.Entity `json:"characters"`
+		Mappings     []struct {
+			Name     string `json:"name"`
+			EntityID string `json:"entity_id"`
+			Action   string `json:"action"`
+		} `json:"mappings"`
+	}
+	decodeJSON(t, response, &body)
+	if body.ProjectID != project.ID || body.StoryBibleID != bible.ID {
+		t.Fatalf("unexpected sync envelope: %+v", body)
+	}
+	if len(body.Characters) != 2 || len(body.Mappings) != 2 {
+		t.Fatalf("sync returned characters/mappings len = %d/%d, want 2/2", len(body.Characters), len(body.Mappings))
+	}
+	if body.Mappings[0].EntityID != existing.ID || body.Mappings[0].Action != "updated" {
+		t.Fatalf("existing character was not updated by stable name: %+v", body.Mappings[0])
+	}
+	if body.Characters[0].Type != "character" || body.Characters[0].Traits["desire"] == "" || body.Characters[0].Traits["wound"] == "" || body.Characters[0].Traits["secret"] == "" {
+		t.Fatalf("updated character missing canonical profile traits: %+v", body.Characters[0])
+	}
+	if body.Characters[0].Metadata["kept"] != "true" || body.Characters[0].Metadata["story_bible_id"] != bible.ID || body.Characters[0].Metadata["character_profile_json"] == "" {
+		t.Fatalf("updated character metadata was not preserved/enriched: %+v", body.Characters[0].Metadata)
+	}
+	if body.Mappings[1].Action != "created" || body.Characters[1].ID == "" {
+		t.Fatalf("new character was not created: character=%+v mapping=%+v", body.Characters[1], body.Mappings[1])
+	}
+}
+
+func TestHandlerCharacterProfilesEndpointReturnsWorkflowContextAndCharacters(t *testing.T) {
+	store, workflow, projectID := newWorkflowBackedServerFixture(t)
+	workflow = newCharacterProfileWorkflowForStore(t, store)
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), workflow, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/ai/character-profiles", map[string]any{
+		"project_id": projectID,
+		"focus":      "主角完整设定",
+		"count":      1,
+		"brief":      "补全能支撑第一卷的主角人物弧",
+	})
+	assertStatus(t, response, http.StatusCreated)
+	var body struct {
+		Workflow        domain.AIWorkflow         `json:"workflow"`
+		ContextPack     domain.ContextPack        `json:"context_pack"`
+		Characters      []domain.CharacterProfile `json:"characters"`
+		ModelResolution domain.ModelResolution    `json:"model_resolution"`
+	}
+	decodeJSON(t, response, &body)
+	if body.Workflow.Kind != "character_profiles" || body.Workflow.Role != domain.AgentRoleCharacterKeeper || body.Workflow.Status != "completed" {
+		t.Fatalf("unexpected character profile workflow: %+v", body.Workflow)
+	}
+	if body.ContextPack.Role != domain.AgentRoleCharacterKeeper || body.ContextPack.ID == "" {
+		t.Fatalf("unexpected character profile context pack: %+v", body.ContextPack)
+	}
+	if body.ModelResolution.ModelID == "" || body.ModelResolution.RouteKey != string(domain.AgentRoleCharacterKeeper) {
+		t.Fatalf("character profile model resolution missing: %+v", body.ModelResolution)
+	}
+	if len(body.Characters) != 1 || body.Characters[0].Name != "林烬" || body.Characters[0].Desire == "" || body.Characters[0].Wound == "" || body.Characters[0].Secret == "" {
+		t.Fatalf("character profile response missing complete profile: %+v", body.Characters)
+	}
+}
+
 func TestHandlerPreviewReturnsFreshnessAndModelResolution(t *testing.T) {
 	store, workflow, projectID := newWorkflowBackedServerFixture(t)
 	_ = store
@@ -304,6 +389,10 @@ func newWorkflowBackedServerFixture(t *testing.T) (*memory.Store, *agent.Workflo
 	if err != nil {
 		t.Fatalf("CreateProvider(writer) error: %v", err)
 	}
+	characterProvider, err := store.CreateProvider(domain.ProviderConfig{ID: "provider_character", Name: "Character Provider", Type: domain.ProviderOpenAI, Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateProvider(character) error: %v", err)
+	}
 	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_architect:architect-explicit", ProviderID: architectProvider.ID, Name: "architect-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 600, AllowedAgentRoles: []domain.AgentRole{domain.AgentRolePlotArchitect}})
 	if err != nil {
 		t.Fatalf("CreateModel(architect) error: %v", err)
@@ -312,6 +401,10 @@ func newWorkflowBackedServerFixture(t *testing.T) (*memory.Store, *agent.Workflo
 	if err != nil {
 		t.Fatalf("CreateModel(writer) error: %v", err)
 	}
+	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_character:character-explicit", ProviderID: characterProvider.ID, Name: "character-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 900, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleCharacterKeeper}})
+	if err != nil {
+		t.Fatalf("CreateModel(character) error: %v", err)
+	}
 	_, err = store.UpsertSetting(domain.AppSetting{Scope: agent.ModelRoutingSettingScope, Key: string(domain.AgentRolePlotArchitect), Value: map[string]any{agent.ModelRoutingSettingValueKey: "provider_architect:architect-explicit"}})
 	if err != nil {
 		t.Fatalf("UpsertSetting(plot architect) error: %v", err)
@@ -319,6 +412,10 @@ func newWorkflowBackedServerFixture(t *testing.T) (*memory.Store, *agent.Workflo
 	_, err = store.UpsertSetting(domain.AppSetting{Scope: agent.ModelRoutingSettingScope, Key: string(domain.AgentRoleWriter), Value: map[string]any{agent.ModelRoutingSettingValueKey: "provider_writer:writer-explicit"}})
 	if err != nil {
 		t.Fatalf("UpsertSetting(writer) error: %v", err)
+	}
+	_, err = store.UpsertSetting(domain.AppSetting{Scope: agent.ModelRoutingSettingScope, Key: string(domain.AgentRoleCharacterKeeper), Value: map[string]any{agent.ModelRoutingSettingValueKey: "provider_character:character-explicit"}})
+	if err != nil {
+		t.Fatalf("UpsertSetting(character) error: %v", err)
 	}
 	seedWorkflow, err := store.SaveWorkflow(domain.AIWorkflow{ProjectID: project.ID, Kind: "chapter_seed", Role: domain.AgentRoleWriter, Status: "completed"})
 	if err != nil {
@@ -359,12 +456,21 @@ func newWorkflowBackedServerFixture(t *testing.T) (*memory.Store, *agent.Workflo
 	if _, err := store.SavePlotThread(domain.PlotThread{ProjectID: project.ID, Title: "塔楼异动", OpenedChapterID: chapterTwo.ChapterID, RelatedEntityIDs: []string{charSu.ID}, Metadata: map[string]string{"source_chapter_version_id": chapterTwo.ID}}); err != nil {
 		t.Fatalf("SavePlotThread(塔楼异动) error: %v", err)
 	}
-	textClient := &fakeTextClient{responses: []provider.ModelResponse{{Content: "## 本章目标\n进入灰塔并发现钟声异常"}, {Content: "林烬踏入灰塔，钟声在背后收拢。"}, {Content: "林烬把灰烬钥匙藏进袖口，走向塔门。"}}}
+	textClient := &fakeTextClient{responses: []provider.ModelResponse{{Content: "## 本章目标\n进入灰塔并发现钟声异常"}, {Content: "林烬踏入灰塔，钟声在背后收拢。"}, {Content: "林烬把灰烬钥匙藏进袖口，走向塔门。"}, {Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`}}}
 	router := agent.NewModelRouter(store, agent.NewAgentRoleRegistry())
 	tools := agent.NewToolRuntime(store)
 	builder := agent.NewContextPackBuilder(store, tools, store)
 	workflow := agent.NewWorkflowRunner(store, router, builder, fakeTextClientFactory{client: textClient})
 	return store, workflow, project.ID
+}
+
+func newCharacterProfileWorkflowForStore(t *testing.T, store *memory.Store) *agent.WorkflowRunner {
+	t.Helper()
+	textClient := &fakeTextClient{responses: []provider.ModelResponse{{Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`}}}
+	router := agent.NewModelRouter(store, agent.NewAgentRoleRegistry())
+	tools := agent.NewToolRuntime(store)
+	builder := agent.NewContextPackBuilder(store, tools, store)
+	return agent.NewWorkflowRunner(store, router, builder, fakeTextClientFactory{client: textClient})
 }
 
 type fakeTextClientFactory struct {

@@ -1,10 +1,14 @@
 import type {
   AIDraftRequest,
   AIDraftResponse,
+  CharacterProfileRequest,
+  CharacterProfileResponse,
+  CharacterSyncResponse,
   ChapterIdeaRequest,
   ChapterIdeaResponse,
   ContextPreviewRequest,
   ContextPreviewResponse,
+  ContextSelection,
   DraftResultResponse,
   DraftWithIdeaRequest,
   DraftWithIdeaResponse,
@@ -182,6 +186,8 @@ export interface ApiClient {
   initializeProjectFull(seed: ProjectSeed): Promise<ApiResult<InitializeProjectResponse>>
   getStoryBible(projectId: string): Promise<ApiResult<StoryBible>>
   updateStoryBible(projectId: string, bible: StoryBible): Promise<ApiResult<StoryBible>>
+  syncCharacters(projectId: string, bible: StoryBible): Promise<ApiResult<CharacterSyncResponse>>
+  generateCharacterProfiles(request: CharacterProfileRequest): Promise<ApiResult<CharacterProfileResponse>>
   expandGraph(request: GraphExpandRequest): Promise<ApiResult<GraphExpandResponse>>
   listChapterVersions(projectId: string, chapterId: string): Promise<ApiResult<ChapterVersion[]>>
   saveChapterVersion(projectId: string, version: Partial<ChapterVersion>): Promise<ApiResult<SaveChapterVersionResponse>>
@@ -523,17 +529,17 @@ function storyBibleToBackend(bible: StoryBible) {
     title: chapter.title.trim(),
     summary: chapter.summary.trim()
   }))
-  const sourceSeed = bible.source_seed || {
-    one_sentence_core: bible.premise,
-    tags: bible.themes || [],
-    world_background: worldRules.join('\n'),
-    protagonist: characters[0]?.name || '',
-    central_conflict: bible.premise,
-    style: bible.tone || '',
-    taboos: ''
-  }
+  const sourceSeed = bible.source_seed
+  const themes = (bible.themes || []).map((theme) => theme.trim()).filter(Boolean)
   const metadata = {
-    ...(sourceSeed.metadata || {}),
+    ...(sourceSeed?.metadata || {}),
+    one_sentence_core: sourceSeed?.one_sentence_core || bible.logline || bible.premise,
+    tags: (sourceSeed?.tags || themes).join(','),
+    world_background: worldRules.join('\n') || sourceSeed?.world_background || sourceSeed?.setting || '',
+    protagonist: characters[0]?.name || sourceSeed?.protagonist || sourceSeed?.main_characters?.[0] || '',
+    central_conflict: sourceSeed?.central_conflict || bible.premise,
+    style: sourceSeed?.style || bible.tone || '',
+    taboos: sourceSeed?.taboos || '',
     story_bible_premise: bible.premise,
     story_bible_world_rules: JSON.stringify(worldRules),
     story_bible_characters: JSON.stringify(characters),
@@ -544,38 +550,38 @@ function storyBibleToBackend(bible: StoryBible) {
     items[`rule_${index + 1}`] = rule
     return items
   }, {})
+  const sanitizedSourceSeed = {
+    title: sourceSeed?.title || bible.title || '',
+    premise: bible.premise,
+    genre: bible.genre || sourceSeed?.genre || '',
+    tone: bible.tone || sourceSeed?.tone || '',
+    audience: bible.audience || sourceSeed?.audience || '',
+    language: bible.language || sourceSeed?.language || 'zh-CN',
+    setting: sourceSeed?.setting || metadata.world_background,
+    themes,
+    main_characters: characters.map((character) => character.name).filter(Boolean),
+    constraints: sourceSeed?.constraints?.length ? sourceSeed.constraints.map((item) => item.trim()).filter(Boolean) : worldRules,
+    target_chapters: chapters.length || sourceSeed?.target_chapters || 1,
+    metadata
+  }
 
   return {
     id: '',
     version: 0,
     project_id: bible.project_id,
-    title: bible.title || sourceSeed.title || '',
+    title: bible.title || sanitizedSourceSeed.title,
     logline: bible.logline || bible.premise,
     synopsis: bible.synopsis || bible.premise,
-    genre: bible.genre || sourceSeed.genre || '',
-    tone: bible.tone || sourceSeed.tone || '',
-    audience: bible.audience || sourceSeed.audience || '',
-    language: bible.language || sourceSeed.language || 'zh-CN',
-    themes: (bible.themes || []).map((theme) => theme.trim()).filter(Boolean),
+    genre: bible.genre || sanitizedSourceSeed.genre,
+    tone: bible.tone || sanitizedSourceSeed.tone,
+    audience: bible.audience || sanitizedSourceSeed.audience,
+    language: bible.language || sanitizedSourceSeed.language,
+    themes,
     rules,
     worldline_ids: bible.worldline_ids || [],
     entity_ids: bible.entity_ids || [],
     plot_thread_ids: bible.plot_thread_ids || [],
-    source_seed: {
-      ...sourceSeed,
-      title: sourceSeed.title || bible.title || '',
-      premise: bible.premise,
-      genre: bible.genre || sourceSeed.genre,
-      tone: bible.tone || sourceSeed.tone,
-      audience: bible.audience || sourceSeed.audience,
-      language: bible.language || sourceSeed.language || 'zh-CN',
-      themes: (bible.themes || []).map((theme) => theme.trim()).filter(Boolean),
-      main_characters: characters.map((character) => character.name).filter(Boolean),
-      constraints: worldRules,
-      target_chapters: chapters.length || sourceSeed.target_chapters,
-      world_background: worldRules.join('\n') || sourceSeed.world_background,
-      metadata
-    },
+    source_seed: sanitizedSourceSeed,
     genesis_workflow_id: bible.genesis_workflow_id || '',
     approved: Boolean(bible.approved)
   }
@@ -782,6 +788,18 @@ function normalizeSaveChapterVersionResponse(response: SaveChapterVersionRespons
   }
 }
 
+function selectionCharacterLabels(selection?: ContextSelection) {
+  return selection?.character_names?.length ? selection.character_names : selection?.character_ids || []
+}
+
+function requestWithContextSelection<T extends { selection?: ContextSelection }>(request: T) {
+  return {
+    ...request,
+    context_selection: request.selection,
+    selection: undefined
+  }
+}
+
 function mapHealth(response: HealthResponse, copy: ApiCopy): HealthStatus {
   const warnings = []
   if (!response.qdrant_configured) warnings.push(copy.healthWarnings.qdrant)
@@ -957,6 +975,37 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
         (storyBible) => normalizeStoryBible(storyBible, copy)
       )
     },
+    syncCharacters(projectId, bible) {
+      const characters = (bible.characters || [])
+        .map((character) => ({
+          id: character.id?.trim(),
+          name: character.name.trim(),
+          role: character.role.trim(),
+          desire: character.desire.trim(),
+          wound: character.wound.trim(),
+          secret: character.secret?.trim(),
+          metadata: character.metadata
+        }))
+        .filter((character) => character.name)
+      return requestMapped<CharacterSyncResponse, CharacterSyncResponse>(
+        baseUrl,
+        `/projects/${encodeURIComponent(projectId)}/characters/sync`,
+        {
+          method: 'POST',
+          body: {
+            story_bible_id: bible.id || undefined,
+            characters
+          }
+        },
+        (response) => ({
+          ...response,
+          story_bible: response.story_bible ? normalizeStoryBible(response.story_bible, copy) : undefined
+        })
+      )
+    },
+    generateCharacterProfiles(request) {
+      return requestResult<CharacterProfileResponse>(baseUrl, '/ai/character-profiles', { method: 'POST', body: request })
+    },
     expandGraph(request) {
       const entityIds = request.entity_ids?.map((item) => item.trim()).filter(Boolean) || []
       return requestMapped<GraphExpansion, GraphExpandResponse>(
@@ -996,7 +1045,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     requestAIDraft(request) {
       const styleConstraints = request.style_constraints || []
       const selection = request.selection
-      const selectedCharacters = selection?.character_ids || []
+      const selectedCharacters = selectionCharacterLabels(selection)
       const briefParts = [
         request.brief || request.prompt || '',
         styleConstraints.length ? `${copy.draftRequestLabels.styleConstraints}: ${styleConstraints.join(', ')}` : '',
@@ -1025,11 +1074,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     requestChapterIdea(request) {
       return requestMapped<ChapterIdeaResponse, ChapterIdeaResponse>(baseUrl, '/ai/chapter-idea', {
         method: 'POST',
-        body: {
-          ...request,
-          context_selection: request.selection,
-          selection: undefined
-        }
+        body: requestWithContextSelection(request)
       }, normalizeChapterIdeaResponse)
     },
     previewContextSelection(request) {
@@ -1051,11 +1096,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     requestDraftWithIdea(request) {
       return requestMapped<DraftWithIdeaResponse, DraftWithIdeaResponse>(baseUrl, '/ai/draft-with-idea', {
         method: 'POST',
-        body: {
-          ...request,
-          context_selection: request.selection,
-          selection: undefined
-        }
+        body: requestWithContextSelection(request)
       }, (response) => normalizeDraftWithIdeaResponse(response, copy))
     },
     listIndexJobs(projectId) {

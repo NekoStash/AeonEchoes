@@ -23,10 +23,23 @@ type ReferenceSelectionState = {
   character_ids: string[]
 }
 
+type StoryCharacter = StoryBible['characters'][number]
+
 const { t } = useI18n()
 const route = useRoute()
 const projectId = computed(() => String(route.params.id))
-const chapterId = computed(() => String(route.query.chapter || 'chapter-1'))
+const routeChapterId = computed(() => {
+  const value = route.query.chapter
+  if (Array.isArray(value)) return String(value[0] || '')
+  return String(value || '')
+})
+const chapterId = computed(() => {
+  const chapters = workspace.activeBible?.chapters || []
+  const firstChapter = chapters[0]
+  if (!firstChapter) return routeChapterId.value
+  if (routeChapterId.value && chapters.some((chapter) => chapter.id === routeChapterId.value)) return routeChapterId.value
+  return firstChapter.id
+})
 const api = useApi()
 const workspace = useWorkspaceStore()
 
@@ -64,27 +77,36 @@ const tabs = computed(() => [
 ])
 
 const currentChapter = computed(() => workspace.activeBible?.chapters.find((chapter) => chapter.id === chapterId.value))
-const chapterMetaLabel = computed(() => chapterId.value)
+const hasRealCurrentChapter = computed(() => Boolean(currentChapter.value?.id && currentChapter.value.id === chapterId.value))
+const hasInvalidRouteChapter = computed(() => Boolean(routeChapterId.value && routeChapterId.value !== chapterId.value))
+const chapterMetaLabel = computed(() => hasInvalidRouteChapter.value ? t('editor.invalidChapterLabel', { id: routeChapterId.value, fallback: chapterId.value || t('common.emptyValue') }) : chapterId.value)
 const availableCharacters = computed(() => (workspace.activeBible?.characters || []).filter((character) => character.name.trim()))
 const selectedCharacterIdSet = computed(() => new Set(referenceSelection.character_ids))
 const selectedCharacters = computed(() => availableCharacters.value.filter((character) => selectedCharacterIdSet.value.has(character.id)))
+const hasManualCharacterSelection = computed(() => referenceSelection.character_ids.length > 0)
+const autoSelectedCharacters = computed(() => inferAutoSelectedCharacters())
+const requestCharacters = computed(() => (hasManualCharacterSelection.value ? selectedCharacters.value : autoSelectedCharacters.value))
 const hasReferenceFocus = computed(() => Boolean(
   referenceSelection.include_chapter_plan
-  || referenceSelection.include_chapter_summary
+  || (referenceSelection.include_chapter_summary && hasRealCurrentChapter.value)
   || referenceSelection.include_world_rules
-  || referenceSelection.character_ids.length
+  || hasManualCharacterSelection.value
 ))
-const selectionPayload = computed<ContextSelection>(() => ({
-  chapter_ids: referenceSelection.include_chapter_summary && currentChapter.value?.id ? [currentChapter.value.id] : undefined,
-  include_world_rules: referenceSelection.include_world_rules || undefined,
-  character_ids: referenceSelection.character_ids.length ? [...referenceSelection.character_ids] : undefined
-}))
+const selectionPayload = computed<ContextSelection>(() => {
+  const characterNames = uniqueTrimmed(requestCharacters.value.map((character) => character.name)).slice(0, 3)
+  return {
+    chapter_ids: referenceSelection.include_chapter_summary && hasRealCurrentChapter.value && currentChapter.value?.id ? [currentChapter.value.id] : undefined,
+    include_world_rules: referenceSelection.include_world_rules || undefined,
+    character_names: characterNames.length ? characterNames : undefined
+  }
+})
 const referenceFocusChips = computed(() => {
   const chips: string[] = []
   if (referenceSelection.include_chapter_plan && chapterPlan.value.trim()) chips.push(t('editor.referenceFocusLabels.chapterPlan'))
   if (referenceSelection.include_chapter_summary && currentChapter.value?.summary.trim()) chips.push(t('editor.referenceFocusLabels.chapterSummary'))
   if (referenceSelection.include_world_rules && workspace.activeBible?.world_rules.some((rule) => rule.trim())) chips.push(t('editor.referenceFocusLabels.worldRules'))
   selectedCharacters.value.forEach((character) => chips.push(character.name.trim()))
+  if (!hasManualCharacterSelection.value) autoSelectedCharacters.value.forEach((character) => chips.push(t('editor.autoCharacters.chip', { name: character.name.trim() })))
   return chips
 })
 
@@ -181,6 +203,57 @@ watch(chapterId, async () => {
   await loadVersions()
   await refreshIndexJobs()
 })
+
+function uniqueTrimmed(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+}
+
+function includesText(source: string, needle: string) {
+  const trimmedNeedle = needle.trim()
+  return Boolean(trimmedNeedle) && source.includes(trimmedNeedle)
+}
+
+function isProtagonist(character: StoryCharacter, index: number) {
+  const role = character.role.trim().toLowerCase()
+  return index === 0 || role.includes('主角') || role.includes('protagonist') || role.includes('lead')
+}
+
+function inferAutoSelectedCharacters() {
+  const characters = availableCharacters.value
+  if (characters.length === 0) return []
+
+  const sourceText = [
+    currentChapter.value?.title,
+    currentChapter.value?.summary,
+    chapterPlan.value,
+    prompt.value,
+    title.value
+  ].map((item) => item?.trim()).filter(Boolean).join('\n')
+  const matched = characters.filter((character) => includesText(sourceText, character.name.trim()))
+  const protagonist = characters.find((character, index) => isProtagonist(character, index)) || characters[0]
+  const ordered = matched.length ? matched : protagonist ? [protagonist] : []
+  if (matched.length && protagonist && !ordered.some((character) => character.id === protagonist.id)) ordered.unshift(protagonist)
+
+  return ordered.slice(0, 3)
+}
+
+function characterAnchorLabel(character: StoryCharacter) {
+  const details = [
+    character.role ? t('editor.characterAnchor.role', { value: character.role.trim() }) : '',
+    character.desire ? t('editor.characterAnchor.desire', { value: character.desire.trim() }) : '',
+    character.wound ? t('editor.characterAnchor.wound', { value: character.wound.trim() }) : '',
+    character.secret ? t('editor.characterAnchor.secret', { value: character.secret.trim() }) : ''
+  ].filter(Boolean)
+  return details.length ? `${character.name.trim()}（${details.join(t('common.listSeparator'))}）` : character.name.trim()
+}
+
+function selectedCharacterAnchorLine() {
+  const anchors = requestCharacters.value.map(characterAnchorLabel).filter(Boolean)
+  if (anchors.length === 0) return ''
+  return hasManualCharacterSelection.value
+    ? t('editor.selectionBrief.characters', { content: anchors.join('；') })
+    : t('editor.selectionBrief.autoCharacters', { content: anchors.join('；') })
+}
 
 function buildReferenceSections(
   bible: StoryBible | null,
@@ -383,9 +456,13 @@ function buildSelectedReferenceBriefLines(options?: { includeChapterPlan?: boole
     if (worldRules.length) lines.push(t('editor.selectionBrief.worldRules', { content: worldRules.join('；') }))
   }
 
-  if (selectedCharacters.value.length) {
-    lines.push(t('editor.selectionBrief.characters', { content: selectedCharacters.value.map(referenceCharacterLabel).join('；') }))
+  const firstRequestCharacter = requestCharacters.value[0]
+  if (!hasManualCharacterSelection.value && firstRequestCharacter) {
+    lines.push(t('editor.selectionBrief.protagonistPriority', { name: firstRequestCharacter.name.trim() }))
   }
+
+  const characterAnchorLine = selectedCharacterAnchorLine()
+  if (characterAnchorLine) lines.push(characterAnchorLine)
 
   return lines
 }
@@ -787,6 +864,26 @@ function versionWordCount(version: ChapterVersion) {
                     <span class="block truncate font-medium">{{ character.name }}</span>
                     <span v-if="character.role" class="mt-1 block truncate text-[11px] text-muted-foreground">{{ character.role }}</span>
                   </button>
+                </div>
+
+                <div class="mt-4 rounded-xl border border-border bg-muted/25 p-3">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-sm font-medium text-foreground">{{ t('editor.autoCharacters.title') }}</p>
+                    <UiBadge :variant="hasManualCharacterSelection ? 'muted' : 'violet'">
+                      {{ hasManualCharacterSelection ? t('editor.autoCharacters.manualOverride') : t('editor.autoCharacters.active') }}
+                    </UiBadge>
+                  </div>
+                  <p class="mt-2 text-xs leading-5 text-muted-foreground">
+                    {{ t('editor.autoCharacters.description') }}
+                  </p>
+                  <div v-if="autoSelectedCharacters.length === 0" class="mt-3 text-sm text-muted-foreground">
+                    {{ t('editor.autoCharacters.empty') }}
+                  </div>
+                  <div v-else class="mt-3 flex flex-wrap gap-2">
+                    <UiBadge v-for="character in autoSelectedCharacters" :key="character.id" variant="gold">
+                      {{ character.name }}
+                    </UiBadge>
+                  </div>
                 </div>
               </div>
             </div>

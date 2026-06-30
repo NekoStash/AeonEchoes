@@ -74,6 +74,24 @@ type ChapterIdeaResult struct {
 	ModelResolution domain.ModelResolution `json:"model_resolution"`
 }
 
+type CharacterProfilesRequest struct {
+	ProjectID        string            `json:"project_id"`
+	Focus            string            `json:"focus"`
+	Count            int               `json:"count"`
+	Brief            string            `json:"brief"`
+	ChapterID        string            `json:"chapter_id,omitempty"`
+	ContextNodeIDs   []string          `json:"context_node_ids,omitempty"`
+	ContextSelection *ContextSelection `json:"context_selection,omitempty"`
+	MaxOutputTokens  int               `json:"max_output_tokens,omitempty"`
+}
+
+type CharacterProfilesResult struct {
+	Workflow        domain.AIWorkflow         `json:"workflow"`
+	ContextPack     domain.ContextPack        `json:"context_pack"`
+	Characters      []domain.CharacterProfile `json:"characters"`
+	ModelResolution domain.ModelResolution    `json:"model_resolution"`
+}
+
 type DraftRequest struct {
 	ProjectID             string            `json:"project_id"`
 	ChapterID             string            `json:"chapter_id,omitempty"`
@@ -255,6 +273,72 @@ func (r *WorkflowRunner) GenerateChapterIdea(ctx context.Context, req ChapterIde
 		return ChapterIdeaResult{}, err
 	}
 	return ChapterIdeaResult{Workflow: workflow, ContextPack: pack, ChapterIdea: chapterIdea, ModelResolution: modelResolution}, nil
+}
+
+func (r *WorkflowRunner) GenerateCharacterProfiles(ctx context.Context, req CharacterProfilesRequest) (CharacterProfilesResult, error) {
+	if r == nil || r.store == nil || r.router == nil || r.builder == nil || r.clients == nil {
+		return CharacterProfilesResult{}, fmt.Errorf("workflow runner is not fully configured")
+	}
+	if strings.TrimSpace(req.ProjectID) == "" {
+		return CharacterProfilesResult{}, fmt.Errorf("character profiles project_id must not be empty")
+	}
+	req.Focus = strings.TrimSpace(req.Focus)
+	req.Brief = strings.TrimSpace(req.Brief)
+	if req.Focus == "" {
+		return CharacterProfilesResult{}, fmt.Errorf("character profiles focus must not be empty")
+	}
+	if req.Brief == "" {
+		return CharacterProfilesResult{}, fmt.Errorf("character profiles brief must not be empty")
+	}
+	if req.Count <= 0 {
+		return CharacterProfilesResult{}, fmt.Errorf("character profiles count must be a positive integer")
+	}
+	if req.Count > 12 {
+		return CharacterProfilesResult{}, fmt.Errorf("character profiles count must not exceed 12")
+	}
+	selection := effectiveContextSelection(req.ContextSelection, nil)
+	role := domain.AgentRoleCharacterKeeper
+	workflow := domain.AIWorkflow{ProjectID: req.ProjectID, Kind: "character_profiles", Role: role, Status: "running", Input: characterProfilesWorkflowInput(req), CreatedAt: nowUTC(), UpdatedAt: nowUTC()}
+	workflow.Steps = append(workflow.Steps, stepDone("retrieve_context"))
+	query := normalizeCharacterProfilesBrief(req)
+	pack, selectionModel, modelResolution, err := r.buildPackAndResolveModel(req.ProjectID, req.ChapterID, role, query, 6000, selection, req.ContextNodeIDs)
+	if err != nil {
+		return CharacterProfilesResult{}, r.failWorkflow(workflow, err)
+	}
+	client, err := r.clients.NewTextClient(selectionModel.Provider)
+	if err != nil {
+		return CharacterProfilesResult{}, r.failWorkflow(workflow, err)
+	}
+	workflow.ModelID = selectionModel.Model.ID
+	workflow.ContextPackID = pack.ID
+	workflow.ModelResolution = &modelResolution
+	workflow.Steps = append(workflow.Steps, stepDoneWithMetadata("route_character_keeper_model", modelResolutionMetadata(modelResolution)))
+	promptBytes, err := json.Marshal(pack)
+	if err != nil {
+		return CharacterProfilesResult{}, r.failWorkflow(workflow, fmt.Errorf("marshal context pack: %w", err))
+	}
+	modelResp, err := client.Generate(ctx, provider.TextRequest{
+		Model:           selectionModel.Model.Name,
+		SystemPrompt:    characterProfilesSystemPrompt(),
+		UserPrompt:      characterProfilesUserPrompt(req, string(promptBytes)),
+		MaxOutputTokens: firstPositive(req.MaxOutputTokens, selectionModel.Model.MaxOutputTokens, 1600),
+		Temperature:     0.55,
+	})
+	if err != nil {
+		return CharacterProfilesResult{}, r.failWorkflow(workflow, err)
+	}
+	characters, err := parseCharacterProfilesResponse(modelResp.Content, req.Count)
+	if err != nil {
+		return CharacterProfilesResult{}, r.failWorkflow(workflow, err)
+	}
+	workflow.Status = "completed"
+	workflow.Output = mergeWorkflowOutput(map[string]string{"character_count": strconv.Itoa(len(characters))}, modelResolution)
+	workflow.Steps = append(workflow.Steps, stepDone("character_profiles_generate"))
+	workflow, err = r.store.SaveWorkflow(workflow)
+	if err != nil {
+		return CharacterProfilesResult{}, err
+	}
+	return CharacterProfilesResult{Workflow: workflow, ContextPack: pack, Characters: characters, ModelResolution: modelResolution}, nil
 }
 
 func (r *WorkflowRunner) DraftChapterWithIdea(ctx context.Context, req DraftWithIdeaRequest) (DraftWithIdeaResult, error) {
@@ -527,6 +611,14 @@ func normalizeDraftBrief(req DraftRequest) string {
 	return joinNonEmpty(parts)
 }
 
+func normalizeCharacterProfilesBrief(req CharacterProfilesRequest) string {
+	return joinNonEmpty([]string{
+		"角色需求焦点：" + strings.TrimSpace(req.Focus),
+		"生成数量：" + strconv.Itoa(req.Count),
+		"角色生成简报：" + strings.TrimSpace(req.Brief),
+	})
+}
+
 func appendBriefControls(parts []string, styleConstraints []string, contextNodeIDs []string) []string {
 	if len(styleConstraints) > 0 {
 		parts = append(parts, "风格约束："+strings.Join(styleConstraints, "、"))
@@ -553,6 +645,19 @@ func chapterIdeaWorkflowInput(req ChapterIdeaRequest) map[string]string {
 		input["title"] = strings.TrimSpace(req.Title)
 	}
 	appendSelectionInput(input, effectiveContextSelection(req.ContextSelection, req.ReferenceSelection), req.ContextNodeIDs)
+	return input
+}
+
+func characterProfilesWorkflowInput(req CharacterProfilesRequest) map[string]string {
+	input := map[string]string{
+		"focus": strings.TrimSpace(req.Focus),
+		"brief": strings.TrimSpace(req.Brief),
+		"count": strconv.Itoa(req.Count),
+	}
+	if strings.TrimSpace(req.ChapterID) != "" {
+		input["chapter_id"] = strings.TrimSpace(req.ChapterID)
+	}
+	appendSelectionInput(input, req.ContextSelection, req.ContextNodeIDs)
 	return input
 }
 
@@ -643,6 +748,70 @@ func chapterIdeaUserPrompt(req ChapterIdeaRequest, contextPackJSON string) strin
 
 func writerSystemPrompt() string {
 	return "你是 AI 小说创作平台中的 Writer Agent。只使用提供的 ContextPack 写作，不假设完整小说上下文；如上下文不足，应在正文中保持克制，不新增破坏连续性的事实。如果写作简报包含章节方案，必须以该方案为主要结构依据，同时保持正文自然流畅。"
+}
+
+func characterProfilesSystemPrompt() string {
+	return "你是 AI 小说创作平台中的 Character Keeper Agent。你的任务是围绕当前项目主角/配角需求生成可直接写入 Story Bible 的角色设定，并保持与提供的 ContextPack 一致。必须输出严格 JSON 对象，不要输出 Markdown 或解释。JSON 结构为 {\"characters\":[{\"name\":\"\",\"role\":\"\",\"desire\":\"\",\"wound\":\"\",\"secret\":\"\",\"summary\":\"\"}]}。每个角色必须包含 name、role、desire、wound、secret，可包含 summary。"
+}
+
+func characterProfilesUserPrompt(req CharacterProfilesRequest, contextPackJSON string) string {
+	return fmt.Sprintf("角色需求焦点：%s\n生成数量：%d\n角色生成简报：%s\n\n上下文包 JSON：%s\n\n请生成可直接写入 Story Bible 的角色设定；如果需求是主角完整设定，必须生成完整主角档案；如果需求是配角或群像，则生成互相区分且能支撑当前项目冲突的角色。", req.Focus, req.Count, req.Brief, contextPackJSON)
+}
+
+func parseCharacterProfilesResponse(content string, expectedCount int) ([]domain.CharacterProfile, error) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil, fmt.Errorf("character profiles model returned empty content")
+	}
+	var envelope struct {
+		Characters []domain.CharacterProfile `json:"characters"`
+	}
+	if err := json.Unmarshal([]byte(content), &envelope); err != nil {
+		return nil, fmt.Errorf("decode character profiles JSON: %w", err)
+	}
+	if len(envelope.Characters) == 0 {
+		return nil, fmt.Errorf("character profiles response must include at least one character")
+	}
+	if expectedCount > 0 && len(envelope.Characters) != expectedCount {
+		return nil, fmt.Errorf("character profiles response returned %d characters, want %d", len(envelope.Characters), expectedCount)
+	}
+	characters := make([]domain.CharacterProfile, 0, len(envelope.Characters))
+	seen := map[string]struct{}{}
+	for i, character := range envelope.Characters {
+		character = normalizeCharacterProfile(character)
+		if character.Name == "" {
+			return nil, fmt.Errorf("character profiles response character[%d].name must not be empty", i)
+		}
+		if character.Role == "" {
+			return nil, fmt.Errorf("character profiles response character[%d].role must not be empty", i)
+		}
+		if character.Desire == "" {
+			return nil, fmt.Errorf("character profiles response character[%d].desire must not be empty", i)
+		}
+		if character.Wound == "" {
+			return nil, fmt.Errorf("character profiles response character[%d].wound must not be empty", i)
+		}
+		if character.Secret == "" {
+			return nil, fmt.Errorf("character profiles response character[%d].secret must not be empty", i)
+		}
+		key := strings.ToLower(character.Name)
+		if _, ok := seen[key]; ok {
+			return nil, fmt.Errorf("character profiles response contains duplicate character name %q", character.Name)
+		}
+		seen[key] = struct{}{}
+		characters = append(characters, character)
+	}
+	return characters, nil
+}
+
+func normalizeCharacterProfile(character domain.CharacterProfile) domain.CharacterProfile {
+	character.Name = strings.TrimSpace(character.Name)
+	character.Role = strings.TrimSpace(character.Role)
+	character.Desire = strings.TrimSpace(character.Desire)
+	character.Wound = strings.TrimSpace(character.Wound)
+	character.Secret = strings.TrimSpace(character.Secret)
+	character.Summary = strings.TrimSpace(character.Summary)
+	return character
 }
 
 func stepDone(name string) domain.WorkflowStep {

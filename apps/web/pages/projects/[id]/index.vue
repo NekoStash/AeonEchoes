@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { ArrowRight, BookMarked, CheckCircle2, FilePenLine, FileText, GitFork, Loader2, PenLine, Plus, Save, ShieldCheck, Trash2, UserRound, WifiOff } from '@lucide/vue'
+import { ArrowRight, BookMarked, CheckCircle2, FilePenLine, FileText, GitFork, Loader2, PenLine, Plus, Save, ShieldCheck, Sparkles, Trash2, UserRound, WifiOff } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
-import type { StoryBible } from '~/lib/types'
+import type { CharacterProfile, CharacterProfileMode, StoryBible } from '~/lib/types'
 
 const route = useRoute()
 const { t } = useI18n()
 const projectId = computed(() => String(route.params.id))
+const api = useApi()
 const workspace = useWorkspaceStore()
 const { activeBible, errors, loading } = storeToRefs(workspace)
 
 const bibleDraft = ref<StoryBible | null>(null)
 const bibleSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+const characterSyncState = ref<'idle' | 'syncing' | 'synced' | 'failed'>('idle')
+const characterGenerationState = ref<'idle' | 'generating' | 'failed'>('idle')
+const generatedCharacters = ref<CharacterProfile[]>([])
 const activeSection = ref<'overview' | 'story' | 'characters' | 'chapters'>('overview')
 
 const foreshadowStatusValues: Array<StoryBible['foreshadows'][number]['status']> = ['planted', 'active', 'paid_off']
@@ -114,18 +118,121 @@ function resetBibleDraft() {
   if (!activeBible.value) return
   bibleDraft.value = cloneBible(activeBible.value)
   bibleSaveState.value = 'idle'
+  characterSyncState.value = 'idle'
+  generatedCharacters.value = []
+}
+
+function profileToDraftCharacter(profile: CharacterProfile, fallbackId: string): StoryBible['characters'][number] {
+  return {
+    id: profile.id?.trim() || fallbackId,
+    name: profile.name.trim(),
+    role: profile.role.trim(),
+    desire: profile.desire.trim(),
+    wound: profile.wound.trim(),
+    secret: profile.secret?.trim() || '',
+    metadata: profile.metadata
+  }
+}
+
+function characterToProfile(character: StoryBible['characters'][number]): CharacterProfile {
+  return {
+    id: character.id,
+    name: character.name,
+    role: character.role,
+    desire: character.desire,
+    wound: character.wound,
+    secret: character.secret,
+    metadata: character.metadata
+  }
+}
+
+function mergeGeneratedCharacters(profiles: CharacterProfile[]) {
+  const draft = bibleDraft.value
+  if (!draft) return
+  const existingIds = draft.characters.map((character) => character.id)
+  profiles
+    .filter((profile) => profile.name.trim())
+    .forEach((profile) => {
+      const existingIndex = draft.characters.findIndex((character) => character.name.trim() === profile.name.trim())
+      const existingCharacter = existingIndex >= 0 ? draft.characters[existingIndex] : undefined
+      const fallbackId = createUniqueId('character', existingIds)
+      existingIds.push(fallbackId)
+      const nextCharacter = profileToDraftCharacter(profile, existingCharacter?.id || fallbackId)
+      if (existingCharacter && existingIndex >= 0) {
+        draft.characters[existingIndex] = {
+          ...existingCharacter,
+          ...nextCharacter
+        }
+      } else {
+        draft.characters.push(nextCharacter)
+      }
+    })
+}
+
+async function syncDraftCharacters(bible: StoryBible, options: { rethrow?: boolean } = {}) {
+  characterSyncState.value = 'syncing'
+  try {
+    const result = await workspace.syncCharacters(projectId.value, bible)
+    if (result.data.story_bible) {
+      bibleDraft.value = cloneBible(result.data.story_bible)
+    } else if (activeBible.value) {
+      bibleDraft.value = cloneBible(activeBible.value)
+    }
+    characterSyncState.value = 'synced'
+    return result
+  } catch (error) {
+    workspace.recordError(t('projectOverview.resultScopes.characterSync'), error)
+    characterSyncState.value = 'failed'
+    if (options.rethrow) throw error
+    return null
+  }
 }
 
 async function saveStoryBible() {
   if (!bibleDraft.value) return
   bibleSaveState.value = 'saving'
+  characterSyncState.value = 'idle'
   try {
     const result = await workspace.updateStoryBible(projectId.value, cloneBible(bibleDraft.value))
     bibleDraft.value = cloneBible(result.data)
     bibleSaveState.value = 'saved'
+    await syncDraftCharacters(result.data)
   } catch (error) {
     workspace.recordError(t('projectOverview.resultScopes.storyBibleSave'), error)
     bibleSaveState.value = 'failed'
+  }
+}
+
+async function generateCharacters(mode: CharacterProfileMode) {
+  if (!bibleDraft.value) return
+  characterGenerationState.value = 'generating'
+  generatedCharacters.value = []
+  try {
+    const result = await api.generateCharacterProfiles({
+      project_id: projectId.value,
+      mode,
+      premise: bibleDraft.value.premise,
+      themes: bibleDraft.value.themes,
+      world_rules: bibleDraft.value.world_rules,
+      existing_characters: bibleDraft.value.characters.map(characterToProfile),
+      protagonist_hint: bibleDraft.value.source_seed?.metadata?.protagonist || bibleDraft.value.source_seed?.protagonist || bibleDraft.value.characters[0]?.name || '',
+      prompt: mode === 'protagonist' ? t('projectOverview.characterGenerator.prompts.protagonist') : t('projectOverview.characterGenerator.prompts.character'),
+      count: 1
+    })
+    workspace.recordResult(t('projectOverview.resultScopes.characterGeneration'), result)
+    generatedCharacters.value = result.data.characters || []
+    mergeGeneratedCharacters(generatedCharacters.value)
+    if (bibleDraft.value) {
+      const saved = await workspace.updateStoryBible(projectId.value, cloneBible(bibleDraft.value))
+      bibleDraft.value = cloneBible(saved.data)
+      bibleSaveState.value = 'saved'
+      await syncDraftCharacters(saved.data)
+    }
+    characterGenerationState.value = 'idle'
+    activeSection.value = 'characters'
+  } catch (error) {
+    workspace.recordError(t('projectOverview.resultScopes.characterGeneration'), error)
+    characterGenerationState.value = 'failed'
   }
 }
 
@@ -440,16 +547,69 @@ function foreshadowStatusLabel(status: string) {
                 <UserRound class="h-5 w-5 shrink-0 text-muted-foreground" />
                 <h2 class="break-words text-lg font-semibold">{{ t('projectOverview.characters') }}</h2>
               </div>
-              <UiButton size="sm" variant="outline" class="w-full sm:w-auto" @click="addCharacter">
-                <Plus class="h-4 w-4" />
-                {{ t('actions.add') }}
-              </UiButton>
+              <div class="flex flex-wrap gap-2">
+                <UiBadge v-if="characterSyncState === 'syncing'" variant="gold">
+                  <Loader2 class="h-3 w-3 animate-spin" />
+                  {{ t('projectOverview.characterSync.syncing') }}
+                </UiBadge>
+                <UiBadge v-else-if="characterSyncState === 'synced'" variant="success">
+                  <CheckCircle2 class="h-3 w-3" />
+                  {{ t('projectOverview.characterSync.synced') }}
+                </UiBadge>
+                <UiBadge v-else-if="characterSyncState === 'failed'" variant="rose">
+                  <WifiOff class="h-3 w-3" />
+                  {{ t('projectOverview.characterSync.failed') }}
+                </UiBadge>
+                <UiButton size="sm" variant="outline" class="w-full sm:w-auto" @click="addCharacter">
+                  <Plus class="h-4 w-4" />
+                  {{ t('actions.add') }}
+                </UiButton>
+              </div>
             </div>
+
+            <div class="mt-5 rounded-2xl border border-border bg-muted/25 p-4">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('projectOverview.characterGenerator.eyebrow') }}</p>
+                  <h3 class="mt-2 font-semibold">{{ t('projectOverview.characterGenerator.title') }}</h3>
+                  <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t('projectOverview.characterGenerator.description') }}</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <UiButton size="sm" variant="outline" :disabled="characterGenerationState === 'generating'" @click="generateCharacters('protagonist')">
+                    <Loader2 v-if="characterGenerationState === 'generating'" class="h-4 w-4 animate-spin" />
+                    <Sparkles v-else class="h-4 w-4" />
+                    {{ t('projectOverview.characterGenerator.generateProtagonist') }}
+                  </UiButton>
+                  <UiButton size="sm" :disabled="characterGenerationState === 'generating'" @click="generateCharacters('character')">
+                    <Loader2 v-if="characterGenerationState === 'generating'" class="h-4 w-4 animate-spin" />
+                    <UserRound v-else class="h-4 w-4" />
+                    {{ t('projectOverview.characterGenerator.generateCharacter') }}
+                  </UiButton>
+                </div>
+              </div>
+              <div v-if="generatedCharacters.length" class="mt-4 rounded-xl border border-border bg-card/80 p-3">
+                <p class="text-sm font-medium text-foreground">{{ t('projectOverview.characterGenerator.latestResult') }}</p>
+                <ul class="mt-2 space-y-2 text-sm leading-6">
+                  <li v-for="character in generatedCharacters" :key="character.name" class="break-words">
+                    {{ [character.name, character.role, character.desire].filter(Boolean).join(' · ') }}
+                  </li>
+                </ul>
+              </div>
+              <div v-else-if="characterGenerationState === 'failed'" class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive">
+                {{ t('projectOverview.characterGenerator.failed') }}
+              </div>
+            </div>
+
             <div v-if="bibleDraft.characters.length === 0" class="mt-5 rounded-xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
               {{ t('projectOverview.empty.characters') }}
             </div>
             <div v-else class="mt-5 space-y-4">
               <div v-for="(character, index) in bibleDraft.characters" :key="character.id || index" class="min-w-0 rounded-xl border border-border p-3 sm:p-4">
+                <div class="mb-3 flex flex-wrap items-center gap-2">
+                  <UiBadge v-if="character.entity_id" variant="success">{{ t('projectOverview.characterSync.realCharacter') }}</UiBadge>
+                  <UiBadge v-else variant="muted">{{ t('projectOverview.characterSync.pending') }}</UiBadge>
+                  <UiBadge v-if="character.sync_status" variant="muted">{{ character.sync_status }}</UiBadge>
+                </div>
                 <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div class="grid min-w-0 flex-1 gap-3 md:grid-cols-2">
                     <label class="space-y-2">

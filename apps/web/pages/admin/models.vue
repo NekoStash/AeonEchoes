@@ -816,7 +816,14 @@ function formatInteger(value?: number) {
           <p class="mt-2 text-sm text-muted-foreground">{{ t('models.modelCatalogDescription') }}</p>
         </div>
         <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-          <UiSelect v-model="modelFilterProviderId" :options="providerFilterOptions" class="w-full sm:min-w-[240px]" />
+          <UiSelect
+            v-model="modelFilterProviderId"
+            :options="providerFilterOptions"
+            searchable
+            :search-placeholder="t('models.search.provider')"
+            :empty-text="t('models.search.empty')"
+            class="w-full sm:min-w-[240px]"
+          />
           <UiButton variant="outline" class="w-full sm:w-auto" @click="resetModelForm()">
             <Plus class="h-4 w-4" />
             {{ t('models.newModel') }}
@@ -848,7 +855,14 @@ function formatInteger(value?: number) {
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.modelProvider') }}</span>
-              <UiSelect v-model="modelForm.provider_id" :options="providerSelectOptions" :placeholder="t('models.selectProvider')" />
+              <UiSelect
+                v-model="modelForm.provider_id"
+                :options="providerSelectOptions"
+                :placeholder="t('models.selectProvider')"
+                searchable
+                :search-placeholder="t('models.search.provider')"
+                :empty-text="t('models.search.empty')"
+              />
             </label>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('models.kind') }}</span>
@@ -1035,7 +1049,13 @@ function formatInteger(value?: number) {
           <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <label v-for="usage in usageKeys" :key="usage" class="min-w-0 space-y-2 rounded-2xl border border-border bg-muted/20 p-3">
               <span class="break-words text-sm font-medium text-foreground">{{ usageLabel(usage) }}</span>
-              <UiSelect v-model="usageSettings[usage]" :options="modelSelectionOptions" />
+              <UiSelect
+                v-model="usageSettings[usage]"
+                :options="modelSelectionOptions"
+                searchable
+                :search-placeholder="t('models.search.model')"
+                :empty-text="t('models.search.empty')"
+              />
               <span class="block break-words text-[11px] text-muted-foreground">
                 {{ t('models.currentStoredValue') }}: {{ usageSettings[usage] || t('models.inheritRouting') }}
               </span>

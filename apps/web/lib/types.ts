@@ -151,6 +151,10 @@ export interface StoryBible {
     desire: string
     wound: string
     secret?: string
+    entity_id?: string
+    sync_status?: 'pending' | 'synced' | 'failed' | string
+    synced_at?: string
+    metadata?: Record<string, string>
   }>
   foreshadows: Array<{
     id: string
@@ -461,6 +465,51 @@ export interface ContextSelection {
   character_ids?: string[]
   character_names?: string[]
   include_world_rules?: boolean
+}
+
+export type CharacterProfileMode = 'protagonist' | 'character'
+
+export interface CharacterProfile {
+  id?: string
+  name: string
+  role: string
+  desire: string
+  wound: string
+  secret?: string
+  metadata?: Record<string, string>
+}
+
+export interface CharacterProfileRequest {
+  project_id: string
+  mode: CharacterProfileMode
+  premise?: string
+  themes?: string[]
+  world_rules?: string[]
+  existing_characters?: CharacterProfile[]
+  protagonist_hint?: string
+  prompt?: string
+  count?: number
+}
+
+export interface CharacterProfileResponse {
+  characters: CharacterProfile[]
+  workflow?: AIWorkflow
+  model_resolution?: ModelResolution
+}
+
+export interface CharacterSyncRequest {
+  story_bible_id?: string
+  characters: CharacterProfile[]
+}
+
+export interface CharacterSyncResponse {
+  characters: Array<CharacterProfile & {
+    entity_id?: string
+    sync_status?: string
+    synced_at?: string
+  }>
+  entity_ids?: string[]
+  story_bible?: StoryBible
 }
 
 export interface ContextPreviewRequest {

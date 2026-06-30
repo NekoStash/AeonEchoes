@@ -315,7 +315,29 @@
       "worldRule": "写下一条世界规则或设定约束。"
     },
     "resultScopes": {
-      "storyBibleSave": "Story Bible 保存"
+      "storyBibleSave": "Story Bible 保存",
+      "characterSync": "角色同步",
+      "characterGeneration": "角色生成"
+    },
+    "characterSync": {
+      "syncing": "正在同步角色",
+      "synced": "角色已同步",
+      "failed": "角色同步失败",
+      "pending": "待同步真实角色",
+      "realCharacter": "真实角色"
+    },
+    "characterGenerator": {
+      "eyebrow": "角色生成器",
+      "title": "生成可同步的角色设定",
+      "description": "生成主角完整设定或新增关键角色，结果会写入当前 Story Bible，并在保存后同步为后端真实角色。",
+      "generateProtagonist": "生成主角设定",
+      "generateCharacter": "生成角色",
+      "latestResult": "最近生成结果",
+      "failed": "角色生成失败，请检查后端角色生成接口。",
+      "prompts": {
+        "protagonist": "请生成或补全主角完整设定，必须包含姓名、角色定位、欲望/目标、创伤/缺口和秘密，并与当前故事前提强绑定。",
+        "character": "请生成一个适合当前故事下一阶段使用的关键角色，必须包含姓名、角色定位、欲望/目标、创伤/缺口和秘密。"
+      }
     },
     "metrics": {
       "themes": "主题",
@@ -548,6 +570,11 @@
       "textModels": "文本模型",
       "embeddingModels": "向量模型"
     },
+    "search": {
+      "provider": "搜索 Provider 名称或类型",
+      "model": "搜索模型名称、Provider 或 ID",
+      "empty": "没有匹配结果"
+    },
     "embeddingMaintenanceEyebrow": "向量维护",
     "embeddingMaintenanceTitle": "Embedding 路由变更后的向量维护",
     "embeddingMaintenanceDescription": "这是显式维护动作，不属于自动路由切换。先触发重建向量集合，再运行待处理索引。",
@@ -652,8 +679,25 @@
       "chapterPlan": "重点参考章节方案：\n{content}",
       "chapterSummary": "重点参考章节摘要：{content}",
       "worldRules": "重点参考世界规则：{content}",
-      "characters": "重点参考角色：{content}"
+      "characters": "重点参考角色：{content}",
+      "autoCharacters": "本章重点角色：{content}",
+      "protagonistPriority": "本章优先围绕角色：{name}"
     },
+    "autoCharacters": {
+      "title": "自动推荐角色",
+      "description": "未手工选角时，请求会根据章节摘要、当前方案和指令自动纳入 1–3 个关键角色；手工选择后不覆盖你的选择。",
+      "active": "请求中自动纳入",
+      "manualOverride": "手工选角优先",
+      "empty": "暂无可自动推荐的角色。",
+      "chip": "自动：{name}"
+    },
+    "characterAnchor": {
+      "role": "定位：{value}",
+      "desire": "欲望：{value}",
+      "wound": "创伤：{value}",
+      "secret": "秘密：{value}"
+    },
+    "invalidChapterLabel": "无效章节 {id}，已回退到 {fallback}",
     "workflowHintTitle": "写作工作流",
     "workflowHintDescription": "先确认本次重点参考范围，再生成方案或续写正文。索引任务由后端后台推进，这里只展示真实状态。",
     "backgroundIndex": {

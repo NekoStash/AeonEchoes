@@ -348,6 +348,58 @@ func TestWorkflowRunnerDraftChapterWithIdeaRoutesBothStagesAndPersistsLink(t *te
 	}
 }
 
+func TestWorkflowRunnerGenerateCharacterProfilesUsesCharacterKeeperAndParsesProfiles(t *testing.T) {
+	_, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
+	textClient.responses = []provider.ModelResponse{{Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队的真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`}}
+
+	result, err := runner.GenerateCharacterProfiles(context.Background(), CharacterProfilesRequest{ProjectID: projectID, Focus: "主角完整设定", Count: 1, Brief: "补全能支撑第一卷的主角人物弧", MaxOutputTokens: 888})
+	if err != nil {
+		t.Fatalf("GenerateCharacterProfiles() error: %v", err)
+	}
+	if result.Workflow.Kind != "character_profiles" || result.Workflow.Role != domain.AgentRoleCharacterKeeper || result.Workflow.Status != "completed" {
+		t.Fatalf("GenerateCharacterProfiles() workflow mismatch: %+v", result.Workflow)
+	}
+	if result.Workflow.Output["character_count"] != "1" {
+		t.Fatalf("GenerateCharacterProfiles() workflow character_count = %q, want 1", result.Workflow.Output["character_count"])
+	}
+	if len(result.Characters) != 1 {
+		t.Fatalf("GenerateCharacterProfiles() characters len = %d, want 1", len(result.Characters))
+	}
+	character := result.Characters[0]
+	if character.Name != "林烬" || character.Role != "主角" || character.Desire == "" || character.Wound == "" || character.Secret == "" {
+		t.Fatalf("GenerateCharacterProfiles() character missing required profile fields: %+v", character)
+	}
+	if len(textClient.requests) != 1 {
+		t.Fatalf("GenerateCharacterProfiles() provider request count = %d, want 1", len(textClient.requests))
+	}
+	req := textClient.requests[0]
+	if req.Model != "character-explicit" {
+		t.Fatalf("GenerateCharacterProfiles() model = %q, want character-explicit", req.Model)
+	}
+	if req.MaxOutputTokens != 888 {
+		t.Fatalf("GenerateCharacterProfiles() max output tokens = %d, want 888", req.MaxOutputTokens)
+	}
+	if !strings.Contains(req.SystemPrompt, "Character Keeper Agent") || !strings.Contains(req.SystemPrompt, "严格 JSON") || !strings.Contains(req.UserPrompt, "主角完整设定") || !strings.Contains(req.UserPrompt, "可直接写入 Story Bible") {
+		t.Fatalf("GenerateCharacterProfiles() prompt does not describe character profile contract: system=%q user=%q", req.SystemPrompt, req.UserPrompt)
+	}
+	if result.ContextPack.Role != domain.AgentRoleCharacterKeeper || result.ModelResolution.RouteKey != string(domain.AgentRoleCharacterKeeper) {
+		t.Fatalf("GenerateCharacterProfiles() context/model role mismatch: pack=%+v resolution=%+v", result.ContextPack, result.ModelResolution)
+	}
+}
+
+func TestWorkflowRunnerGenerateCharacterProfilesRejectsInvalidJSON(t *testing.T) {
+	_, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
+	textClient.responses = []provider.ModelResponse{{Content: `{"characters":[{"name":"林烬","role":"主角"}]}`}}
+
+	_, err := runner.GenerateCharacterProfiles(context.Background(), CharacterProfilesRequest{ProjectID: projectID, Focus: "主角完整设定", Count: 1, Brief: "补全主角"})
+	if err == nil {
+		t.Fatalf("GenerateCharacterProfiles() error = nil, want validation error")
+	}
+	if !strings.Contains(err.Error(), "desire must not be empty") {
+		t.Fatalf("GenerateCharacterProfiles() error = %v, want missing desire validation", err)
+	}
+}
+
 func TestWorkflowRunnerDraftChapterRequiresIdeaWhenBriefIsOtherwiseEmpty(t *testing.T) {
 	_, runner, _, projectID := newConfiguredWorkflowRunner(t)
 
@@ -426,6 +478,10 @@ func newConfiguredWorkflowRunner(t *testing.T) (*memory.Store, *WorkflowRunner, 
 	if err != nil {
 		t.Fatalf("CreateProvider(writer) error: %v", err)
 	}
+	characterProvider, err := store.CreateProvider(domain.ProviderConfig{ID: "provider_character", Name: "Character Provider", Type: domain.ProviderOpenAI, Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateProvider(character) error: %v", err)
+	}
 	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_architect:architect-explicit", ProviderID: architectProvider.ID, Name: "architect-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 600, AllowedAgentRoles: []domain.AgentRole{domain.AgentRolePlotArchitect}})
 	if err != nil {
 		t.Fatalf("CreateModel(architect) error: %v", err)
@@ -434,6 +490,10 @@ func newConfiguredWorkflowRunner(t *testing.T) (*memory.Store, *WorkflowRunner, 
 	if err != nil {
 		t.Fatalf("CreateModel(writer) error: %v", err)
 	}
+	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_character:character-explicit", ProviderID: characterProvider.ID, Name: "character-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 900, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleCharacterKeeper}})
+	if err != nil {
+		t.Fatalf("CreateModel(character) error: %v", err)
+	}
 	_, err = store.UpsertSetting(domain.AppSetting{Scope: ModelRoutingSettingScope, Key: string(domain.AgentRolePlotArchitect), Value: map[string]any{ModelRoutingSettingValueKey: "provider_architect:architect-explicit"}})
 	if err != nil {
 		t.Fatalf("UpsertSetting(plot architect) error: %v", err)
@@ -441,6 +501,10 @@ func newConfiguredWorkflowRunner(t *testing.T) (*memory.Store, *WorkflowRunner, 
 	_, err = store.UpsertSetting(domain.AppSetting{Scope: ModelRoutingSettingScope, Key: string(domain.AgentRoleWriter), Value: map[string]any{ModelRoutingSettingValueKey: "provider_writer:writer-explicit"}})
 	if err != nil {
 		t.Fatalf("UpsertSetting(writer) error: %v", err)
+	}
+	_, err = store.UpsertSetting(domain.AppSetting{Scope: ModelRoutingSettingScope, Key: string(domain.AgentRoleCharacterKeeper), Value: map[string]any{ModelRoutingSettingValueKey: "provider_character:character-explicit"}})
+	if err != nil {
+		t.Fatalf("UpsertSetting(character) error: %v", err)
 	}
 	seedWorkflow, err := store.SaveWorkflow(domain.AIWorkflow{ProjectID: project.ID, Kind: "chapter_seed", Role: domain.AgentRoleWriter, Status: "completed"})
 	if err != nil {
@@ -481,7 +545,7 @@ func newConfiguredWorkflowRunner(t *testing.T) (*memory.Store, *WorkflowRunner, 
 	if _, err := store.SavePlotThread(domain.PlotThread{ProjectID: project.ID, Title: "塔楼异动", OpenedChapterID: chapterTwo.ChapterID, RelatedEntityIDs: []string{charSu.ID}, Metadata: map[string]string{"source_chapter_version_id": chapterTwo.ID}}); err != nil {
 		t.Fatalf("SavePlotThread(塔楼异动) error: %v", err)
 	}
-	textClient := &fakeTextClient{responses: []provider.ModelResponse{{Content: "## 本章目标\n进入灰塔并发现钟声异常"}, {Content: "林烬踏入灰塔，钟声在背后收拢。"}, {Content: "林烬把灰烬钥匙藏进袖口，走向塔门。"}}}
+	textClient := &fakeTextClient{responses: []provider.ModelResponse{{Content: "## 本章目标\n进入灰塔并发现钟声异常"}, {Content: "林烬踏入灰塔，钟声在背后收拢。"}, {Content: "林烬把灰烬钥匙藏进袖口，走向塔门。"}, {Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队的真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`}}}
 	router := NewModelRouter(store, NewAgentRoleRegistry())
 	tools := NewToolRuntime(store)
 	builder := NewContextPackBuilder(store, tools, store)

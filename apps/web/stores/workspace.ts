@@ -256,6 +256,40 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.setLoading(`bible-save:${projectId}`, false)
       }
     },
+    async syncCharacters(projectId: string, bible: StoryBible) {
+      const api = useApi()
+      this.setLoading(`characters-sync:${projectId}`, true)
+      try {
+        const result = await api.syncCharacters(projectId, bible)
+        this.recordResult('characters-sync', result)
+        if (result.data.story_bible) {
+          this.activeBible = result.data.story_bible
+        } else if (this.activeBible?.project_id === projectId) {
+          const syncedByName = new Map(result.data.characters.map((character) => [character.name.trim(), character]))
+          this.activeBible = {
+            ...this.activeBible,
+            entity_ids: result.data.entity_ids || this.activeBible.entity_ids,
+            characters: this.activeBible.characters.map((character) => {
+              const synced = syncedByName.get(character.name.trim())
+              if (!synced) return character
+              return {
+                ...character,
+                id: synced.id || character.id,
+                entity_id: synced.entity_id,
+                sync_status: synced.sync_status || 'synced',
+                synced_at: synced.synced_at
+              }
+            })
+          }
+        }
+        return result
+      } catch (error) {
+        this.recordError('characters-sync', error)
+        throw error
+      } finally {
+        this.setLoading(`characters-sync:${projectId}`, false)
+      }
+    },
     async loadGraph(projectId: string, root: string, depth: number, timeline: number, filters: string[]) {
       const api = useApi()
       this.setLoading(`graph:${projectId}`, true)
