@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import { useAttrs } from 'vue'
 import { cn } from '~/lib/utils'
+
+defineOptions({ inheritAttrs: false })
+
+const attrs = useAttrs()
 
 const props = withDefaults(
   defineProps<{
@@ -22,6 +27,7 @@ const emit = defineEmits<{
 
 <template>
   <textarea
+    v-bind="attrs"
     :value="modelValue"
     :placeholder="placeholder"
     :disabled="disabled"

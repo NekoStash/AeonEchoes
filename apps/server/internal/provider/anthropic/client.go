@@ -188,17 +188,17 @@ func normalizeAnthropicBaseURL(baseURL string) string {
 func anthropicMessages(req provider.TextRequest) []anthropicsdk.MessageParam {
 	messages := make([]anthropicsdk.MessageParam, 0, len(req.Messages)+1)
 	for _, msg := range req.Messages {
-		content := strings.TrimSpace(msg.Content)
-		if content == "" {
+		content := provider.MessageContent(msg)
+		if strings.TrimSpace(content) == "" {
 			continue
 		}
 		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
 		case "system", "developer":
 			continue
 		case "assistant":
-			messages = append(messages, anthropicsdk.NewAssistantMessage(anthropicsdk.NewTextBlock(msg.Content)))
+			messages = append(messages, anthropicsdk.NewAssistantMessage(anthropicsdk.NewTextBlock(content)))
 		default:
-			messages = append(messages, anthropicsdk.NewUserMessage(anthropicsdk.NewTextBlock(msg.Content)))
+			messages = append(messages, anthropicsdk.NewUserMessage(anthropicsdk.NewTextBlock(content)))
 		}
 	}
 	if strings.TrimSpace(req.UserPrompt) != "" {

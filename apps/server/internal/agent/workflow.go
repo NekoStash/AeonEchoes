@@ -14,7 +14,17 @@ import (
 
 // WorkflowStore is the repository surface required by workflow orchestration.
 type WorkflowStore interface {
+	NewID(prefix string) (string, error)
 	CreateProject(project domain.Project, bible domain.StoryBible) (domain.Project, domain.StoryBible, error)
+	SaveEntity(item domain.Entity) (domain.Entity, error)
+	SaveGraphEdge(item domain.GraphEdge) (domain.GraphEdge, error)
+	SavePlotThread(item domain.PlotThread) (domain.PlotThread, error)
+	ListEntities(projectID string) ([]domain.Entity, error)
+	ListPlotThreads(projectID string) ([]domain.PlotThread, error)
+	ExpandGraph(projectID string, entityIDs []string, depth int) (domain.GraphExpansion, error)
+	EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error)
+	GetChapter(id string) (domain.Chapter, error)
+	ListChapters(projectID string) ([]domain.Chapter, error)
 	SaveChapterVersion(version domain.ChapterVersion) (domain.ChapterVersion, domain.IndexJob, error)
 	SaveWorkflow(workflow domain.AIWorkflow) (domain.AIWorkflow, error)
 	ListChapterVersions(projectID, chapterID string) ([]domain.ChapterVersion, error)
@@ -72,6 +82,7 @@ type ChapterIdeaResult struct {
 	ContextPack     domain.ContextPack     `json:"context_pack"`
 	ChapterIdea     string                 `json:"chapter_idea"`
 	ModelResolution domain.ModelResolution `json:"model_resolution"`
+	ToolTrace       []string               `json:"tool_trace,omitempty"`
 }
 
 type CharacterProfilesRequest struct {
@@ -86,10 +97,13 @@ type CharacterProfilesRequest struct {
 }
 
 type CharacterProfilesResult struct {
-	Workflow        domain.AIWorkflow         `json:"workflow"`
-	ContextPack     domain.ContextPack        `json:"context_pack"`
-	Characters      []domain.CharacterProfile `json:"characters"`
-	ModelResolution domain.ModelResolution    `json:"model_resolution"`
+	Workflow        domain.AIWorkflow                `json:"workflow"`
+	ContextPack     domain.ContextPack               `json:"context_pack"`
+	Characters      []domain.CharacterProfile        `json:"characters"`
+	Entities        []domain.Entity                  `json:"entities,omitempty"`
+	Mappings        []domain.CharacterProfileMapping `json:"mappings,omitempty"`
+	ModelResolution domain.ModelResolution           `json:"model_resolution"`
+	ToolTrace       []string                         `json:"tool_trace,omitempty"`
 }
 
 type DraftRequest struct {
@@ -116,6 +130,7 @@ type DraftResult struct {
 	IndexFreshness  domain.IndexFreshness  `json:"index_freshness"`
 	ModelResolution domain.ModelResolution `json:"model_resolution"`
 	ContinuityAudit domain.ContinuityAudit `json:"continuity_audit"`
+	ToolTrace       []string               `json:"tool_trace,omitempty"`
 }
 
 type DraftWithIdeaRequest struct {
@@ -250,7 +265,7 @@ func (r *WorkflowRunner) GenerateChapterIdea(ctx context.Context, req ChapterIde
 	if err != nil {
 		return ChapterIdeaResult{}, r.failWorkflow(workflow, fmt.Errorf("marshal context pack: %w", err))
 	}
-	modelResp, err := client.Generate(ctx, provider.TextRequest{
+	loopResult, err := r.generateWithTools(ctx, client, selectionModel, provider.TextRequest{
 		Model:           selectionModel.Model.Name,
 		SystemPrompt:    chapterIdeaSystemPrompt(),
 		UserPrompt:      chapterIdeaUserPrompt(req, string(promptBytes)),
@@ -260,19 +275,19 @@ func (r *WorkflowRunner) GenerateChapterIdea(ctx context.Context, req ChapterIde
 	if err != nil {
 		return ChapterIdeaResult{}, r.failWorkflow(workflow, err)
 	}
-	chapterIdea := strings.TrimSpace(modelResp.Content)
+	chapterIdea := strings.TrimSpace(loopResult.Response.Content)
 	if chapterIdea == "" {
 		err := fmt.Errorf("chapter idea model returned empty content")
 		return ChapterIdeaResult{}, r.failWorkflow(workflow, err)
 	}
 	workflow.Status = "completed"
-	workflow.Output = mergeWorkflowOutput(map[string]string{"chapter_idea": chapterIdea}, modelResolution)
-	workflow.Steps = append(workflow.Steps, stepDone("chapter_idea_generate"))
+	workflow.Output = mergeWorkflowOutput(map[string]string{"chapter_idea": chapterIdea, "tool_trace": strings.Join(loopResult.Trace, "\n")}, modelResolution)
+	workflow.Steps = append(workflow.Steps, stepDoneWithMetadata("chapter_idea_generate", map[string]string{"tool_trace_count": strconv.Itoa(len(loopResult.Trace))}))
 	workflow, err = r.store.SaveWorkflow(workflow)
 	if err != nil {
 		return ChapterIdeaResult{}, err
 	}
-	return ChapterIdeaResult{Workflow: workflow, ContextPack: pack, ChapterIdea: chapterIdea, ModelResolution: modelResolution}, nil
+	return ChapterIdeaResult{Workflow: workflow, ContextPack: pack, ChapterIdea: chapterIdea, ModelResolution: modelResolution, ToolTrace: loopResult.Trace}, nil
 }
 
 func (r *WorkflowRunner) GenerateCharacterProfiles(ctx context.Context, req CharacterProfilesRequest) (CharacterProfilesResult, error) {
@@ -317,7 +332,7 @@ func (r *WorkflowRunner) GenerateCharacterProfiles(ctx context.Context, req Char
 	if err != nil {
 		return CharacterProfilesResult{}, r.failWorkflow(workflow, fmt.Errorf("marshal context pack: %w", err))
 	}
-	modelResp, err := client.Generate(ctx, provider.TextRequest{
+	loopResult, err := r.generateWithTools(ctx, client, selectionModel, provider.TextRequest{
 		Model:           selectionModel.Model.Name,
 		SystemPrompt:    characterProfilesSystemPrompt(),
 		UserPrompt:      characterProfilesUserPrompt(req, string(promptBytes)),
@@ -327,18 +342,22 @@ func (r *WorkflowRunner) GenerateCharacterProfiles(ctx context.Context, req Char
 	if err != nil {
 		return CharacterProfilesResult{}, r.failWorkflow(workflow, err)
 	}
-	characters, err := parseCharacterProfilesResponse(modelResp.Content, req.Count)
+	characters, err := parseCharacterProfilesResponse(loopResult.Response.Content, req.Count)
+	if err != nil {
+		return CharacterProfilesResult{}, r.failWorkflow(workflow, err)
+	}
+	entities, mappings, err := characterProfileToolResults(characters, loopResult.ToolCalls)
 	if err != nil {
 		return CharacterProfilesResult{}, r.failWorkflow(workflow, err)
 	}
 	workflow.Status = "completed"
-	workflow.Output = mergeWorkflowOutput(map[string]string{"character_count": strconv.Itoa(len(characters))}, modelResolution)
-	workflow.Steps = append(workflow.Steps, stepDone("character_profiles_generate"))
+	workflow.Output = mergeWorkflowOutput(map[string]string{"character_count": strconv.Itoa(len(characters)), "tool_trace": strings.Join(loopResult.Trace, "\n")}, modelResolution)
+	workflow.Steps = append(workflow.Steps, stepDone("character_profiles_generate"), stepDoneWithMetadata("character_profiles_persist", map[string]string{"mapping_count": strconv.Itoa(len(mappings)), "tool_trace_count": strconv.Itoa(len(loopResult.Trace))}))
 	workflow, err = r.store.SaveWorkflow(workflow)
 	if err != nil {
 		return CharacterProfilesResult{}, err
 	}
-	return CharacterProfilesResult{Workflow: workflow, ContextPack: pack, Characters: characters, ModelResolution: modelResolution}, nil
+	return CharacterProfilesResult{Workflow: workflow, ContextPack: pack, Characters: characters, Entities: entities, Mappings: mappings, ModelResolution: modelResolution, ToolTrace: loopResult.Trace}, nil
 }
 
 func (r *WorkflowRunner) DraftChapterWithIdea(ctx context.Context, req DraftWithIdeaRequest) (DraftWithIdeaResult, error) {
@@ -411,7 +430,7 @@ func (r *WorkflowRunner) DraftChapter(ctx context.Context, req DraftRequest) (Dr
 	if err != nil {
 		return DraftResult{}, r.failWorkflow(workflow, fmt.Errorf("marshal context pack: %w", err))
 	}
-	modelResp, err := client.Generate(ctx, provider.TextRequest{
+	loopResult, err := r.generateWithTools(ctx, client, selectionModel, provider.TextRequest{
 		Model:           selectionModel.Model.Name,
 		SystemPrompt:    writerSystemPrompt(),
 		UserPrompt:      fmt.Sprintf("章节写作简报：%s\n\n上下文包 JSON：%s", req.Brief, string(promptBytes)),
@@ -421,6 +440,7 @@ func (r *WorkflowRunner) DraftChapter(ctx context.Context, req DraftRequest) (Dr
 	if err != nil {
 		return DraftResult{}, r.failWorkflow(workflow, err)
 	}
+	modelResp := loopResult.Response
 	if strings.TrimSpace(modelResp.Content) == "" {
 		err := fmt.Errorf("writer model returned empty content")
 		return DraftResult{}, r.failWorkflow(workflow, err)
@@ -444,13 +464,126 @@ func (r *WorkflowRunner) DraftChapter(ctx context.Context, req DraftRequest) (Dr
 		return DraftResult{}, r.failWorkflow(workflow, err)
 	}
 	workflow.Status = "completed"
-	workflow.Output = mergeWorkflowOutput(map[string]string{"chapter_version_id": version.ID, "index_job_id": job.ID}, modelResolution)
+	workflow.Output = mergeWorkflowOutput(map[string]string{"chapter_version_id": version.ID, "index_job_id": job.ID, "tool_trace": strings.Join(loopResult.Trace, "\n")}, modelResolution)
 	workflow.Steps = append(workflow.Steps, stepDone("persist_chapter_version_and_index_job"))
 	workflow, err = r.store.SaveWorkflow(workflow)
 	if err != nil {
 		return DraftResult{}, err
 	}
-	return DraftResult{Workflow: workflow, ContextPack: pack, ChapterVersion: version, IndexJob: job, IndexFreshness: freshness, ModelResolution: modelResolution, ContinuityAudit: continuityAudit}, nil
+	return DraftResult{Workflow: workflow, ContextPack: pack, ChapterVersion: version, IndexJob: job, IndexFreshness: freshness, ModelResolution: modelResolution, ContinuityAudit: continuityAudit, ToolTrace: loopResult.Trace}, nil
+}
+
+func (r *WorkflowRunner) generateWithTools(ctx context.Context, client provider.TextModelClient, selection ModelSelection, req provider.TextRequest) (ToolLoopResult, error) {
+	if !selection.Model.SupportsTools {
+		return ToolLoopResult{}, fmt.Errorf("selected model %q does not support tools", selection.Model.ID)
+	}
+	req.Tools = NarrativeToolSpecs()
+	return RunToolLoop(ctx, client, req, NewToolExecutor(r.store), defaultToolLoopMaxRounds)
+}
+
+func characterProfileToolResults(characters []domain.CharacterProfile, records []ToolExecutionRecord) ([]domain.Entity, []domain.CharacterProfileMapping, error) {
+	if len(records) == 0 {
+		return nil, nil, fmt.Errorf("character profiles require character.search and character.upsert tool calls before final JSON")
+	}
+	searchedByName := map[string]struct{}{}
+	upsertedByName := map[string]domain.CharacterProfileMapping{}
+	upsertEntities := map[string]domain.Entity{}
+	for _, record := range records {
+		switch record.Name {
+		case "character.search":
+			query, err := toolRecordStringArgument(record, "query")
+			if err != nil {
+				return nil, nil, err
+			}
+			if query != "" {
+				searchedByName[strings.ToLower(query)] = struct{}{}
+			}
+		case "character.upsert":
+			argsName, err := toolRecordStringArgument(record, "name")
+			if err != nil {
+				return nil, nil, err
+			}
+			if argsName == "" {
+				return nil, nil, fmt.Errorf("character.upsert tool call missing name argument")
+			}
+			if _, ok := searchedByName[strings.ToLower(argsName)]; !ok {
+				return nil, nil, fmt.Errorf("character.upsert for %q executed before matching character.search", argsName)
+			}
+			entity, action, err := decodeCharacterUpsertRecord(record)
+			if err != nil {
+				return nil, nil, err
+			}
+			if entity.Type != "character" {
+				return nil, nil, fmt.Errorf("character.upsert tool result for %q returned entity type %q", argsName, entity.Type)
+			}
+			if entity.ID == "" {
+				return nil, nil, fmt.Errorf("character.upsert tool result for %q returned empty entity id", argsName)
+			}
+			resultName := strings.TrimSpace(firstText(entity.Name, argsName))
+			if resultName == "" {
+				return nil, nil, fmt.Errorf("character.upsert tool result returned empty character name")
+			}
+			key := strings.ToLower(resultName)
+			upsertedByName[key] = domain.CharacterProfileMapping{Name: resultName, EntityID: entity.ID, Action: action}
+			upsertEntities[key] = entity
+		}
+	}
+	entities := make([]domain.Entity, 0, len(characters))
+	mappings := make([]domain.CharacterProfileMapping, 0, len(characters))
+	for _, profile := range characters {
+		name := strings.TrimSpace(profile.Name)
+		if name == "" {
+			return nil, nil, fmt.Errorf("character profile name must not be empty")
+		}
+		key := strings.ToLower(name)
+		if _, ok := searchedByName[key]; !ok {
+			return nil, nil, fmt.Errorf("character %q declared in final JSON without prior character.search tool call", name)
+		}
+		mapping, ok := upsertedByName[key]
+		if !ok {
+			return nil, nil, fmt.Errorf("character %q declared in final JSON without matching character.upsert tool result", name)
+		}
+		entities = append(entities, upsertEntities[key])
+		mappings = append(mappings, mapping)
+	}
+	return entities, mappings, nil
+}
+
+func toolRecordStringArgument(record ToolExecutionRecord, key string) (string, error) {
+	if len(record.Arguments) == 0 {
+		return "", fmt.Errorf("tool %s record missing arguments", record.Name)
+	}
+	var args map[string]any
+	if err := json.Unmarshal(record.Arguments, &args); err != nil {
+		return "", fmt.Errorf("decode tool %s arguments: %w", record.Name, err)
+	}
+	value, ok := args[key]
+	if !ok || value == nil {
+		return "", nil
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("tool %s argument %s must be a string", record.Name, key)
+	}
+	return strings.TrimSpace(text), nil
+}
+
+func decodeCharacterUpsertRecord(record ToolExecutionRecord) (domain.Entity, string, error) {
+	var result struct {
+		Action string        `json:"action"`
+		Entity domain.Entity `json:"entity"`
+	}
+	if len(record.Result) == 0 {
+		return domain.Entity{}, "", fmt.Errorf("character.upsert tool result is empty")
+	}
+	if err := json.Unmarshal(record.Result, &result); err != nil {
+		return domain.Entity{}, "", fmt.Errorf("decode character.upsert tool result: %w", err)
+	}
+	action := strings.TrimSpace(result.Action)
+	if action == "" {
+		return domain.Entity{}, "", fmt.Errorf("character.upsert tool result missing action")
+	}
+	return result.Entity, action, nil
 }
 
 func (r *WorkflowRunner) buildPackAndResolveModel(projectID, chapterID string, role domain.AgentRole, query string, tokenBudget int, selection *ContextSelection, contextNodeIDs []string) (domain.ContextPack, ModelSelection, domain.ModelResolution, error) {
@@ -751,11 +884,11 @@ func writerSystemPrompt() string {
 }
 
 func characterProfilesSystemPrompt() string {
-	return "你是 AI 小说创作平台中的 Character Keeper Agent。你的任务是围绕当前项目主角/配角需求生成可直接写入 Story Bible 的角色设定，并保持与提供的 ContextPack 一致。必须输出严格 JSON 对象，不要输出 Markdown 或解释。JSON 结构为 {\"characters\":[{\"name\":\"\",\"role\":\"\",\"desire\":\"\",\"wound\":\"\",\"secret\":\"\",\"summary\":\"\"}]}。每个角色必须包含 name、role、desire、wound、secret，可包含 summary。"
+	return "你是 AI 小说创作平台中的 Character Keeper Agent。你的任务是围绕当前项目主角/配角需求生成可直接写入 Story Bible 的角色设定，并保持与提供的 ContextPack 一致。你必须使用工具完成真实数据库同步：创建或更新每个角色前，必须先调用 character.search 按角色名查重；确认角色档案后，必须调用 character.upsert 保存该角色；如果你明确描述角色关系，必须调用 relationship.upsert 保存关系。所有需要写入数据库的角色都完成工具调用并读取工具结果后，最终仍必须输出严格 JSON 对象，不要输出 Markdown 或解释。JSON 结构为 {\"characters\":[{\"name\":\"\",\"role\":\"\",\"desire\":\"\",\"wound\":\"\",\"secret\":\"\",\"summary\":\"\"}]}。每个角色必须包含 name、role、desire、wound、secret，可包含 summary；最终 JSON 中的每个角色必须已经有对应的 character.upsert 工具结果。"
 }
 
 func characterProfilesUserPrompt(req CharacterProfilesRequest, contextPackJSON string) string {
-	return fmt.Sprintf("角色需求焦点：%s\n生成数量：%d\n角色生成简报：%s\n\n上下文包 JSON：%s\n\n请生成可直接写入 Story Bible 的角色设定；如果需求是主角完整设定，必须生成完整主角档案；如果需求是配角或群像，则生成互相区分且能支撑当前项目冲突的角色。", req.Focus, req.Count, req.Brief, contextPackJSON)
+	return fmt.Sprintf("角色需求焦点：%s\n生成数量：%d\n角色生成简报：%s\n\n上下文包 JSON：%s\n\n请生成可直接写入 Story Bible 的角色设定；如果需求是主角完整设定，必须生成完整主角档案；如果需求是配角或群像，则生成互相区分且能支撑当前项目冲突的角色。流程要求：1）对每个待创建或更新角色先调用 character.search，query 使用角色名，查重并读取工具结果；2）再调用 character.upsert 保存角色，traits 至少写入 role、desire、wound、secret，metadata 可记录来源；3）如输出中明确两个角色关系，调用 relationship.upsert 保存；4）完成全部工具调用后再输出严格 JSON，且 JSON 中只包含已通过 character.upsert 成功保存的角色。", req.Focus, req.Count, req.Brief, contextPackJSON)
 }
 
 func parseCharacterProfilesResponse(content string, expectedCount int) ([]domain.CharacterProfile, error) {

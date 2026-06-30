@@ -8,12 +8,28 @@ import (
 	"aeonechoes/server/internal/domain"
 )
 
+// ToolStore is the persistence surface used by provider tool calls.
+type ToolStore interface {
+	NewID(prefix string) (string, error)
+	SaveEntity(item domain.Entity) (domain.Entity, error)
+	SaveGraphEdge(item domain.GraphEdge) (domain.GraphEdge, error)
+	SavePlotThread(item domain.PlotThread) (domain.PlotThread, error)
+	ListEntities(projectID string) ([]domain.Entity, error)
+	ListPlotThreads(projectID string) ([]domain.PlotThread, error)
+	ExpandGraph(projectID string, entityIDs []string, depth int) (domain.GraphExpansion, error)
+	EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error)
+	GetChapter(id string) (domain.Chapter, error)
+	ListChapters(projectID string) ([]domain.Chapter, error)
+	ListChapterVersions(projectID, chapterID string) ([]domain.ChapterVersion, error)
+}
+
 // GraphRepository is the graph retrieval surface used by novel-specific tools.
 type GraphRepository interface {
 	ExpandGraph(projectID string, entityIDs []string, depth int) (domain.GraphExpansion, error)
 	ListEntities(projectID string) ([]domain.Entity, error)
 	ListFacts(projectID string) ([]domain.Fact, error)
 	ListPlotThreads(projectID string) ([]domain.PlotThread, error)
+	ListChapters(projectID string) ([]domain.Chapter, error)
 	ListChapterVersions(projectID, chapterID string) ([]domain.ChapterVersion, error)
 	GetStoryBible(projectID string) (domain.StoryBible, error)
 }

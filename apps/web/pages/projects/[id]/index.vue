@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowRight, BookMarked, CheckCircle2, FilePenLine, FileText, GitFork, Loader2, PenLine, Plus, Save, ShieldCheck, Sparkles, Trash2, UserRound, WifiOff } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
-import type { CharacterProfile, CharacterProfileMode, StoryBible } from '~/lib/types'
+import type { CharacterProfile, CharacterProfileMode, CharacterProfileResponse, StoryBible } from '~/lib/types'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -14,8 +14,13 @@ const bibleDraft = ref<StoryBible | null>(null)
 const bibleSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const characterSyncState = ref<'idle' | 'syncing' | 'synced' | 'failed'>('idle')
 const characterGenerationState = ref<'idle' | 'generating' | 'failed'>('idle')
+const openingChapterId = ref('')
 const generatedCharacters = ref<CharacterProfile[]>([])
-const activeSection = ref<'overview' | 'story' | 'characters' | 'chapters'>('overview')
+const activeSectionValues = ['overview', 'story', 'characters', 'chapters'] as const
+
+type ActiveSection = typeof activeSectionValues[number]
+
+const activeSection = ref<ActiveSection>('overview')
 
 const foreshadowStatusValues: Array<StoryBible['foreshadows'][number]['status']> = ['planted', 'active', 'paid_off']
 const chapterStatusValues: Array<StoryBible['chapters'][number]['status']> = ['planned', 'drafting', 'reviewing', 'locked']
@@ -69,21 +74,21 @@ const prepCards = computed(() => {
       title: t('projectOverview.prep.rules.title'),
       description: t('projectOverview.prep.rules.description'),
       count: bible.value.world_rules.length,
-      action: () => { activeSection.value = 'story' }
+      action: () => setActiveSection('story')
     },
     {
       key: 'characters',
       title: t('projectOverview.prep.characters.title'),
       description: t('projectOverview.prep.characters.description'),
       count: bible.value.characters.length,
-      action: () => { activeSection.value = 'characters' }
+      action: () => setActiveSection('characters')
     },
     {
       key: 'foreshadows',
       title: t('projectOverview.prep.foreshadows.title'),
       description: t('projectOverview.prep.foreshadows.description'),
       count: bible.value.foreshadows.length,
-      action: () => { activeSection.value = 'story' }
+      action: () => setActiveSection('story')
     }
   ]
 })
@@ -112,6 +117,40 @@ function createUniqueId(prefix: string, existingIds: string[]) {
   let index = existing.size + 1
   while (existing.has(`${prefix}-${index}`)) index += 1
   return `${prefix}-${index}`
+}
+
+function sectionElement(section: ActiveSection) {
+  if (!import.meta.client) return null
+  return document.querySelector<HTMLElement>(`[data-section-key="${section}"]`)
+}
+
+function focusElement(element: HTMLElement | null) {
+  if (!element) return
+  element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  element.focus({ preventScroll: true })
+}
+
+async function setActiveSection(section: ActiveSection) {
+  activeSection.value = section
+  await nextTick()
+  focusElement(sectionElement(section))
+}
+
+function handleSectionTabChange(section: string) {
+  if (!activeSectionValues.includes(section as ActiveSection)) return
+  void setActiveSection(section as ActiveSection)
+}
+
+async function focusByKey(focusKey: string, fallbackSection: ActiveSection) {
+  await nextTick()
+  if (!import.meta.client) return
+  const target = document.querySelector<HTMLElement>(`[data-focus-key="${focusKey}"]`)
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    target.focus({ preventScroll: true })
+    return
+  }
+  focusElement(sectionElement(fallbackSection))
 }
 
 function resetBibleDraft() {
@@ -148,6 +187,28 @@ function characterToProfile(character: StoryBible['characters'][number]): Charac
   }
 }
 
+function normalizedText(value?: string) {
+  return (value || '').trim().toLowerCase()
+}
+
+function protagonistHintFromBible(bible: StoryBible) {
+  return bible.source_seed?.metadata?.protagonist || bible.source_seed?.protagonist || bible.characters[0]?.name || ''
+}
+
+function looksLikeProtagonistPlaceholder(character: StoryBible['characters'][number], bible: StoryBible) {
+  if (character.entity_id?.trim()) return false
+  if (character.secret?.trim()) return false
+  const role = normalizedText(character.role)
+  const name = normalizedText(character.name)
+  const hint = normalizedText(protagonistHintFromBible(bible))
+  return role.includes('主角')
+    || role.includes('关键人物')
+    || role.includes('关键角色')
+    || role.includes('protagonist')
+    || role.includes('lead')
+    || (Boolean(hint) && (name === hint || hint.includes(name) || name.includes(hint)))
+}
+
 function characterProfileBrief(character: CharacterProfile) {
   return [
     character.name,
@@ -160,18 +221,39 @@ function characterProfileBrief(character: CharacterProfile) {
 }
 
 function buildCharacterGenerationBrief(mode: CharacterProfileMode, bible: StoryBible) {
-  const protagonistHint = bible.source_seed?.metadata?.protagonist || bible.source_seed?.protagonist || bible.characters[0]?.name || ''
+  const protagonistHint = protagonistHintFromBible(bible)
+  const usableCharacters = mode === 'protagonist'
+    ? bible.characters.filter((character) => !looksLikeProtagonistPlaceholder(character, bible))
+    : bible.characters
   return [
     mode === 'protagonist' ? t('projectOverview.characterGenerator.prompts.protagonist') : t('projectOverview.characterGenerator.prompts.character'),
     bible.premise ? `${t('projectOverview.fields.premise')}：${bible.premise}` : '',
     bible.themes.length ? `${t('projectOverview.fields.themes')}：${bible.themes.join('、')}` : '',
     bible.world_rules.length ? `${t('projectOverview.worldRules')}：${bible.world_rules.join('；')}` : '',
     protagonistHint ? `${t('projectNew.protagonist')}：${protagonistHint}` : '',
-    bible.characters.length ? `${t('projectOverview.characters')}：${bible.characters.map(characterToProfile).map(characterProfileBrief).filter(Boolean).join('；')}` : ''
+    usableCharacters.length ? `${t('projectOverview.characters')}：${usableCharacters.map(characterToProfile).map(characterProfileBrief).filter(Boolean).join('；')}` : ''
   ].filter(Boolean).join('\n')
 }
 
-function mergeGeneratedCharacters(profiles: CharacterProfile[]) {
+function persistCharacterMappingsToDraft(mappings: NonNullable<CharacterProfileResponse['mappings']>) {
+  const draft = bibleDraft.value
+  if (!draft || !mappings?.length) return false
+  const mappingsByName = new Map(mappings.map((mapping) => [mapping.name.trim(), mapping]))
+  let changed = false
+  draft.characters = draft.characters.map((character) => {
+    const mapping = mappingsByName.get(character.name.trim()) || (character.id ? mappings.find((item) => item.local_id === character.id) : undefined)
+    if (!mapping?.entity_id || character.entity_id === mapping.entity_id) return character
+    changed = true
+    return {
+      ...character,
+      entity_id: mapping.entity_id,
+      sync_status: mapping.action || 'synced'
+    }
+  })
+  return changed
+}
+
+function mergeGeneratedCharacters(profiles: CharacterProfile[], mode: CharacterProfileMode) {
   const draft = bibleDraft.value
   if (!draft) return
   const existingIds = draft.characters.map((character) => character.id)
@@ -179,12 +261,16 @@ function mergeGeneratedCharacters(profiles: CharacterProfile[]) {
     .filter((profile) => profile.name.trim())
     .forEach((profile) => {
       const existingIndex = draft.characters.findIndex((character) => character.name.trim() === profile.name.trim())
-      const existingCharacter = existingIndex >= 0 ? draft.characters[existingIndex] : undefined
+      const placeholderIndex = mode === 'protagonist' && existingIndex < 0
+        ? draft.characters.findIndex((character) => looksLikeProtagonistPlaceholder(character, draft))
+        : -1
+      const targetIndex = existingIndex >= 0 ? existingIndex : placeholderIndex
+      const existingCharacter = targetIndex >= 0 ? draft.characters[targetIndex] : undefined
       const fallbackId = createUniqueId('character', existingIds)
       existingIds.push(fallbackId)
       const nextCharacter = profileToDraftCharacter(profile, existingCharacter?.id || fallbackId)
-      if (existingCharacter && existingIndex >= 0) {
-        draft.characters[existingIndex] = {
+      if (existingCharacter && targetIndex >= 0) {
+        draft.characters[targetIndex] = {
           ...existingCharacter,
           ...nextCharacter
         }
@@ -211,19 +297,27 @@ async function syncDraftCharacters(bible: StoryBible, options: { rethrow?: boole
   }
 }
 
-async function saveStoryBible() {
-  if (!bibleDraft.value) return
+async function persistStoryBibleDraft(options: { syncCharactersAfterSave?: boolean } = {}) {
+  if (!bibleDraft.value) return null
   bibleSaveState.value = 'saving'
   characterSyncState.value = 'idle'
   try {
     const result = await workspace.updateStoryBible(projectId.value, cloneBible(bibleDraft.value))
     bibleDraft.value = cloneBible(result.data)
     bibleSaveState.value = 'saved'
-    await syncDraftCharacters(result.data)
+    if (options.syncCharactersAfterSave) {
+      await syncDraftCharacters(result.data)
+    }
+    return result
   } catch (error) {
     workspace.recordError(t('projectOverview.resultScopes.storyBibleSave'), error)
     bibleSaveState.value = 'failed'
+    return null
   }
+}
+
+async function saveStoryBible() {
+  await persistStoryBibleDraft({ syncCharactersAfterSave: true })
 }
 
 async function generateCharacters(mode: CharacterProfileMode) {
@@ -240,39 +334,53 @@ async function generateCharacters(mode: CharacterProfileMode) {
     })
     workspace.recordResult(t('projectOverview.resultScopes.characterGeneration'), result)
     generatedCharacters.value = result.data.characters || []
-    mergeGeneratedCharacters(generatedCharacters.value)
+    mergeGeneratedCharacters(generatedCharacters.value, mode)
+    if (result.data.mappings?.length) {
+      persistCharacterMappingsToDraft(result.data.mappings)
+    }
     if (bibleDraft.value) {
-      const saved = await workspace.updateStoryBible(projectId.value, cloneBible(bibleDraft.value))
-      bibleDraft.value = cloneBible(saved.data)
-      bibleSaveState.value = 'saved'
-      await syncDraftCharacters(saved.data)
+      await persistStoryBibleDraft({ syncCharactersAfterSave: true })
     }
     characterGenerationState.value = 'idle'
-    activeSection.value = 'characters'
+    await setActiveSection('characters')
+    const latestCharacter = generatedCharacters.value.find((character) => character.name.trim())
+    if (latestCharacter) {
+      const index = bibleDraft.value?.characters.findIndex((character) => character.name.trim() === latestCharacter.name.trim()) ?? -1
+      if (index >= 0) await focusByKey(`character-${index}-name`, 'characters')
+    }
   } catch (error) {
     workspace.recordError(t('projectOverview.resultScopes.characterGeneration'), error)
     characterGenerationState.value = 'failed'
   }
 }
 
-function addTheme() {
-  bibleDraft.value?.themes.push('')
+async function addTheme() {
+  if (!bibleDraft.value) return
+  const index = bibleDraft.value.themes.length
+  bibleDraft.value.themes.push('')
+  await setActiveSection('story')
+  await focusByKey(`theme-${index}`, 'story')
 }
 
 function removeTheme(index: number) {
   bibleDraft.value?.themes.splice(index, 1)
 }
 
-function addWorldRule() {
-  bibleDraft.value?.world_rules.push('')
+async function addWorldRule() {
+  if (!bibleDraft.value) return
+  const index = bibleDraft.value.world_rules.length
+  bibleDraft.value.world_rules.push('')
+  await setActiveSection('story')
+  await focusByKey(`world-rule-${index}`, 'story')
 }
 
 function removeWorldRule(index: number) {
   bibleDraft.value?.world_rules.splice(index, 1)
 }
 
-function addCharacter() {
+async function addCharacter() {
   if (!bibleDraft.value) return
+  const index = bibleDraft.value.characters.length
   bibleDraft.value.characters.push({
     id: createUniqueId('character', bibleDraft.value.characters.map((character) => character.id)),
     name: '',
@@ -281,14 +389,17 @@ function addCharacter() {
     wound: '',
     secret: ''
   })
+  await setActiveSection('characters')
+  await focusByKey(`character-${index}-name`, 'characters')
 }
 
 function removeCharacter(index: number) {
   bibleDraft.value?.characters.splice(index, 1)
 }
 
-function addForeshadow() {
+async function addForeshadow() {
   if (!bibleDraft.value) return
+  const index = bibleDraft.value.foreshadows.length
   bibleDraft.value.foreshadows.push({
     id: createUniqueId('foreshadow', bibleDraft.value.foreshadows.map((item) => item.id)),
     title: '',
@@ -296,20 +407,46 @@ function addForeshadow() {
     payoff_hint: '',
     status: 'planted'
   })
+  await setActiveSection('story')
+  await focusByKey(`foreshadow-${index}-title`, 'story')
 }
 
 function removeForeshadow(index: number) {
   bibleDraft.value?.foreshadows.splice(index, 1)
 }
 
-function addChapter() {
+async function addChapter() {
   if (!bibleDraft.value) return
+  const index = bibleDraft.value.chapters.length
   bibleDraft.value.chapters.push({
     id: createUniqueId('chapter', bibleDraft.value.chapters.map((chapter) => chapter.id)),
     title: '',
     status: 'planned',
     summary: ''
   })
+  await setActiveSection('chapters')
+  await focusByKey(`chapter-${index}-title`, 'chapters')
+}
+
+async function openChapterInEditor(chapter: StoryBible['chapters'][number], index: number) {
+  if (!bibleDraft.value) return
+  openingChapterId.value = chapter.id
+  try {
+    const saved = await persistStoryBibleDraft()
+    const savedChapter = saved?.data.chapters.find((item) => item.id === chapter.id) || chapter
+    const ensured = await workspace.ensureChapter(projectId.value, {
+      chapter_id: savedChapter.id,
+      number: index + 1,
+      title: savedChapter.title || t('editor.defaults.titleForChapter', { id: savedChapter.id }),
+      status: savedChapter.status || 'planned',
+      summary: savedChapter.summary || undefined
+    })
+    await navigateTo(`/projects/${projectId.value}/editor?chapter=${encodeURIComponent(ensured.data.chapter.id)}`)
+  } catch (error) {
+    workspace.recordError(t('projectOverview.resultScopes.chapterEnsure'), error)
+  } finally {
+    openingChapterId.value = ''
+  }
 }
 
 function removeChapter(index: number) {
@@ -399,11 +536,16 @@ function foreshadowStatusLabel(status: string) {
                   </p>
                 </div>
                 <div class="grid gap-3 sm:grid-cols-2">
-                  <UiButton class="w-full" :to="`/projects/${projectId}/editor?chapter=${chapterProgressSummary?.nextChapter?.id || ''}`">
+                  <UiButton
+                    class="w-full"
+                    :disabled="Boolean(chapterProgressSummary?.nextChapter?.id && openingChapterId === chapterProgressSummary.nextChapter.id)"
+                    @click="chapterProgressSummary?.nextChapter && openChapterInEditor(chapterProgressSummary.nextChapter, Math.max(0, bibleDraft.chapters.findIndex((chapter) => chapter.id === chapterProgressSummary?.nextChapter?.id)))"
+                  >
+                    <Loader2 v-if="chapterProgressSummary?.nextChapter?.id && openingChapterId === chapterProgressSummary.nextChapter.id" class="h-4 w-4 animate-spin" />
                     {{ t('projectOverview.continueWriting') }}
                     <ArrowRight class="h-4 w-4" />
                   </UiButton>
-                  <UiButton variant="outline" class="w-full" @click="activeSection = 'chapters'">
+                  <UiButton variant="outline" class="w-full" @click="setActiveSection('chapters')">
                     <FileText class="h-4 w-4" />
                     {{ t('projectOverview.reviewChapters') }}
                   </UiButton>
@@ -439,29 +581,29 @@ function foreshadowStatusLabel(status: string) {
           </UiCard>
 
           <UiCard class="p-4 sm:p-5">
-            <UiTabs v-model="activeSection" :tabs="sectionTabs" class="w-full justify-start" />
+            <UiTabs :model-value="activeSection" :tabs="sectionTabs" class="w-full justify-start" @update:model-value="handleSectionTabChange" />
           </UiCard>
 
-          <UiCard v-if="activeSection === 'overview'" class="p-4 sm:p-6">
+          <UiCard v-if="activeSection === 'overview'" data-section-key="overview" tabindex="-1" class="p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-6">
             <div class="grid gap-4 md:grid-cols-2">
               <div class="rounded-2xl border border-border bg-muted/35 p-4">
                 <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('projectOverview.sections.story') }}</p>
                 <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t('projectOverview.sectionDescriptions.story') }}</p>
-                <UiButton variant="outline" class="mt-4 w-full sm:w-auto" @click="activeSection = 'story'">
+                <UiButton variant="outline" class="mt-4 w-full sm:w-auto" @click="setActiveSection('story')">
                   {{ t('projectOverview.openStorySetup') }}
                 </UiButton>
               </div>
               <div class="rounded-2xl border border-border bg-muted/35 p-4">
                 <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('projectOverview.sections.characters') }}</p>
                 <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t('projectOverview.sectionDescriptions.characters') }}</p>
-                <UiButton variant="outline" class="mt-4 w-full sm:w-auto" @click="activeSection = 'characters'">
+                <UiButton variant="outline" class="mt-4 w-full sm:w-auto" @click="setActiveSection('characters')">
                   {{ t('projectOverview.openCharacters') }}
                 </UiButton>
               </div>
             </div>
           </UiCard>
 
-          <UiCard v-else-if="activeSection === 'story'" class="p-4 sm:p-6">
+          <UiCard v-else-if="activeSection === 'story'" data-section-key="story" tabindex="-1" class="p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-6">
             <div class="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
               <div>
                 <div class="flex min-w-0 items-center gap-2">
@@ -484,7 +626,7 @@ function foreshadowStatusLabel(status: string) {
                     {{ t('projectOverview.empty.themes') }}
                   </div>
                   <div v-for="(_theme, index) in bibleDraft.themes" :key="index" class="flex min-w-0 gap-2">
-                    <UiInput v-model="bibleDraft.themes[index]" :placeholder="t('projectOverview.placeholders.theme')" class="min-w-0 flex-1" />
+                    <UiInput v-model="bibleDraft.themes[index]" :data-focus-key="`theme-${index}`" :placeholder="t('projectOverview.placeholders.theme')" class="min-w-0 flex-1" />
                     <UiButton size="icon" variant="destructive" class="shrink-0" @click="removeTheme(index)">
                       <Trash2 class="h-4 w-4" />
                     </UiButton>
@@ -509,7 +651,7 @@ function foreshadowStatusLabel(status: string) {
                   </div>
                   <div v-else class="mt-5 space-y-3">
                     <div v-for="(_rule, index) in bibleDraft.world_rules" :key="index" class="flex min-w-0 gap-2">
-                      <UiTextarea v-model="bibleDraft.world_rules[index]" :rows="3" :placeholder="t('projectOverview.placeholders.worldRule')" class="min-w-0 flex-1" />
+                      <UiTextarea v-model="bibleDraft.world_rules[index]" :data-focus-key="`world-rule-${index}`" :rows="3" :placeholder="t('projectOverview.placeholders.worldRule')" class="min-w-0 flex-1" />
                       <UiButton size="icon" variant="destructive" class="shrink-0" @click="removeWorldRule(index)">
                         <Trash2 class="h-4 w-4" />
                       </UiButton>
@@ -534,7 +676,7 @@ function foreshadowStatusLabel(status: string) {
                         <div class="grid min-w-0 flex-1 gap-3 md:grid-cols-2">
                           <label class="space-y-2">
                             <span class="text-xs text-muted-foreground">{{ t('projectOverview.fields.foreshadowTitle') }}</span>
-                            <UiInput v-model="item.title" />
+                            <UiInput v-model="item.title" :data-focus-key="`foreshadow-${index}-title`" />
                           </label>
                           <label class="space-y-2">
                             <span class="text-xs text-muted-foreground">{{ t('projectOverview.fields.foreshadowStatus') }}</span>
@@ -560,7 +702,7 @@ function foreshadowStatusLabel(status: string) {
             </div>
           </UiCard>
 
-          <UiCard v-else-if="activeSection === 'characters'" class="p-4 sm:p-6">
+          <UiCard v-else-if="activeSection === 'characters'" data-section-key="characters" tabindex="-1" class="p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-6">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div class="flex min-w-0 items-center gap-2">
                 <UserRound class="h-5 w-5 shrink-0 text-muted-foreground" />
@@ -633,7 +775,7 @@ function foreshadowStatusLabel(status: string) {
                   <div class="grid min-w-0 flex-1 gap-3 md:grid-cols-2">
                     <label class="space-y-2">
                       <span class="text-xs text-muted-foreground">{{ t('projectOverview.fields.characterName') }}</span>
-                      <UiInput v-model="character.name" />
+                      <UiInput v-model="character.name" :data-focus-key="`character-${index}-name`" />
                     </label>
                     <label class="space-y-2">
                       <span class="text-xs text-muted-foreground">{{ t('projectOverview.fields.characterRole') }}</span>
@@ -664,7 +806,7 @@ function foreshadowStatusLabel(status: string) {
             </div>
           </UiCard>
 
-          <UiCard v-else class="p-4 sm:p-6">
+          <UiCard v-else data-section-key="chapters" tabindex="-1" class="p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-6">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <h2 class="break-words text-lg font-semibold">{{ t('projectOverview.chapters') }}</h2>
               <div class="grid gap-2 sm:flex sm:flex-wrap">
@@ -685,7 +827,7 @@ function foreshadowStatusLabel(status: string) {
                   <div class="grid min-w-0 gap-3 sm:grid-cols-2">
                     <label class="space-y-2">
                       <span class="text-xs text-muted-foreground">{{ t('projectOverview.fields.chapterTitle') }}</span>
-                      <UiInput v-model="chapter.title" />
+                      <UiInput v-model="chapter.title" :data-focus-key="`chapter-${index}-title`" />
                     </label>
                     <label class="space-y-2">
                       <span class="text-xs text-muted-foreground">{{ t('projectOverview.fields.chapterStatus') }}</span>
@@ -697,9 +839,17 @@ function foreshadowStatusLabel(status: string) {
                     </label>
                   </div>
                   <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
-                    <NuxtLink :to="`/projects/${projectId}/editor?chapter=${chapter.id}`" class="min-w-0 flex-1 break-words text-sm font-medium text-primary hover:underline">
-                      {{ t('projectOverview.openChapter') }}
-                    </NuxtLink>
+                    <UiButton
+                      type="button"
+                      variant="outline"
+                      class="min-w-0 flex-1 justify-between"
+                      :disabled="openingChapterId === chapter.id"
+                      @click="openChapterInEditor(chapter, index)"
+                    >
+                      <Loader2 v-if="openingChapterId === chapter.id" class="h-4 w-4 animate-spin" />
+                      <span>{{ t('projectOverview.openChapter') }}</span>
+                      <ArrowRight class="h-4 w-4" />
+                    </UiButton>
                     <UiButton size="icon" variant="destructive" class="shrink-0" @click="removeChapter(index)">
                       <Trash2 class="h-4 w-4" />
                     </UiButton>
@@ -714,15 +864,22 @@ function foreshadowStatusLabel(status: string) {
           <UiCard class="p-4 sm:p-6">
             <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('projectOverview.quickActions') }}</p>
             <div class="mt-4 grid gap-3">
-              <UiButton class="w-full justify-between" :to="`/projects/${projectId}/editor?chapter=${chapterProgressSummary?.nextChapter?.id || ''}`">
-                <span>{{ t('projectOverview.continueWriting') }}</span>
+              <UiButton
+                class="w-full justify-between"
+                :disabled="Boolean(chapterProgressSummary?.nextChapter?.id && openingChapterId === chapterProgressSummary.nextChapter.id)"
+                @click="chapterProgressSummary?.nextChapter && openChapterInEditor(chapterProgressSummary.nextChapter, Math.max(0, bibleDraft.chapters.findIndex((chapter) => chapter.id === chapterProgressSummary?.nextChapter?.id)))"
+              >
+                <span class="inline-flex items-center gap-2">
+                  <Loader2 v-if="chapterProgressSummary?.nextChapter?.id && openingChapterId === chapterProgressSummary.nextChapter.id" class="h-4 w-4 animate-spin" />
+                  {{ t('projectOverview.continueWriting') }}
+                </span>
                 <ArrowRight class="h-4 w-4" />
               </UiButton>
-              <UiButton variant="outline" class="w-full justify-between" @click="activeSection = 'story'">
+              <UiButton variant="outline" class="w-full justify-between" @click="setActiveSection('story')">
                 <span>{{ t('projectOverview.editStoryBible') }}</span>
                 <BookMarked class="h-4 w-4" />
               </UiButton>
-              <UiButton variant="outline" class="w-full justify-between" @click="activeSection = 'chapters'">
+              <UiButton variant="outline" class="w-full justify-between" @click="setActiveSection('chapters')">
                 <span>{{ t('projectOverview.planChapters') }}</span>
                 <FilePenLine class="h-4 w-4" />
               </UiButton>

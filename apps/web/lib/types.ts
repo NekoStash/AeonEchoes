@@ -122,6 +122,38 @@ export interface Project {
   updated_at: string
 }
 
+export type ChapterStatus = 'planned' | 'drafting' | 'reviewing' | 'locked' | string
+
+export interface StoryBibleChapter {
+  id: string
+  title: string
+  status: ChapterStatus
+  summary: string
+}
+
+export interface Chapter extends StoryBibleChapter {
+  project_id: string
+  number: number
+  metadata?: Record<string, string>
+  created_at?: string
+  updated_at?: string
+}
+
+export interface EnsureChapterRequest {
+  chapter_id?: string
+  number?: number
+  title?: string
+  status?: ChapterStatus
+  summary?: string
+  metadata?: Record<string, string>
+}
+
+export interface EnsureChapterResponse {
+  chapter: Chapter
+  created: boolean
+  requested_chapter_id?: string
+}
+
 export interface StoryBible {
   id: string
   project_id: string
@@ -164,12 +196,7 @@ export interface StoryBible {
     payoff_hint: string
     status: 'planted' | 'active' | 'paid_off'
   }>
-  chapters: Array<{
-    id: string
-    title: string
-    status: 'planned' | 'drafting' | 'reviewing' | 'locked'
-    summary: string
-  }>
+  chapters: StoryBibleChapter[]
 }
 
 export interface ProjectSummary {
@@ -261,10 +288,10 @@ export interface PlotThread {
 
 export interface GraphExpandRequest {
   project_id: string
-  root: string
+  root?: string
   depth: number
-  timeline: number
-  filters: string[]
+  timeline?: number
+  filters?: string[]
   entity_ids?: string[]
 }
 
@@ -318,6 +345,27 @@ export interface IndexJob {
   scheduled_at?: string
   started_at?: string
   completed_at?: string
+}
+
+export type ToolTrace = string | {
+  tool?: string
+  name?: string
+  status?: string
+  chapter_id?: string
+  chapter_ids?: string[]
+  character_id?: string
+  character_ids?: string[]
+  entity_id?: string
+  entity_ids?: string[]
+  event_id?: string
+  event_ids?: string[]
+  timeline?: string | number
+  depth?: number
+  count?: number
+  message?: string
+  input?: Record<string, unknown>
+  output?: Record<string, unknown>
+  metadata?: Record<string, string | number | boolean | string[] | undefined>
 }
 
 export interface AIWorkflowStep {
@@ -415,6 +463,7 @@ export interface ContextPreviewResponse {
   estimated_tokens: number
   index_freshness: IndexFreshness
   model_resolution: ModelResolution
+  tool_trace?: ToolTrace[]
 }
 
 export interface SaveChapterVersionResponse {
@@ -456,13 +505,15 @@ export interface ContextPack {
     title: string
     summary: string
   }>
-  tool_trace?: string[]
+  tool_trace?: ToolTrace[]
   metadata?: Record<string, string>
   created_at: string
 }
 
 export interface ContextSelection {
   chapter_ids?: string[]
+  previous_chapter_count?: number
+  include_current_chapter?: boolean
   character_ids?: string[]
   character_names?: string[]
   include_world_rules?: boolean
@@ -496,6 +547,13 @@ export interface CharacterProfileResponse {
   characters: CharacterProfile[]
   workflow?: AIWorkflow
   model_resolution?: ModelResolution
+  tool_trace?: ToolTrace[]
+  mappings?: Array<{
+    local_id?: string
+    name: string
+    entity_id: string
+    action?: string
+  }>
 }
 
 export interface CharacterSyncRequest {
@@ -562,6 +620,7 @@ export interface ChapterIdeaResponse {
   context_pack: ContextPack
   chapter_idea: string
   model_resolution: ModelResolution
+  tool_trace?: ToolTrace[]
 }
 
 export interface DraftWithIdeaRequest {
@@ -584,12 +643,14 @@ export interface DraftResultResponse {
   index_freshness: IndexFreshness
   model_resolution: ModelResolution
   continuity_audit: ContinuityAudit
+  tool_trace?: ToolTrace[]
 }
 
 export interface DraftWithIdeaResponse {
   chapter_idea: ChapterIdeaResponse
   draft: DraftResultResponse
   model_resolution?: ModelResolution
+  tool_trace?: ToolTrace[]
 }
 
 export interface AIDraftResponse {
@@ -602,4 +663,5 @@ export interface AIDraftResponse {
   index_freshness: IndexFreshness
   model_resolution: ModelResolution
   continuity_audit: ContinuityAudit
+  tool_trace?: ToolTrace[]
 }

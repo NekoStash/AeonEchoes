@@ -40,10 +40,46 @@ type StreamEvent struct {
 	Error    string         `json:"error,omitempty"`
 }
 
-// Message normalizes chat-style provider messages.
+// Message normalizes chat-style provider messages, including assistant tool calls and
+// tool result history needed by provider-neutral tool-call loops.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content,omitempty"`
+	Name       string     `json:"name,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+}
+
+// MessageContent returns a text representation for providers that do not expose
+// native tool-result history in the current adapter. Native adapters can still
+// inspect ToolCalls and ToolCallID directly without losing normalized history.
+func MessageContent(msg Message) string {
+	content := strings.TrimSpace(msg.Content)
+	role := strings.ToLower(strings.TrimSpace(msg.Role))
+	if role == "tool" {
+		label := strings.TrimSpace(msg.Name)
+		if label == "" {
+			label = "tool"
+		}
+		if strings.TrimSpace(msg.ToolCallID) != "" {
+			label += " call_id=" + strings.TrimSpace(msg.ToolCallID)
+		}
+		if content == "" {
+			content = "{}"
+		}
+		return fmt.Sprintf("Tool result for %s:\n%s", label, content)
+	}
+	if content != "" {
+		return content
+	}
+	if len(msg.ToolCalls) == 0 {
+		return ""
+	}
+	payload, err := json.Marshal(msg.ToolCalls)
+	if err != nil {
+		return ""
+	}
+	return "Assistant requested tool calls: " + string(payload)
 }
 
 // ToolSpec describes a callable tool to upstream providers.

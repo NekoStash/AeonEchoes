@@ -4,6 +4,7 @@ import type {
   CharacterProfileRequest,
   CharacterProfileResponse,
   CharacterSyncResponse,
+  Chapter,
   ChapterIdeaRequest,
   ChapterIdeaResponse,
   ContextPreviewRequest,
@@ -12,6 +13,8 @@ import type {
   DraftResultResponse,
   DraftWithIdeaRequest,
   DraftWithIdeaResponse,
+  EnsureChapterRequest,
+  EnsureChapterResponse,
   AIWorkflow,
   ApiErrorState,
   AppSetting,
@@ -25,6 +28,7 @@ import type {
   GraphExpansion,
   GraphNode,
   HealthStatus,
+  ToolTrace,
   IndexFreshness,
   IndexJob,
   InitializeProjectResponse,
@@ -157,7 +161,66 @@ type ModelSaveRequest = {
   metadata?: Record<string, string>
 }
 
-type RawDraftResponse = Omit<AIDraftResponse, 'content' | 'warnings' | 'context_pack' | 'index_freshness' | 'model_resolution' | 'continuity_audit'> & {
+type BackendProjectSeedRequest = {
+  title: string
+  premise: string
+  genre: string
+  tone: string
+  audience: string
+  language: string
+  setting: string
+  themes?: string[]
+  main_characters?: string[]
+  constraints?: string[]
+  target_chapters: number
+  metadata?: Record<string, string>
+}
+
+type BackendStoryBibleRequest = {
+  id: string
+  project_id: string
+  version: number
+  title: string
+  logline: string
+  synopsis: string
+  genre: string
+  tone: string
+  audience: string
+  language: string
+  themes?: string[]
+  rules?: Record<string, string>
+  worldline_ids?: string[]
+  entity_ids?: string[]
+  plot_thread_ids?: string[]
+  source_seed: BackendProjectSeedRequest
+  genesis_workflow_id?: string
+  approved: boolean
+}
+
+type BackendCharacterSyncRequest = {
+  story_bible_id?: string
+  characters: Array<{
+    name: string
+    role: string
+    desire: string
+    wound: string
+    secret?: string
+    summary?: string
+  }>
+}
+
+type BackendChapterVersionRequest = {
+  chapter_id: string
+  title: string
+  content: string
+  summary?: string
+  author_role: NonNullable<ChapterVersion['author_role']>
+  source_workflow_id?: string
+  index_status: string
+  metadata?: Record<string, string>
+}
+
+type RawDraftResponse = Omit<AIDraftResponse, 'content' | 'warnings' | 'context_pack' | 'index_freshness' | 'model_resolution' | 'continuity_audit' | 'tool_trace'> & {
   content?: string
   warnings?: string[]
   chapter_version?: ChapterVersion
@@ -166,6 +229,7 @@ type RawDraftResponse = Omit<AIDraftResponse, 'content' | 'warnings' | 'context_
   index_freshness: IndexFreshness
   model_resolution: ModelResolution
   continuity_audit: AIDraftResponse['continuity_audit']
+  tool_trace?: ToolTrace[]
 }
 
 export interface ApiClient {
@@ -189,6 +253,8 @@ export interface ApiClient {
   syncCharacters(projectId: string, bible: StoryBible): Promise<ApiResult<CharacterSyncResponse>>
   generateCharacterProfiles(request: CharacterProfileRequest): Promise<ApiResult<CharacterProfileResponse>>
   expandGraph(request: GraphExpandRequest): Promise<ApiResult<GraphExpandResponse>>
+  listChapters(projectId: string): Promise<ApiResult<Chapter[]>>
+  ensureChapter(projectId: string, request: EnsureChapterRequest): Promise<ApiResult<EnsureChapterResponse>>
   listChapterVersions(projectId: string, chapterId: string): Promise<ApiResult<ChapterVersion[]>>
   saveChapterVersion(projectId: string, version: Partial<ChapterVersion>): Promise<ApiResult<SaveChapterVersionResponse>>
   requestAIDraft(request: AIDraftRequest): Promise<ApiResult<AIDraftResponse>>
@@ -264,6 +330,10 @@ function getApiCopy(locale: LocaleCode): ApiCopy {
   }
 }
 
+function pathSegment(value: string): string {
+  return encodeURIComponent(value)
+}
+
 function buildQuery(query?: RequestOptions['query']) {
   if (!query) return ''
   const search = new URLSearchParams()
@@ -290,13 +360,13 @@ function createErrorState(endpoint: string, cause: unknown): ApiErrorState {
   }
 }
 
-function projectSeedToBackend(seed: ProjectSeed, copy: ApiCopy) {
+function projectSeedToBackend(seed: ProjectSeed, copy: ApiCopy): BackendProjectSeedRequest {
   const constraints = [seed.central_conflict, seed.taboos, ...(seed.constraints || [])]
     .map((item) => item.trim())
     .filter(Boolean)
-  const mainCharacters = [seed.protagonist, ...(seed.main_characters || [])]
+  const mainCharacters = Array.from(new Set([seed.protagonist, ...(seed.main_characters || [])]
     .map((item) => item.trim())
-    .filter(Boolean)
+    .filter(Boolean)))
 
   return {
     title: seed.title || seed.one_sentence_core.slice(0, 32) || copy.untitledProject,
@@ -457,6 +527,10 @@ function normalizeIndexFreshness(indexFreshness: IndexFreshness): IndexFreshness
   }
 }
 
+function normalizeToolTrace(trace?: ToolTrace[]): ToolTrace[] {
+  return Array.isArray(trace) ? trace : []
+}
+
 function normalizeContextPack(contextPack: ContextPack): ContextPack {
   return {
     ...contextPack,
@@ -466,7 +540,7 @@ function normalizeContextPack(contextPack: ContextPack): ContextPack {
     edges: contextPack.edges || [],
     plot_threads: contextPack.plot_threads || [],
     chapter_summaries: contextPack.chapter_summaries || [],
-    tool_trace: contextPack.tool_trace || [],
+    tool_trace: normalizeToolTrace(contextPack.tool_trace),
     metadata: contextPack.metadata || {}
   }
 }
@@ -505,7 +579,7 @@ function normalizeWorkflow(workflow: AIWorkflow): AIWorkflow {
   }
 }
 
-function storyBibleToBackend(bible: StoryBible) {
+function storyBibleToBackend(bible: StoryBible): BackendStoryBibleRequest {
   const worldRules = (bible.world_rules || []).map((rule) => rule.trim()).filter(Boolean)
   const characters = (bible.characters || []).map((character) => ({
     ...character,
@@ -551,7 +625,7 @@ function storyBibleToBackend(bible: StoryBible) {
     items[`rule_${index + 1}`] = rule
     return items
   }, {})
-  const sanitizedSourceSeed = {
+  const sanitizedSourceSeed: BackendProjectSeedRequest = {
     title: sourceSeed?.title || bible.title || '',
     premise: bible.premise,
     genre: bible.genre || sourceSeed?.genre || '',
@@ -608,7 +682,7 @@ function normalizeStoryBible(bible: StoryBible, copy: ApiCopy): StoryBible {
     status: index === 0 ? ('drafting' as const) : ('planned' as const),
     summary: index === 0 ? bible.logline || bible.premise || copy.defaultChapterSummary : copy.plannedChapterSummary
   }))
-  const mainCharacters = sourceSeed?.main_characters?.length ? sourceSeed.main_characters : [sourceSeed?.metadata?.protagonist || sourceSeed?.main_characters?.[0]].filter(Boolean) as string[]
+  const mainCharacters = sourceSeed?.main_characters?.map((name) => name.trim()).filter(Boolean) || []
   const fallbackWorldRules = Object.values(rules)
   const fallbackCharacters = mainCharacters.map((name, index) => ({
     id: `character-${index + 1}`,
@@ -645,6 +719,28 @@ function normalizeProject(project: Project): ProjectSummary {
     updated_at: project.updated_at,
     bible_status: project.active_story_bible_id ? 'draft' : 'missing',
     chapter_count: project.seed?.target_chapters || 0
+  }
+}
+
+function normalizeChapter(chapter: Chapter, index: number): Chapter {
+  return {
+    ...chapter,
+    id: chapter.id || `chapter-${chapter.number || index + 1}`,
+    project_id: chapter.project_id || '',
+    number: Number(chapter.number || index + 1),
+    title: chapter.title || '',
+    status: chapter.status || 'planned',
+    summary: chapter.summary || chapter.metadata?.summary || '',
+    metadata: chapter.metadata || {}
+  }
+}
+
+function normalizeEnsureChapterResponse(response: EnsureChapterResponse | Chapter): EnsureChapterResponse {
+  const chapter = 'chapter' in response ? response.chapter : response
+  return {
+    ...('chapter' in response ? response : {}),
+    chapter: normalizeChapter(chapter, Math.max(Number(chapter?.number || 1) - 1, 0)),
+    created: 'created' in response ? Boolean(response.created) : false
   }
 }
 
@@ -726,58 +822,85 @@ function summarizeContextPreview(contextPack: ContextPack, summary: string): Con
 
 function normalizeContextPreviewResponse(response: ContextPreviewResponse): ContextPreviewResponse {
   const contextPack = normalizeContextPack(response.context_pack)
+  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : contextPack.tool_trace)
   return {
     ...response,
-    context_pack: contextPack,
+    context_pack: {
+      ...contextPack,
+      tool_trace: toolTrace
+    },
     summary: summarizeContextPreview(contextPack, response.summary),
     estimated_tokens: Number(response.estimated_tokens || 0),
     index_freshness: normalizeIndexFreshness(response.index_freshness),
-    model_resolution: normalizeModelResolution(response.model_resolution)
+    model_resolution: normalizeModelResolution(response.model_resolution),
+    tool_trace: toolTrace
   }
 }
 
 function normalizeChapterIdeaResponse(response: ChapterIdeaResponse): ChapterIdeaResponse {
+  const contextPack = normalizeContextPack(response.context_pack)
+  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : contextPack.tool_trace)
   return {
     ...response,
     workflow: normalizeWorkflow(response.workflow),
-    context_pack: normalizeContextPack(response.context_pack),
-    model_resolution: normalizeModelResolution(response.model_resolution)
+    context_pack: {
+      ...contextPack,
+      tool_trace: toolTrace
+    },
+    model_resolution: normalizeModelResolution(response.model_resolution),
+    tool_trace: toolTrace
   }
 }
 
 function normalizeDraftResultResponse(response: DraftResultResponse, copy: ApiCopy): DraftResultResponse {
+  const contextPack = normalizeContextPack(response.context_pack)
+  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : contextPack.tool_trace)
   return {
     ...response,
     workflow: normalizeWorkflow(response.workflow),
-    context_pack: normalizeContextPack(response.context_pack),
+    context_pack: {
+      ...contextPack,
+      tool_trace: toolTrace
+    },
     chapter_version: normalizeChapterVersion(response.chapter_version, copy),
     index_freshness: normalizeIndexFreshness(response.index_freshness),
     model_resolution: normalizeModelResolution(response.model_resolution),
-    continuity_audit: normalizeContinuityAudit(response.continuity_audit)
+    continuity_audit: normalizeContinuityAudit(response.continuity_audit),
+    tool_trace: toolTrace
   }
 }
 
 function normalizeDraftWithIdeaResponse(response: DraftWithIdeaResponse, copy: ApiCopy): DraftWithIdeaResponse {
+  const chapterIdea = normalizeChapterIdeaResponse(response.chapter_idea)
+  const draft = normalizeDraftResultResponse(response.draft, copy)
+  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : [...(chapterIdea.tool_trace || []), ...(draft.tool_trace || [])])
   return {
-    chapter_idea: normalizeChapterIdeaResponse(response.chapter_idea),
-    draft: normalizeDraftResultResponse(response.draft, copy),
-    model_resolution: response.model_resolution ? normalizeModelResolution(response.model_resolution) : undefined
+    chapter_idea: chapterIdea,
+    draft,
+    model_resolution: response.model_resolution ? normalizeModelResolution(response.model_resolution) : undefined,
+    tool_trace: toolTrace
   }
 }
 
 function normalizeDraftResponse(response: RawDraftResponse, copy: ApiCopy): AIDraftResponse {
   const chapterVersion = response.chapter_version ? normalizeChapterVersion(response.chapter_version, copy) : undefined
+  const contextPack = normalizeContextPack(response.context_pack)
+  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : contextPack.tool_trace)
   return {
     ...response,
     workflow: normalizeWorkflow(response.workflow),
-    context_pack: normalizeContextPack(response.context_pack),
+    context_pack: {
+      ...contextPack,
+      tool_trace: toolTrace
+    },
     chapter_version: chapterVersion,
     content: response.content || chapterVersion?.content || '',
     warnings: response.warnings || [],
     index_job: response.index_job,
     index_freshness: normalizeIndexFreshness(response.index_freshness),
     model_resolution: normalizeModelResolution(response.model_resolution),
-    continuity_audit: normalizeContinuityAudit(response.continuity_audit)
+    continuity_audit: normalizeContinuityAudit(response.continuity_audit),
+    tool_trace: toolTrace
   }
 }
 
@@ -791,6 +914,15 @@ function normalizeSaveChapterVersionResponse(response: SaveChapterVersionRespons
 
 function selectionCharacterLabels(selection?: ContextSelection) {
   return selection?.character_names?.length ? selection.character_names : selection?.character_ids || []
+}
+
+function isSyncableCharacter(character: StoryBible['characters'][number]) {
+  return Boolean(
+    character.name.trim()
+    && character.role.trim()
+    && character.desire.trim()
+    && character.wound.trim()
+  )
 }
 
 function requestWithContextSelection<T extends { selection?: ContextSelection }>(request: T) {
@@ -887,29 +1019,29 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     saveProvider(provider, mode) {
       const request = providerToBackend(provider)
       const isExisting = mode === 'edit' || (!mode && Boolean(provider.id && provider.created_at))
-      const endpoint = isExisting ? `/providers/${encodeURIComponent(request.id || provider.id.trim())}` : '/providers'
+      const endpoint = isExisting ? `/providers/${pathSegment(request.id || provider.id.trim())}` : '/providers'
       const method = isExisting ? 'PUT' : 'POST'
       return requestMapped<ProviderConfig, ProviderConfig>(baseUrl, endpoint, { method, body: request }, normalizeProvider)
     },
     deleteProvider(id) {
-      return requestResult<ProviderDeleteResponse>(baseUrl, `/providers/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      return requestResult<ProviderDeleteResponse>(baseUrl, `/providers/${pathSegment(id)}`, { method: 'DELETE' })
     },
     listModels(kind) {
       return requestMapped<ModelConfig[], ModelConfig[]>(baseUrl, '/models', { query: { kind } }, (items) => items.map(normalizeModel))
     },
     saveModel(model) {
       const isExisting = Boolean(model.id && model.created_at)
-      const endpoint = isExisting ? `/models/${encodeURIComponent(model.id)}` : '/models'
+      const endpoint = isExisting ? `/models/${pathSegment(model.id)}` : '/models'
       const method = isExisting ? 'PUT' : 'POST'
       return requestMapped<ModelConfig, ModelConfig>(baseUrl, endpoint, { method, body: modelToBackend(model) }, normalizeModel)
     },
     deleteModel(id) {
-      return requestResult<{ status: string }>(baseUrl, `/models/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      return requestResult<{ status: string }>(baseUrl, `/models/${pathSegment(id)}`, { method: 'DELETE' })
     },
     refreshModels(providerId) {
       return requestMapped<RefreshModelsResponse, ModelConfig[]>(
         baseUrl,
-        `/providers/${encodeURIComponent(providerId)}/refresh-models`,
+        `/providers/${pathSegment(providerId)}/refresh-models`,
         { method: 'POST' },
         (response) => response.models.map(normalizeModel)
       )
@@ -918,7 +1050,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       return requestResult<AppSetting[]>(baseUrl, '/settings', { query: { scope } })
     },
     saveSetting(setting) {
-      return requestResult<AppSetting>(baseUrl, `/settings/${encodeURIComponent(setting.scope)}/${encodeURIComponent(setting.key)}`, {
+      return requestResult<AppSetting>(baseUrl, `/settings/${pathSegment(setting.scope)}/${pathSegment(setting.key)}`, {
         method: 'PUT',
         body: setting
       })
@@ -932,7 +1064,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     },
     async saveModelUsageSettings(settings) {
       const savedSettings = await Promise.all(
-        modelUsageKeys.map((key) => requestJson<AppSetting>(baseUrl, `/settings/${encodeURIComponent(MODEL_ROUTING_SCOPE)}/${encodeURIComponent(key)}`, {
+        modelUsageKeys.map((key) => requestJson<AppSetting>(baseUrl, `/settings/${pathSegment(MODEL_ROUTING_SCOPE)}/${pathSegment(key)}`, {
           method: 'PUT',
           body: { scope: MODEL_ROUTING_SCOPE, key, value: { [MODEL_ROUTING_VALUE_KEY]: settings[key].trim() } }
         }))
@@ -966,36 +1098,51 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       )
     },
     getStoryBible(projectId) {
-      return requestMapped<StoryBible, StoryBible>(baseUrl, `/projects/${projectId}/story-bible`, {}, (storyBible) => normalizeStoryBible(storyBible, copy))
+      return requestMapped<StoryBible, StoryBible>(baseUrl, `/projects/${pathSegment(projectId)}/story-bible`, {}, (storyBible) => normalizeStoryBible(storyBible, copy))
     },
     updateStoryBible(projectId, bible) {
       return requestMapped<StoryBible, StoryBible>(
         baseUrl,
-        `/projects/${projectId}/story-bible`,
+        `/projects/${pathSegment(projectId)}/story-bible`,
         { method: 'PUT', body: storyBibleToBackend(bible) },
         (storyBible) => normalizeStoryBible(storyBible, copy)
       )
     },
     syncCharacters(projectId, bible) {
-      const characters = (bible.characters || [])
-        .map((character) => ({
-          name: character.name.trim(),
-          role: character.role.trim(),
-          desire: character.desire.trim(),
-          wound: character.wound.trim(),
-          secret: character.secret?.trim(),
-          summary: character.summary?.trim()
-        }))
-        .filter((character) => character.name)
+      const characters: BackendCharacterSyncRequest['characters'] = (bible.characters || [])
+        .filter(isSyncableCharacter)
+        .map((character) => {
+          const secret = character.secret?.trim()
+          const summary = character.summary?.trim()
+          return {
+            name: character.name.trim(),
+            role: character.role.trim(),
+            desire: character.desire.trim(),
+            wound: character.wound.trim(),
+            ...(secret ? { secret } : {}),
+            ...(summary ? { summary } : {})
+          }
+        })
+      if (characters.length === 0) {
+        return Promise.resolve({
+          data: {
+            project_id: projectId,
+            story_bible_id: bible.id || '',
+            characters: [],
+            mappings: []
+          }
+        })
+      }
+      const body: BackendCharacterSyncRequest = {
+        story_bible_id: bible.id || undefined,
+        characters
+      }
       return requestResult<CharacterSyncResponse>(
         baseUrl,
-        `/projects/${encodeURIComponent(projectId)}/characters/sync`,
+        `/projects/${pathSegment(projectId)}/characters/sync`,
         {
           method: 'POST',
-          body: {
-            story_bible_id: bible.id || undefined,
-            characters
-          }
+          body
         }
       )
     },
@@ -1011,29 +1158,47 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
         normalizeGraphExpansion
       )
     },
+    listChapters(projectId) {
+      return requestMapped<Chapter[], Chapter[]>(
+        baseUrl,
+        `/projects/${pathSegment(projectId)}/chapters`,
+        {},
+        (items) => items.map(normalizeChapter)
+      )
+    },
+    ensureChapter(projectId, request) {
+      return requestMapped<EnsureChapterResponse, EnsureChapterResponse>(
+        baseUrl,
+        `/projects/${pathSegment(projectId)}/chapters/ensure`,
+        { method: 'POST', body: request },
+        normalizeEnsureChapterResponse
+      )
+    },
     listChapterVersions(projectId, chapterId) {
       return requestMapped<ChapterVersion[], ChapterVersion[]>(
         baseUrl,
-        `/projects/${projectId}/chapter-versions`,
+        `/projects/${pathSegment(projectId)}/chapter-versions`,
         { query: { chapter_id: chapterId } },
         (items) => items.map((item) => normalizeChapterVersion(item, copy))
       )
     },
     saveChapterVersion(projectId, version) {
+      const body: BackendChapterVersionRequest = {
+        chapter_id: version.chapter_id || '',
+        title: version.title || '',
+        content: version.content || '',
+        summary: version.summary,
+        author_role: version.author_role || 'editor',
+        source_workflow_id: version.source_workflow_id,
+        index_status: version.index_status || 'pending',
+        metadata: version.metadata
+      }
       return requestMapped<SaveChapterVersionResponse, SaveChapterVersionResponse>(
         baseUrl,
-        `/projects/${projectId}/chapter-versions`,
+        `/projects/${pathSegment(projectId)}/chapter-versions`,
         {
           method: 'POST',
-          body: {
-            chapter_id: version.chapter_id,
-            title: version.title,
-            content: version.content,
-            summary: version.summary,
-            author_role: version.author_role || 'editor',
-            index_status: version.index_status || 'pending',
-            metadata: version.metadata
-          }
+          body
         },
         (response) => normalizeSaveChapterVersionResponse(response, copy)
       )
@@ -1099,7 +1264,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       return requestResult<IndexJob[]>(baseUrl, '/index/jobs', { query: { project_id: projectId } })
     },
     runIndexJob(id) {
-      return requestResult<IndexJob>(baseUrl, `/index/jobs/${id}/run`, { method: 'POST' })
+      return requestResult<IndexJob>(baseUrl, `/index/jobs/${pathSegment(id)}/run`, { method: 'POST' })
     },
     runPendingIndexJobs(projectId, limit = 10) {
       return requestResult<RunPendingIndexResponse>(baseUrl, '/index/run-pending', { method: 'POST', query: { project_id: projectId, limit } })

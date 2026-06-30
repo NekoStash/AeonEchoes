@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   DatabaseZap,
   Info,
+  Loader2,
   Pencil,
   PlugZap,
   Plus,
@@ -58,8 +59,10 @@ const providerSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const modelSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const settingsSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const maintenanceState = ref<'idle' | 'running' | 'saved' | 'failed'>('idle')
+const maintenanceAction = ref<'rebuild' | 'pending' | ''>('')
 const providerMode = ref<'create' | 'edit'>('create')
 const modelMode = ref<'create' | 'edit'>('create')
+const modelFormAnchor = ref<HTMLElement | null>(null)
 
 const usageSettings = reactive<ModelUsageSettings>({
   writer: '',
@@ -124,7 +127,8 @@ const modelSelectionOptions = computed(() => {
       label: modelFriendlyLabel(model),
       description: modelOptionDescription(model),
       value: modelQualifiedId(model),
-      disabled: !model.enabled
+      disabled: !model.enabled,
+      disabledReason: !model.enabled ? t('models.disabledModelReason') : undefined
     }))
   ]
   const knownValues = new Set(options.map((option) => option.value))
@@ -291,13 +295,24 @@ async function refreshModels() {
   await workspace.refreshModels(selectedProviderId.value)
 }
 
+async function focusModelForm() {
+  await nextTick()
+  modelFormAnchor.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  modelFormAnchor.value?.focus({ preventScroll: true })
+}
+
 function resetModelForm(providerId = selectedProviderId.value || modelFilterProviderId.value || providers.value[0]?.id || '') {
   Object.assign(modelForm, createModelDraft(providerId))
   modelMode.value = 'create'
   modelSaveState.value = 'idle'
 }
 
-function editModel(model: ModelConfig) {
+async function startNewModel(providerId = selectedProviderId.value || modelFilterProviderId.value || providers.value[0]?.id || '') {
+  resetModelForm(providerId)
+  await focusModelForm()
+}
+
+async function editModel(model: ModelConfig) {
   Object.assign(modelForm, {
     id: model.id,
     provider_id: model.provider_id,
@@ -319,6 +334,7 @@ function editModel(model: ModelConfig) {
   modelFilterProviderId.value = model.provider_id
   modelMode.value = 'edit'
   modelSaveState.value = 'idle'
+  await focusModelForm()
 }
 
 function deleteEditingModel() {
@@ -421,6 +437,7 @@ async function saveModelUsageSettings() {
 
 async function rebuildVectors() {
   maintenanceState.value = 'running'
+  maintenanceAction.value = 'rebuild'
   try {
     const result = await api.rebuildVectors()
     workspace.recordResult(t('models.resultScopes.rebuildVectors'), result)
@@ -434,6 +451,7 @@ async function rebuildVectors() {
 
 async function runPendingIndexMaintenance() {
   maintenanceState.value = 'running'
+  maintenanceAction.value = 'pending'
   try {
     const result = await workspace.runPendingIndexJobs(undefined, 20)
     workspace.recordResult(t('models.resultScopes.runPendingIndex'), result)
@@ -584,6 +602,10 @@ function apiKeyConfigurationLabel() {
   if (keyHint) return t('models.apiKeySavedUnverified', { hint: keyHint })
   if (envName) return t('models.apiKeyEnvConfiguredUnverified', { env: envName })
   return t('models.noApiKeyHint')
+}
+
+function isEditingModel(model: ModelConfig) {
+  return modelMode.value === 'edit' && modelForm.id === model.id
 }
 
 function modelFeatureSummary(model: ModelConfig) {
@@ -824,7 +846,7 @@ function formatInteger(value?: number) {
             :empty-text="t('models.search.empty')"
             class="w-full sm:min-w-[240px]"
           />
-          <UiButton variant="outline" class="w-full sm:w-auto" @click="resetModelForm()">
+          <UiButton variant="outline" class="w-full sm:w-auto" @click="startNewModel()">
             <Plus class="h-4 w-4" />
             {{ t('models.newModel') }}
           </UiButton>
@@ -832,7 +854,7 @@ function formatInteger(value?: number) {
       </div>
 
       <div class="mt-6 grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)] 2xl:grid-cols-[400px_minmax(0,1fr)]">
-        <div class="space-y-6">
+        <div ref="modelFormAnchor" tabindex="-1" class="space-y-6 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
           <div class="rounded-2xl border border-border bg-muted/25 p-4">
             <div class="flex items-start gap-3">
               <Info class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -921,7 +943,7 @@ function formatInteger(value?: number) {
               <Save class="h-4 w-4" />
               {{ modelSaveState === 'saving' ? t('actions.saving') : t('models.saveModel') }}
             </UiButton>
-            <UiButton variant="outline" class="w-full sm:w-auto" @click="resetModelForm()">
+            <UiButton variant="outline" class="w-full sm:w-auto" @click="startNewModel()">
               <Plus class="h-4 w-4" />
               {{ t('models.newModel') }}
             </UiButton>
@@ -947,7 +969,16 @@ function formatInteger(value?: number) {
             {{ t('models.emptyModels') }}
           </div>
           <div v-else class="grid gap-4 lg:grid-cols-2">
-            <div v-for="model in visibleModels" :key="model.id" class="min-w-0 rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <div
+              v-for="model in visibleModels"
+              :key="model.id"
+              :class="[
+                'min-w-0 rounded-2xl border p-4 transition-all sm:p-5',
+                isEditingModel(model)
+                  ? 'border-primary/45 bg-primary/10 shadow-sm shadow-primary/10'
+                  : 'border-border bg-card'
+              ]"
+            >
               <div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
                 <div class="min-w-0 flex-1">
                   <h3 class="break-words font-semibold" :title="model.display_name || model.name">{{ model.display_name || model.name }}</h3>
@@ -955,7 +986,10 @@ function formatInteger(value?: number) {
                   <p class="mt-1 break-words text-xs text-muted-foreground" :title="model.name">{{ t('models.upstreamModelId') }}: <span class="font-mono text-[11px]">{{ model.name }}</span></p>
                   <p class="mt-1 break-words text-xs text-muted-foreground" :title="modelQualifiedId(model)">{{ t('models.storedValue') }}: <span class="font-mono text-[11px]">{{ modelQualifiedId(model) }}</span></p>
                 </div>
-                <UiBadge class="shrink-0" :variant="model.enabled ? 'success' : 'muted'">{{ enabledLabel(model.enabled) }}</UiBadge>
+                <div class="flex shrink-0 flex-wrap justify-end gap-2">
+                  <UiBadge v-if="isEditingModel(model)" variant="violet">{{ t('models.editingBadge') }}</UiBadge>
+                  <UiBadge :variant="model.enabled ? 'success' : 'muted'">{{ enabledLabel(model.enabled) }}</UiBadge>
+                </div>
               </div>
 
               <div class="mt-4 grid grid-cols-2 gap-3 text-sm xl:grid-cols-4">
@@ -1083,9 +1117,13 @@ function formatInteger(value?: number) {
             <p class="text-sm font-medium text-foreground">{{ t('models.rebuildVectorsTitle') }}</p>
             <p class="mt-1 text-sm text-muted-foreground">{{ t('models.rebuildVectorsDescription') }}</p>
             <UiButton class="mt-4 w-full" :disabled="maintenanceLoading" @click="rebuildVectors">
-              <DatabaseZap class="h-4 w-4" />
-              {{ t('models.rebuildVectorsAction') }}
+              <Loader2 v-if="maintenanceState === 'running' && maintenanceAction === 'rebuild'" class="h-4 w-4 animate-spin" />
+              <DatabaseZap v-else class="h-4 w-4" />
+              {{ maintenanceState === 'running' && maintenanceAction === 'rebuild' ? t('models.maintenance.rebuildRunning') : t('models.rebuildVectorsAction') }}
             </UiButton>
+            <p v-if="maintenanceAction === 'rebuild' && maintenanceState !== 'idle'" class="mt-3 text-sm text-muted-foreground">
+              {{ t(`models.maintenance.${maintenanceState}`) }}
+            </p>
           </div>
 
           <div class="mt-4 rounded-2xl border border-border bg-background p-4">
@@ -1099,9 +1137,12 @@ function formatInteger(value?: number) {
               <UiBadge variant="rose">{{ t('models.indexJobsFailed', { count: indexJobSummary.failed }) }}</UiBadge>
             </div>
             <UiButton variant="archive" class="mt-4 w-full" :disabled="maintenanceLoading" @click="runPendingIndexMaintenance">
-              <RefreshCw :class="['h-4 w-4', maintenanceLoading && 'animate-spin']" />
-              {{ t('models.runPendingIndex') }}
+              <RefreshCw :class="['h-4 w-4', maintenanceState === 'running' && maintenanceAction === 'pending' && 'animate-spin']" />
+              {{ maintenanceState === 'running' && maintenanceAction === 'pending' ? t('models.maintenance.pendingRunning') : t('models.runPendingIndex') }}
             </UiButton>
+            <p v-if="maintenanceAction === 'pending' && maintenanceState !== 'idle'" class="mt-3 text-sm text-muted-foreground">
+              {{ t(`models.maintenance.${maintenanceState}`) }}
+            </p>
           </div>
 
           <div class="mt-4 flex flex-wrap items-center gap-3">

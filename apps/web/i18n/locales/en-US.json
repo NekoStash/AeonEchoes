@@ -318,7 +318,8 @@
     "resultScopes": {
       "storyBibleSave": "Story Bible save",
       "characterSync": "Character sync",
-      "characterGeneration": "Character generation"
+      "characterGeneration": "Character generation",
+      "chapterEnsure": "Chapter ensure"
     },
     "characterSync": {
       "syncing": "Syncing characters",
@@ -447,6 +448,8 @@
     "currentStoredValue": "Current stored value",
     "providerModelBreakdown": "{text} text / {embedding} embedding",
     "unknownModel": "Not found in current model list",
+    "disabledModelReason": "This model is disabled and cannot be used as an explicit route.",
+    "editingBadge": "Editing",
     "confirmDeleteModel": "Delete model “{name}”?",
     "confirmDeleteProvider": "Delete provider “{name}”? Associated models will also be removed.",
     "defaults": {
@@ -590,6 +593,13 @@
     "indexJobsRunning": "Running {count}",
     "indexJobsCompleted": "Completed {count}",
     "indexJobsFailed": "Failed {count}",
+    "maintenance": {
+      "rebuildRunning": "Rebuilding vector set",
+      "pendingRunning": "Running pending index jobs",
+      "running": "Maintenance is running. Please wait.",
+      "saved": "Maintenance completed.",
+      "failed": "Maintenance failed. Check the error details."
+    },
     "resultScopes": {
       "providerSave": "Provider save",
       "providerDelete": "Provider delete",
@@ -648,6 +658,7 @@
     "referenceFocusLabels": {
       "chapterPlan": "Current chapter plan",
       "chapterSummary": "Current chapter summary",
+      "previousChapters": "Previous {count} chapters",
       "worldRules": "World rules"
     },
     "referenceFocusOptions": {
@@ -662,6 +673,10 @@
       "worldRules": {
         "label": "World rules",
         "description": "Explicitly require this request to prioritize world rules."
+      },
+      "previousChapters": {
+        "label": "Reference previous N chapters",
+        "description": "Select the N chapters before the current chapter in chapter order and include them in selection.chapter_ids."
       },
       "characters": {
         "label": "Characters",
@@ -679,6 +694,7 @@
     "selectionBrief": {
       "chapterPlan": "Focused chapter plan:\n{content}",
       "chapterSummary": "Focused chapter summary: {content}",
+      "previousChapters": "Focused previous chapters: {content}",
       "worldRules": "Focused world rules: {content}",
       "characters": "Focused characters: {content}",
       "autoCharacters": "Chapter focus characters: {content}",
@@ -702,7 +718,32 @@
       "wound": "wound: {value}",
       "secret": "secret: {value}"
     },
-    "invalidChapterLabel": "Invalid chapter {id}; using {fallback}",
+    "invalidChapterLabel": "Target chapter {id} is not created yet",
+    "invalidChapterNotice": "Chapter {id} is not in the current chapter list. Generate or save to auto-create it and switch to the real chapter ID.",
+    "chapterFallbackTitle": "Chapter {number}",
+    "chapterOptionDescription": "Chapter {number} · {status}",
+    "chapterSelector": {
+      "label": "Current chapter",
+      "placeholder": "Choose chapter",
+      "empty": "No chapters available"
+    },
+    "previousChapters": {
+      "empty": "Do not reference previous chapters"
+    },
+    "toolTrace": {
+      "title": "Tool trace",
+      "empty": "This response did not return tool_trace.",
+      "unknownTool": "Unknown tool",
+      "count": "{count} items",
+      "summary": "Chapters {chapters} · Characters {characters} · Events {events} · Timeline {timeline} · Other {other}",
+      "categories": {
+        "chapters": "Chapters",
+        "characters": "Characters / graph",
+        "events": "Events / facts",
+        "timeline": "Timeline",
+        "other": "Other"
+      }
+    },
     "workflowHintTitle": "Writing workflow",
     "workflowHintDescription": "Confirm the focused reference scope first, then generate a plan or continue prose. Index jobs are advanced by the backend in the background; this page only shows the real state.",
     "backgroundIndex": {
@@ -737,6 +778,12 @@
     "emptyVersions": "No chapter versions yet. Saved versions will appear here.",
     "versionLabel": "v{version} · {title}",
     "jobAttempts": "{id} · {count} attempts",
+    "feedback": {
+      "planReady": "Chapter plan updated",
+      "draftAppended": "Draft appended to content",
+      "versionSaved": "Chapter version saved",
+      "versionLoaded": "Loaded"
+    },
     "preview": {
       "eyebrow": "Context preview",
       "title": "Actual context hit",

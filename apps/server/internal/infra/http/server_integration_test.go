@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,7 +185,7 @@ func TestHandlerCharacterSyncUpsertsStoryBibleProfiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProject() error: %v", err)
 	}
-	existing, err := store.SaveEntity(domain.Entity{ProjectID: project.ID, Name: "林烬", Type: "character", Summary: "旧摘要", Traits: map[string]string{"role": "旧定位"}, Metadata: map[string]string{"kept": "true"}})
+	existing, err := store.SaveEntity(domain.Entity{ProjectID: project.ID, Name: "林烬", Type: "character", Summary: "旧摘要", Traits: map[string]string{"role": "旧定位", "secret": "旧秘密"}, Metadata: map[string]string{"kept": "true"}})
 	if err != nil {
 		t.Fatalf("SaveEntity(existing) error: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestHandlerCharacterSyncUpsertsStoryBibleProfiles(t *testing.T) {
 		"story_bible_id": bible.ID,
 		"source":         "story_bible_editor",
 		"characters": []map[string]any{
-			{"name": "林烬", "role": "主角", "desire": "找回失落舰队真相", "wound": "曾在撤离中放弃同伴", "secret": "携带舰队核心坐标", "summary": "背负旧债的远航者。"},
+			{"name": "林烬", "role": "主角", "desire": "找回失落舰队真相", "wound": "曾在撤离中放弃同伴", "summary": "背负旧债的远航者。"},
 			{"name": "苏九", "role": "主要配角", "desire": "破解灰塔钟声", "wound": "家族因灰塔蒙冤", "secret": "她能听懂钟声里的坐标"},
 		},
 	})
@@ -219,11 +220,20 @@ func TestHandlerCharacterSyncUpsertsStoryBibleProfiles(t *testing.T) {
 	if body.Mappings[0].EntityID != existing.ID || body.Mappings[0].Action != "updated" {
 		t.Fatalf("existing character was not updated by stable name: %+v", body.Mappings[0])
 	}
-	if body.Characters[0].Type != "character" || body.Characters[0].Traits["desire"] == "" || body.Characters[0].Traits["wound"] == "" || body.Characters[0].Traits["secret"] == "" {
+	if body.Characters[0].Type != "character" || body.Characters[0].Traits["desire"] == "" || body.Characters[0].Traits["wound"] == "" {
 		t.Fatalf("updated character missing canonical profile traits: %+v", body.Characters[0])
+	}
+	if _, ok := body.Characters[0].Traits["secret"]; ok {
+		t.Fatalf("updated character retained empty/old secret trait: %+v", body.Characters[0].Traits)
+	}
+	if strings.Contains(body.Characters[0].Summary, "秘密：") {
+		t.Fatalf("updated character summary contains empty secret segment: %q", body.Characters[0].Summary)
 	}
 	if body.Characters[0].Metadata["kept"] != "true" || body.Characters[0].Metadata["story_bible_id"] != bible.ID || body.Characters[0].Metadata["character_profile_json"] == "" {
 		t.Fatalf("updated character metadata was not preserved/enriched: %+v", body.Characters[0].Metadata)
+	}
+	if body.Characters[1].Traits["secret"] == "" || !strings.Contains(body.Characters[1].Summary, "秘密：") {
+		t.Fatalf("new character with secret missing secret trait/summary: %+v", body.Characters[1])
 	}
 	if body.Mappings[1].Action != "created" || body.Characters[1].ID == "" {
 		t.Fatalf("new character was not created: character=%+v mapping=%+v", body.Characters[1], body.Mappings[1])
@@ -243,10 +253,13 @@ func TestHandlerCharacterProfilesEndpointReturnsWorkflowContextAndCharacters(t *
 	})
 	assertStatus(t, response, http.StatusCreated)
 	var body struct {
-		Workflow        domain.AIWorkflow         `json:"workflow"`
-		ContextPack     domain.ContextPack        `json:"context_pack"`
-		Characters      []domain.CharacterProfile `json:"characters"`
-		ModelResolution domain.ModelResolution    `json:"model_resolution"`
+		Workflow        domain.AIWorkflow                `json:"workflow"`
+		ContextPack     domain.ContextPack               `json:"context_pack"`
+		Characters      []domain.CharacterProfile        `json:"characters"`
+		Entities        []domain.Entity                  `json:"entities"`
+		Mappings        []domain.CharacterProfileMapping `json:"mappings"`
+		ModelResolution domain.ModelResolution           `json:"model_resolution"`
+		ToolTrace       []string                         `json:"tool_trace"`
 	}
 	decodeJSON(t, response, &body)
 	if body.Workflow.Kind != "character_profiles" || body.Workflow.Role != domain.AgentRoleCharacterKeeper || body.Workflow.Status != "completed" {
@@ -258,8 +271,24 @@ func TestHandlerCharacterProfilesEndpointReturnsWorkflowContextAndCharacters(t *
 	if body.ModelResolution.ModelID == "" || body.ModelResolution.RouteKey != string(domain.AgentRoleCharacterKeeper) {
 		t.Fatalf("character profile model resolution missing: %+v", body.ModelResolution)
 	}
-	if len(body.Characters) != 1 || body.Characters[0].Name != "林烬" || body.Characters[0].Desire == "" || body.Characters[0].Wound == "" || body.Characters[0].Secret == "" {
+	if len(body.Characters) != 1 || body.Characters[0].Name != "林烬" || body.Characters[0].Role != "主角" || body.Characters[0].Desire == "" || body.Characters[0].Wound == "" || body.Characters[0].Secret == "" || body.Characters[0].Summary == "" {
 		t.Fatalf("character profile response missing complete profile: %+v", body.Characters)
+	}
+	if len(body.Entities) != 1 || body.Entities[0].ProjectID != projectID || body.Entities[0].Type != "character" || body.Entities[0].Name != "林烬" || body.Entities[0].Summary != body.Characters[0].Summary || body.Entities[0].Traits["secret"] != body.Characters[0].Secret {
+		t.Fatalf("character profile response missing saved entity: entities=%+v characters=%+v", body.Entities, body.Characters)
+	}
+	if len(body.Mappings) != 1 || body.Mappings[0].Name != "林烬" || body.Mappings[0].EntityID != body.Entities[0].ID || body.Mappings[0].Action == "" {
+		t.Fatalf("character profile response missing entity mapping: mappings=%+v entities=%+v", body.Mappings, body.Entities)
+	}
+	if len(body.ToolTrace) != 2 || !strings.Contains(strings.Join(body.ToolTrace, "\n"), "character.search") || !strings.Contains(strings.Join(body.ToolTrace, "\n"), "character.upsert") {
+		t.Fatalf("character profile response missing tool trace: %+v", body.ToolTrace)
+	}
+	savedEntities, err := store.ListEntities(projectID)
+	if err != nil {
+		t.Fatalf("ListEntities() error: %v", err)
+	}
+	if !containsEntityID(savedEntities, body.Mappings[0].EntityID) {
+		t.Fatalf("character profile entity was not persisted through tool call: id=%q entities=%+v", body.Mappings[0].EntityID, savedEntities)
 	}
 }
 
@@ -393,15 +422,15 @@ func newWorkflowBackedServerFixture(t *testing.T) (*memory.Store, *agent.Workflo
 	if err != nil {
 		t.Fatalf("CreateProvider(character) error: %v", err)
 	}
-	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_architect:architect-explicit", ProviderID: architectProvider.ID, Name: "architect-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 600, AllowedAgentRoles: []domain.AgentRole{domain.AgentRolePlotArchitect}})
+	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_architect:architect-explicit", ProviderID: architectProvider.ID, Name: "architect-explicit", Kind: domain.ModelKindText, Enabled: true, SupportsTools: true, MaxOutputTokens: 600, AllowedAgentRoles: []domain.AgentRole{domain.AgentRolePlotArchitect}})
 	if err != nil {
 		t.Fatalf("CreateModel(architect) error: %v", err)
 	}
-	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_writer:writer-explicit", ProviderID: writerProvider.ID, Name: "writer-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 1400, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleWriter}})
+	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_writer:writer-explicit", ProviderID: writerProvider.ID, Name: "writer-explicit", Kind: domain.ModelKindText, Enabled: true, SupportsTools: true, MaxOutputTokens: 1400, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleWriter}})
 	if err != nil {
 		t.Fatalf("CreateModel(writer) error: %v", err)
 	}
-	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_character:character-explicit", ProviderID: characterProvider.ID, Name: "character-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 900, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleCharacterKeeper}})
+	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_character:character-explicit", ProviderID: characterProvider.ID, Name: "character-explicit", Kind: domain.ModelKindText, Enabled: true, SupportsTools: true, MaxOutputTokens: 900, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleCharacterKeeper}})
 	if err != nil {
 		t.Fatalf("CreateModel(character) error: %v", err)
 	}
@@ -466,7 +495,21 @@ func newWorkflowBackedServerFixture(t *testing.T) (*memory.Store, *agent.Workflo
 
 func newCharacterProfileWorkflowForStore(t *testing.T, store *memory.Store) *agent.WorkflowRunner {
 	t.Helper()
-	textClient := &fakeTextClient{responses: []provider.ModelResponse{{Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`}}}
+	projects, err := store.ListProjects()
+	if err != nil {
+		t.Fatalf("ListProjects() error: %v", err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("ListProjects() len = %d, want 1", len(projects))
+	}
+	projectID := projects[0].ID
+	textClient := &fakeTextClient{responses: []provider.ModelResponse{
+		{ToolCalls: []provider.ToolCall{
+			{ID: "call-search-lin", Name: "character.search", Arguments: mustRawJSON(t, map[string]any{"project_id": projectID, "query": "林烬", "limit": 5})},
+			{ID: "call-upsert-lin", Name: "character.upsert", Arguments: mustRawJSON(t, map[string]any{"project_id": projectID, "name": "林烬", "summary": "背负旧债的远航者。", "traits": map[string]any{"role": "主角", "desire": "找回失落舰队真相", "wound": "曾在撤离中放弃同伴", "secret": "他携带舰队核心坐标"}, "metadata": map[string]any{"source": "ai_character_profiles"}})},
+		}},
+		{Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`},
+	}}
 	router := agent.NewModelRouter(store, agent.NewAgentRoleRegistry())
 	tools := agent.NewToolRuntime(store)
 	builder := agent.NewContextPackBuilder(store, tools, store)
@@ -544,4 +587,22 @@ func containsProject(projects []domain.Project, projectID string) bool {
 		}
 	}
 	return false
+}
+
+func containsEntityID(entities []domain.Entity, entityID string) bool {
+	for _, entity := range entities {
+		if entity.ID == entityID {
+			return true
+		}
+	}
+	return false
+}
+
+func mustRawJSON(t *testing.T, value any) json.RawMessage {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal raw json: %v", err)
+	}
+	return payload
 }

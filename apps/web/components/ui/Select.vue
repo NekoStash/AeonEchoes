@@ -7,6 +7,7 @@ export interface SelectOption {
   value: string
   description?: string
   disabled?: boolean
+  disabledReason?: string
 }
 
 const props = defineProps<{
@@ -44,6 +45,31 @@ function closeMenu() {
   searchQuery.value = ''
 }
 
+function toggleMenu() {
+  if (props.disabled) return
+  open.value = !open.value
+  if (!open.value) searchQuery.value = ''
+}
+
+function handleTriggerKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    open.value = true
+    return
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeMenu()
+  }
+}
+
+function handleSearchKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  event.preventDefault()
+  event.stopPropagation()
+  closeMenu()
+}
+
 function choose(option: SelectOption) {
   if (props.disabled || option.disabled) return
   emit('update:modelValue', option.value)
@@ -71,7 +97,8 @@ onBeforeUnmount(() => {
       :disabled="disabled"
       :aria-expanded="open"
       class="flex h-10 w-full items-center justify-between gap-3 rounded-xl border border-input bg-background px-3 py-2 text-left text-sm text-foreground shadow-sm transition-colors hover:border-primary/35 hover:bg-muted/45 focus:border-ring focus-ring disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70 dark:bg-muted/30 dark:hover:border-primary/45"
-      @click.stop="open = !open; if (!open) searchQuery = ''"
+      @click.stop="toggleMenu"
+      @keydown="handleTriggerKeydown"
     >
       <span :class="cn('truncate', !selectedOption && 'text-muted-foreground')">{{ displayLabel }}</span>
       <ChevronDown :class="cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180 text-foreground')" />
@@ -85,7 +112,11 @@ onBeforeUnmount(() => {
       leave-from-class="translate-y-0 opacity-100"
       leave-to-class="translate-y-1 opacity-0"
     >
-      <div v-if="open" class="absolute left-0 right-0 z-50 mt-2 max-h-72 min-w-0 overflow-auto rounded-xl border border-border bg-popover p-1 shadow-2xl shadow-black/25 subtle-scrollbar sm:min-w-full">
+      <div
+        v-if="open"
+        class="absolute left-0 right-0 z-50 mt-2 max-h-72 min-w-0 overflow-auto rounded-xl border border-border bg-popover p-1 shadow-2xl shadow-black/25 subtle-scrollbar sm:min-w-full"
+        @keydown.esc.prevent.stop="closeMenu"
+      >
         <div v-if="searchable" class="sticky top-0 z-10 bg-popover p-1">
           <div class="flex items-center gap-2 rounded-lg border border-input bg-background px-2 py-1.5 text-sm shadow-sm dark:bg-muted/30">
             <Search class="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -95,7 +126,7 @@ onBeforeUnmount(() => {
               :placeholder="searchPlaceholder"
               class="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
               @click.stop
-              @keydown.stop
+              @keydown="handleSearchKeydown"
             >
           </div>
         </div>
@@ -127,6 +158,7 @@ onBeforeUnmount(() => {
           <span class="min-w-0">
             <span class="block truncate">{{ option.label }}</span>
             <span v-if="option.description" class="mt-0.5 block truncate text-[11px] text-muted-foreground">{{ option.description }}</span>
+            <span v-if="option.disabled && option.disabledReason" class="mt-0.5 block truncate text-[11px] text-amber-700 dark:text-amber-200">{{ option.disabledReason }}</span>
           </span>
           <Check v-if="option.value === modelValue" class="h-4 w-4 shrink-0 text-primary" />
         </button>

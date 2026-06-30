@@ -47,10 +47,24 @@ const props = withDefaults(
     size: 'md'
   }
 )
+
+function handleDisabledLinkClick(event: MouseEvent) {
+  if (!props.disabled) return
+  event.preventDefault()
+  event.stopPropagation()
+}
 </script>
 
 <template>
-  <NuxtLink v-if="to" v-bind="$attrs" :to="to" :class="cn(buttonVariants({ variant, size }), props.class)">
+  <NuxtLink
+    v-if="to"
+    v-bind="$attrs"
+    :to="to"
+    :aria-disabled="disabled ? 'true' : undefined"
+    :tabindex="disabled ? -1 : undefined"
+    :class="cn(buttonVariants({ variant, size }), disabled && 'cursor-not-allowed opacity-50', props.class)"
+    @click.capture="handleDisabledLinkClick"
+  >
     <slot />
   </NuxtLink>
   <button v-else v-bind="$attrs" :type="type" :disabled="disabled" :class="cn(buttonVariants({ variant, size }), props.class)">

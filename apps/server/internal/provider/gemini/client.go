@@ -236,15 +236,15 @@ func geminiGenerateConfig(req provider.TextRequest) (*genai.GenerateContentConfi
 func geminiContents(req provider.TextRequest) []*genai.Content {
 	messages := make([]*genai.Content, 0, len(req.Messages)+1)
 	for _, msg := range req.Messages {
-		content := strings.TrimSpace(msg.Content)
-		if content == "" || strings.EqualFold(msg.Role, "system") || strings.EqualFold(msg.Role, "developer") {
+		content := provider.MessageContent(msg)
+		if strings.TrimSpace(content) == "" || strings.EqualFold(msg.Role, "system") || strings.EqualFold(msg.Role, "developer") {
 			continue
 		}
 		role := genai.Role(genai.RoleUser)
 		if strings.EqualFold(msg.Role, "assistant") || strings.EqualFold(msg.Role, "model") {
 			role = genai.Role(genai.RoleModel)
 		}
-		messages = append(messages, genai.NewContentFromText(msg.Content, role))
+		messages = append(messages, genai.NewContentFromText(content, role))
 	}
 	if strings.TrimSpace(req.UserPrompt) != "" {
 		messages = append(messages, genai.NewContentFromText(req.UserPrompt, genai.RoleUser))

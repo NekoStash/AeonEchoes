@@ -674,6 +674,118 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 	return domain.GraphExpansion{ProjectID: projectID, Depth: depth, Entities: entities, Edges: edges, Facts: facts}, nil
 }
 
+func (s *Store) EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error) {
+	projectID := strings.TrimSpace(req.ProjectID)
+	if projectID == "" {
+		return domain.Chapter{}, fmt.Errorf("chapter ensure project_id must not be empty")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.projects[projectID]; !ok {
+		return domain.Chapter{}, fmt.Errorf("project %q not found", projectID)
+	}
+	chapterID := strings.TrimSpace(req.ChapterID)
+	if chapterID != "" {
+		if existing, ok := s.chapters[chapterID]; ok {
+			if existing.ProjectID != projectID {
+				return domain.Chapter{}, fmt.Errorf("chapter %q belongs to project %q, not %q", chapterID, existing.ProjectID, projectID)
+			}
+			updated := mergeChapter(existing, req)
+			s.chapters[updated.ID] = updated
+			return updated, nil
+		}
+	}
+	if req.Number > 0 {
+		for _, existing := range s.chapters {
+			if existing.ProjectID == projectID && existing.Number == req.Number {
+				updated := mergeChapter(existing, req)
+				s.chapters[updated.ID] = updated
+				return updated, nil
+			}
+		}
+	}
+	if chapterID == "" {
+		chapterID = s.nextIDLocked("chapter")
+	}
+	n := now()
+	number := req.Number
+	if number <= 0 {
+		number = s.nextChapterNumberLocked(projectID)
+	}
+	chapter := domain.Chapter{ID: chapterID, ProjectID: projectID, Number: number, Title: strings.TrimSpace(req.Title), Status: strings.TrimSpace(req.Status), Metadata: copyStringMap(req.Metadata), CreatedAt: n, UpdatedAt: n}
+	if chapter.Status == "" {
+		chapter.Status = "draft"
+	}
+	s.chapters[chapter.ID] = chapter
+	return chapter, nil
+}
+
+func (s *Store) GetChapter(id string) (domain.Chapter, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return domain.Chapter{}, fmt.Errorf("chapter id must not be empty")
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	chapter, ok := s.chapters[id]
+	if !ok {
+		return domain.Chapter{}, fmt.Errorf("chapter %q not found", id)
+	}
+	return chapter, nil
+}
+
+func (s *Store) ListChapters(projectID string) ([]domain.Chapter, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return nil, fmt.Errorf("list chapters project_id must not be empty")
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	items := make([]domain.Chapter, 0)
+	for _, item := range s.chapters {
+		if item.ProjectID == projectID {
+			items = append(items, item)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Number == items[j].Number {
+			return items[i].ID < items[j].ID
+		}
+		return items[i].Number < items[j].Number
+	})
+	return items, nil
+}
+
+func mergeChapter(existing domain.Chapter, req domain.ChapterEnsureRequest) domain.Chapter {
+	updated := existing
+	if strings.TrimSpace(req.Title) != "" {
+		updated.Title = strings.TrimSpace(req.Title)
+	}
+	if strings.TrimSpace(req.Status) != "" {
+		updated.Status = strings.TrimSpace(req.Status)
+	}
+	if len(req.Metadata) > 0 {
+		metadata := copyStringMap(updated.Metadata)
+		for key, value := range req.Metadata {
+			metadata[key] = value
+		}
+		updated.Metadata = metadata
+	}
+	updated.UpdatedAt = now()
+	return updated
+}
+
+func copyStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	copied := make(map[string]string, len(values))
+	for key, value := range values {
+		copied[key] = value
+	}
+	return copied
+}
+
 func (s *Store) SaveChapterVersion(version domain.ChapterVersion) (domain.ChapterVersion, domain.IndexJob, error) {
 	if strings.TrimSpace(version.ProjectID) == "" {
 		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version project_id must not be empty")

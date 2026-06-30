@@ -11,7 +11,8 @@ import type {
   IndexFreshness,
   IndexJob,
   ModelResolution,
-  StoryBible
+  StoryBible,
+  ToolTrace
 } from '~/lib/types'
 import { cn, formatDateTime } from '~/lib/utils'
 
@@ -20,6 +21,7 @@ type ReferenceSelectionState = {
   include_chapter_plan: boolean
   include_chapter_summary: boolean
   include_world_rules: boolean
+  previous_chapter_count: number
   character_ids: string[]
 }
 
@@ -33,15 +35,10 @@ const routeChapterId = computed(() => {
   if (Array.isArray(value)) return String(value[0] || '')
   return String(value || '')
 })
-const chapterId = computed(() => {
-  const chapters = workspace.activeBible?.chapters || []
-  const firstChapter = chapters[0]
-  if (!firstChapter) return routeChapterId.value
-  if (routeChapterId.value && chapters.some((chapter) => chapter.id === routeChapterId.value)) return routeChapterId.value
-  return firstChapter.id
-})
 const api = useApi()
 const workspace = useWorkspaceStore()
+const selectedChapterId = ref(routeChapterId.value)
+const chapterId = computed(() => selectedChapterId.value || routeChapterId.value || '')
 
 const title = ref(t('editor.defaults.title'))
 const content = ref(t('editor.defaults.content'))
@@ -60,12 +57,21 @@ const previewLoading = ref(false)
 const previewError = ref('')
 const previewResult = ref<ContextPreviewResponse | null>(null)
 const previewTarget = ref<PreviewTarget | null>(null)
+const selectedVersionId = ref('')
+const loadedVersionId = ref('')
+const planStatus = ref<'idle' | 'saved'>('idle')
+const draftStatus = ref<'idle' | 'appended'>('idle')
+const saveStatus = ref<'idle' | 'saved'>('idle')
 const localError = ref('')
 const activePanel = ref('reference')
+const editorMainRef = ref<HTMLElement | { $el?: HTMLElement } | null>(null)
+const sidePanelRef = ref<HTMLElement | { $el?: HTMLElement } | null>(null)
+const previewResultRef = ref<HTMLElement | null>(null)
 const referenceSelection = reactive<ReferenceSelectionState>({
   include_chapter_plan: false,
   include_chapter_summary: true,
   include_world_rules: false,
+  previous_chapter_count: 0,
   character_ids: []
 })
 
@@ -76,10 +82,27 @@ const tabs = computed(() => [
   { label: t('editor.review'), value: 'review' }
 ])
 
-const currentChapter = computed(() => workspace.activeBible?.chapters.find((chapter) => chapter.id === chapterId.value))
+const availableChapters = computed(() => workspace.activeChapters)
+const chapterOptions = computed(() => availableChapters.value.map((chapter) => ({
+  label: chapter.title || t('editor.chapterFallbackTitle', { number: chapter.number || availableChapters.value.findIndex((item) => item.id === chapter.id) + 1 }),
+  value: chapter.id,
+  description: t('editor.chapterOptionDescription', { number: chapter.number || availableChapters.value.findIndex((item) => item.id === chapter.id) + 1, status: chapterStatusLabel(chapter.status) })
+})))
+const currentChapter = computed(() => availableChapters.value.find((chapter) => chapter.id === chapterId.value))
+const currentChapterIndex = computed(() => availableChapters.value.findIndex((chapter) => chapter.id === chapterId.value))
 const hasRealCurrentChapter = computed(() => Boolean(currentChapter.value?.id && currentChapter.value.id === chapterId.value))
-const hasInvalidRouteChapter = computed(() => Boolean(routeChapterId.value && routeChapterId.value !== chapterId.value))
-const chapterMetaLabel = computed(() => hasInvalidRouteChapter.value ? t('editor.invalidChapterLabel', { id: routeChapterId.value, fallback: chapterId.value || t('common.emptyValue') }) : chapterId.value)
+const hasInvalidRouteChapter = computed(() => Boolean(routeChapterId.value && availableChapters.value.length > 0 && !availableChapters.value.some((chapter) => chapter.id === routeChapterId.value)))
+const chapterMetaLabel = computed(() => hasInvalidRouteChapter.value ? t('editor.invalidChapterLabel', { id: routeChapterId.value }) : chapterId.value)
+const previousChapterOptions = computed(() => availableChapters.value.slice(0, Math.max(currentChapterIndex.value, 0)))
+const selectedPreviousChapters = computed(() => {
+  const count = Math.max(0, Number(referenceSelection.previous_chapter_count || 0))
+  if (count === 0 || currentChapterIndex.value <= 0) return []
+  return availableChapters.value.slice(Math.max(0, currentChapterIndex.value - count), currentChapterIndex.value)
+})
+const selectedContextChapterIds = computed(() => uniqueTrimmed([
+  ...selectedPreviousChapters.value.map((chapter) => chapter.id),
+  ...(referenceSelection.include_chapter_summary && hasRealCurrentChapter.value && currentChapter.value?.id ? [currentChapter.value.id] : [])
+]))
 const availableCharacters = computed(() => (workspace.activeBible?.characters || []).filter((character) => character.name.trim()))
 const selectedCharacterIdSet = computed(() => new Set(referenceSelection.character_ids))
 const selectedCharacters = computed(() => availableCharacters.value.filter((character) => selectedCharacterIdSet.value.has(character.id)))
@@ -93,17 +116,21 @@ const unsyncedRequestCharacterNames = computed(() => uniqueTrimmed(unsyncedReque
 const hasReferenceFocus = computed(() => Boolean(
   referenceSelection.include_chapter_plan
   || (referenceSelection.include_chapter_summary && hasRealCurrentChapter.value)
+  || referenceSelection.previous_chapter_count > 0
   || referenceSelection.include_world_rules
   || hasManualCharacterSelection.value
 ))
 const selectionPayload = computed<ContextSelection>(() => ({
-  chapter_ids: referenceSelection.include_chapter_summary && hasRealCurrentChapter.value && currentChapter.value?.id ? [currentChapter.value.id] : undefined,
+  chapter_ids: selectedContextChapterIds.value.length ? selectedContextChapterIds.value : undefined,
+  previous_chapter_count: referenceSelection.previous_chapter_count > 0 ? referenceSelection.previous_chapter_count : undefined,
+  include_current_chapter: referenceSelection.include_chapter_summary || undefined,
   include_world_rules: referenceSelection.include_world_rules || undefined,
   character_ids: requestCharacterEntityIds.value.length ? requestCharacterEntityIds.value : undefined
 }))
 const referenceFocusChips = computed(() => {
   const chips: string[] = []
   if (referenceSelection.include_chapter_plan && chapterPlan.value.trim()) chips.push(t('editor.referenceFocusLabels.chapterPlan'))
+  if (referenceSelection.previous_chapter_count > 0) chips.push(t('editor.referenceFocusLabels.previousChapters', { count: selectedPreviousChapters.value.length }))
   if (referenceSelection.include_chapter_summary && currentChapter.value?.summary.trim()) chips.push(t('editor.referenceFocusLabels.chapterSummary'))
   if (referenceSelection.include_world_rules && workspace.activeBible?.world_rules.some((rule) => rule.trim())) chips.push(t('editor.referenceFocusLabels.worldRules'))
   selectedCharacters.value.forEach((character) => chips.push(character.name.trim()))
@@ -144,6 +171,18 @@ const previewSummary = computed<ContextPreviewSummary | null>(() => {
 const previewContextSections = computed(() => buildPreviewContextSections(previewResult.value?.context_pack))
 const previewStructuredContext = computed(() => previewContextSections.value.length > 0)
 const previewTargetLabelValue = computed(() => (previewTarget.value ? previewTargetLabel(previewTarget.value) : t('common.emptyValue')))
+const currentToolTrace = computed(() => normalizeTraceItems(
+  draft.value?.tool_trace
+  || draft.value?.context_pack?.tool_trace
+  || chapterIdeaResult.value?.tool_trace
+  || chapterIdeaResult.value?.context_pack?.tool_trace
+  || previewResult.value?.tool_trace
+  || previewResult.value?.context_pack?.tool_trace
+  || []
+))
+const previewToolTrace = computed(() => normalizeTraceItems(previewResult.value?.tool_trace || previewResult.value?.context_pack?.tool_trace || []))
+const toolTraceSummary = computed(() => buildToolTraceSummary(currentToolTrace.value))
+const previewToolTraceSummary = computed(() => buildToolTraceSummary(previewToolTrace.value))
 
 const currentWorkflow = computed(() => draft.value?.workflow || chapterIdeaResult.value?.workflow || null)
 const workflowSteps = computed(() => {
@@ -196,17 +235,83 @@ watch(availableCharacters, (characters) => {
 
 onMounted(async () => {
   await workspace.loadStoryBible(projectId.value)
+  initializeSelectedChapter()
   await loadVersions()
   await refreshIndexJobs()
 })
 
-watch(chapterId, async () => {
+watch(routeChapterId, (id) => {
+  if (id && id !== selectedChapterId.value) {
+    selectedChapterId.value = id
+  }
+})
+
+watch(availableChapters, () => {
+  initializeSelectedChapter()
+  clampPreviousChapterCount()
+}, { immediate: true })
+
+watch(chapterId, async (id, oldId) => {
+  if (!id || id === oldId) return
   await loadVersions()
   await refreshIndexJobs()
 })
+
+watch(() => referenceSelection.previous_chapter_count, () => clampPreviousChapterCount())
 
 function uniqueTrimmed(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+}
+
+function initializeSelectedChapter() {
+  if (selectedChapterId.value) return
+  const firstChapter = availableChapters.value[0]
+  if (firstChapter?.id) selectedChapterId.value = firstChapter.id
+}
+
+function clampPreviousChapterCount() {
+  const maxCount = Math.max(currentChapterIndex.value, 0)
+  const nextCount = Math.min(Math.max(0, Number(referenceSelection.previous_chapter_count || 0)), maxCount)
+  if (referenceSelection.previous_chapter_count !== nextCount) {
+    referenceSelection.previous_chapter_count = nextCount
+  }
+}
+
+async function replaceChapterRoute(id: string) {
+  selectedChapterId.value = id
+  await navigateTo({ path: route.path, query: { ...route.query, chapter: id, keepLocal: undefined } }, { replace: true })
+}
+
+async function selectChapter(id: string) {
+  if (!id || id === chapterId.value) return
+  await replaceChapterRoute(id)
+}
+
+function ensureNumberFromCurrentSelection() {
+  if (currentChapter.value?.number) return currentChapter.value.number
+  const existingIndex = availableChapters.value.findIndex((chapter) => chapter.id === chapterId.value)
+  if (existingIndex >= 0) return existingIndex + 1
+  const routeMatch = chapterId.value.match(/(\d+)$/)
+  if (routeMatch) return Number(routeMatch[1])
+  return availableChapters.value.length + 1
+}
+
+async function ensureCurrentChapter() {
+  const ensured = await workspace.ensureChapter(projectId.value, {
+    chapter_id: chapterId.value || undefined,
+    number: ensureNumberFromCurrentSelection(),
+    title: title.value.trim() || currentChapter.value?.title || undefined,
+    status: currentChapter.value?.status || 'drafting',
+    summary: currentChapter.value?.summary || prompt.value.trim() || undefined,
+    metadata: currentChapter.value?.metadata
+  })
+  const realChapterId = ensured.data.chapter.id
+  if (realChapterId && realChapterId !== chapterId.value) {
+    await replaceChapterRoute(realChapterId)
+  } else if (realChapterId) {
+    selectedChapterId.value = realChapterId
+  }
+  return realChapterId || chapterId.value
 }
 
 function includesText(source: string, needle: string) {
@@ -268,13 +373,14 @@ function buildReferenceSections(
   const selectedCharacterIDs = new Set(selection.character_ids || [])
   const highlightedKeys = new Set<string>()
   if (selection.include_chapter_plan) highlightedKeys.add('chapter-plan')
-  if (selection.include_chapter_summary) highlightedKeys.add('chapter')
+  if (selection.include_chapter_summary || selection.previous_chapter_count > 0) highlightedKeys.add('chapter')
   if (selection.include_world_rules) highlightedKeys.add('rules')
   if (selectedCharacterIDs.size > 0) highlightedKeys.add('characters')
 
+  const selectedChapterIds = new Set(selectedContextChapterIds.value)
   const chapterSummaryItems = bible.chapters
-    .filter((chapter) => chapter.id === activeChapterId && chapter.summary.trim())
-    .map((chapter) => chapter.summary.trim())
+    .filter((chapter) => (selectedChapterIds.has(chapter.id) || (!hasFocusedScope && chapter.id === activeChapterId)) && chapter.summary.trim())
+    .map((chapter) => `${chapter.title || chapter.id}：${chapter.summary.trim()}`)
 
   const allCharacters = bible.characters
     .map((character) => {
@@ -363,6 +469,76 @@ function buildPreviewContextSections(contextPack?: ContextPack) {
   ].filter((section) => section.items.length > 0)
 }
 
+function normalizeTraceItems(trace: ToolTrace[]) {
+  return trace.map((item, index) => {
+    if (typeof item === 'string') {
+      const [rawName, ...rest] = item.split(/\s+/)
+      return {
+        id: `trace-${index}`,
+        raw: item,
+        name: rawName || t('editor.toolTrace.unknownTool'),
+        category: inferToolTraceCategory(item),
+        summary: rest.join(' ') || item
+      }
+    }
+    const name = item.tool || item.name || t('editor.toolTrace.unknownTool')
+    const values = [
+      item.status,
+      item.chapter_id,
+      item.chapter_ids?.join(', '),
+      item.character_id,
+      item.character_ids?.join(', '),
+      item.entity_id,
+      item.entity_ids?.join(', '),
+      item.event_id,
+      item.event_ids?.join(', '),
+      item.timeline === undefined ? '' : String(item.timeline),
+      item.count === undefined ? '' : t('editor.toolTrace.count', { count: item.count }),
+      item.message
+    ].map((value) => value?.trim()).filter(Boolean)
+    const valueSummary = values.join(' · ')
+    return {
+      id: `trace-${index}`,
+      raw: JSON.stringify(item),
+      name,
+      category: inferToolTraceCategory([name, ...values].join(' ')),
+      summary: valueSummary || (item.metadata ? JSON.stringify(item.metadata) : name)
+    }
+  })
+}
+
+function inferToolTraceCategory(value: string) {
+  const normalized = value.toLowerCase()
+  if (normalized.includes('chapter')) return 'chapters'
+  if (normalized.includes('character') || normalized.includes('entity') || normalized.includes('graph')) return 'characters'
+  if (normalized.includes('event') || normalized.includes('fact')) return 'events'
+  if (normalized.includes('timeline') || normalized.includes('time')) return 'timeline'
+  return 'other'
+}
+
+function buildToolTraceSummary(trace: ReturnType<typeof normalizeTraceItems>) {
+  const counts = trace.reduce<Record<string, number>>((items, item) => {
+    items[item.category] = (items[item.category] || 0) + 1
+    return items
+  }, {})
+  return {
+    items: trace,
+    counts,
+    hasTrace: trace.length > 0,
+    text: t('editor.toolTrace.summary', {
+      chapters: counts.chapters || 0,
+      characters: counts.characters || 0,
+      events: counts.events || 0,
+      timeline: counts.timeline || 0,
+      other: counts.other || 0
+    })
+  }
+}
+
+function toolTraceCategoryLabel(category: string) {
+  return translatedStatusOrFallback('editor.toolTrace.categories', category)
+}
+
 function buildContextPreviewSummary(contextPack: ContextPack): ContextPreviewSummary {
   const chapterSummaryCount = contextPack.chapter_summaries?.length || 0
   const entityCount = contextPack.entities?.length || 0
@@ -398,7 +574,52 @@ function resetChapterState() {
   previewError.value = ''
   previewResult.value = null
   previewTarget.value = null
+  selectedVersionId.value = ''
+  loadedVersionId.value = ''
+  planStatus.value = 'idle'
+  draftStatus.value = 'idle'
+  saveStatus.value = 'idle'
   activePanel.value = 'reference'
+}
+
+function resolveElement(element: HTMLElement | { $el?: HTMLElement } | null) {
+  if (!element) return null
+  if (element instanceof HTMLElement) return element
+  return element.$el || null
+}
+
+function focusPanel(element: HTMLElement | { $el?: HTMLElement } | null) {
+  const target = resolveElement(element)
+  if (!target) return
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  target.focus({ preventScroll: true })
+}
+
+async function focusMainEditor() {
+  await nextTick()
+  focusPanel(editorMainRef.value)
+}
+
+async function focusSidePanel() {
+  await nextTick()
+  focusPanel(sidePanelRef.value)
+}
+
+async function focusPreviewResult() {
+  await nextTick()
+  focusPanel(previewResultRef.value)
+}
+
+async function loadVersion(version: ChapterVersion) {
+  selectedVersionId.value = version.id
+  loadedVersionId.value = version.id
+  title.value = version.title
+  content.value = version.content
+  chapterPlan.value = version.metadata?.chapter_plan || chapterPlan.value
+  planStatus.value = 'idle'
+  draftStatus.value = 'idle'
+  saveStatus.value = 'idle'
+  await focusMainEditor()
 }
 
 async function loadVersions() {
@@ -414,6 +635,8 @@ async function loadVersions() {
       title.value = latestVersion.title
       content.value = latestVersion.content
       chapterPlan.value = latestVersion.metadata?.chapter_plan || chapterPlan.value
+      selectedVersionId.value = latestVersion.id
+      loadedVersionId.value = latestVersion.id
     }
   } catch (error) {
     const apiError = workspace.recordError(t('editor.resultScopes.chapterVersions'), error)
@@ -446,6 +669,13 @@ function buildSelectedReferenceBriefLines(options?: { includeChapterPlan?: boole
 
   if (options?.includeChapterPlan && referenceSelection.include_chapter_plan && chapterPlan.value.trim()) {
     lines.push(t('editor.selectionBrief.chapterPlan', { content: chapterPlan.value.trim() }))
+  }
+
+  if (selectedPreviousChapters.value.length > 0) {
+    const previousSummaries = selectedPreviousChapters.value
+      .map((chapter) => [chapter.title || chapter.id, chapter.summary].map((item) => item?.trim()).filter(Boolean).join('：'))
+      .filter(Boolean)
+    if (previousSummaries.length) lines.push(t('editor.selectionBrief.previousChapters', { content: previousSummaries.join('；') }))
   }
 
   if (options?.includeChapterSummary && referenceSelection.include_chapter_summary && currentChapter.value?.summary.trim()) {
@@ -516,10 +746,11 @@ async function previewContextSelection(target: PreviewTarget) {
   previewResult.value = null
   previewTarget.value = target
   try {
+    const ensuredChapterId = await ensureCurrentChapter()
     const isChapterIdea = target === 'chapter_idea'
     const result = await api.previewContextSelection({
       project_id: projectId.value,
-      chapter_id: chapterId.value,
+      chapter_id: ensuredChapterId,
       title: title.value,
       brief: isChapterIdea ? buildChapterIdeaBrief() : buildDraftBrief(),
       prompt: isChapterIdea ? t('editor.planPromptPrefix') : t('editor.draftPromptPrefix'),
@@ -529,6 +760,7 @@ async function previewContextSelection(target: PreviewTarget) {
     })
     workspace.recordResult(t('editor.resultScopes.previewContext'), result)
     previewResult.value = result.data
+    await focusPreviewResult()
   } catch (error) {
     const apiError = workspace.recordError(t('editor.resultScopes.previewContext'), error)
     previewError.value = apiError.message || t('editor.errors.previewContextFailed')
@@ -539,11 +771,13 @@ async function previewContextSelection(target: PreviewTarget) {
 
 async function requestChapterPlan() {
   localError.value = ''
+  planStatus.value = 'idle'
   planning.value = true
   try {
+    const ensuredChapterId = await ensureCurrentChapter()
     const result = await api.requestChapterIdea({
       project_id: projectId.value,
-      chapter_id: chapterId.value,
+      chapter_id: ensuredChapterId,
       brief: buildChapterIdeaBrief(),
       prompt: t('editor.planPromptPrefix'),
       title: title.value,
@@ -557,6 +791,8 @@ async function requestChapterPlan() {
     chapterPlan.value = result.data.chapter_idea.trim() || chapterPlan.value
     chapterIdeaWorkflowId.value = result.data.workflow.id
     activePanel.value = 'plan'
+    planStatus.value = 'saved'
+    await focusSidePanel()
     await refreshIndexJobs()
   } catch (error) {
     const apiError = workspace.recordError(t('editor.resultScopes.aiPlan'), error)
@@ -568,11 +804,13 @@ async function requestChapterPlan() {
 
 async function requestDraft() {
   localError.value = ''
+  draftStatus.value = 'idle'
   drafting.value = true
   try {
+    const ensuredChapterId = await ensureCurrentChapter()
     const result = await api.requestAIDraft({
       project_id: projectId.value,
-      chapter_id: chapterId.value,
+      chapter_id: ensuredChapterId,
       brief: buildDraftBrief(),
       prompt: t('editor.draftPromptPrefix'),
       title: title.value,
@@ -594,6 +832,8 @@ async function requestDraft() {
       mergeIndexJobs([result.data.index_job])
     }
     activePanel.value = 'review'
+    draftStatus.value = 'appended'
+    await focusMainEditor()
     await refreshIndexJobs()
   } catch (error) {
     const apiError = workspace.recordError(t('editor.resultScopes.aiDraft'), error)
@@ -605,10 +845,12 @@ async function requestDraft() {
 
 async function saveChapterVersion() {
   localError.value = ''
+  saveStatus.value = 'idle'
   savingVersion.value = true
   try {
+    const ensuredChapterId = await ensureCurrentChapter()
     const result = await api.saveChapterVersion(projectId.value, {
-      chapter_id: chapterId.value,
+      chapter_id: ensuredChapterId,
       title: title.value,
       content: content.value,
       summary: content.value.slice(0, 180),
@@ -618,6 +860,9 @@ async function saveChapterVersion() {
     })
     workspace.recordResult(t('editor.resultScopes.saveVersion'), result)
     versions.value = [result.data.chapter_version, ...versions.value.filter((item) => item.id !== result.data.chapter_version.id)]
+    selectedVersionId.value = result.data.chapter_version.id
+    loadedVersionId.value = result.data.chapter_version.id
+    saveStatus.value = 'saved'
     mergeIndexJobs([result.data.index_job])
     await refreshIndexJobs()
   } catch (error) {
@@ -636,6 +881,10 @@ function translatedStatusOrFallback(prefix: string, value: string) {
 
 function workflowStatusLabel(status: string) {
   return translatedStatusOrFallback('status.workflow', status)
+}
+
+function chapterStatusLabel(status: string) {
+  return translatedStatusOrFallback('status.chapter', status)
 }
 
 function workflowStatusVariant(status: string) {
@@ -744,14 +993,35 @@ function versionWordCount(version: ChapterVersion) {
     <div v-if="localError" class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
       {{ localError }}
     </div>
+    <div class="flex flex-wrap gap-2">
+      <UiBadge v-if="saveStatus === 'saved'" variant="success">{{ t('editor.feedback.versionSaved') }}</UiBadge>
+      <UiBadge v-if="draftStatus === 'appended'" variant="success">{{ t('editor.feedback.draftAppended') }}</UiBadge>
+      <UiBadge v-if="planStatus === 'saved'" variant="success">{{ t('editor.feedback.planReady') }}</UiBadge>
+    </div>
 
     <div class="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-      <UiCard class="min-w-0">
+      <UiCard ref="editorMainRef" tabindex="-1" class="min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
         <div class="rounded-t-2xl border-b border-border bg-muted/35 p-4 sm:p-5">
           <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div class="min-w-0 flex-1">
-              <p class="hidden truncate font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground sm:block" :title="chapterMetaLabel">{{ chapterMetaLabel }}</p>
-              <UiInput v-model="title" class="mt-2 h-auto min-h-0 px-3 py-2 text-xl font-semibold leading-tight sm:mt-3 sm:text-2xl" />
+            <div class="min-w-0 flex-1 space-y-3">
+              <div class="grid gap-2 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] md:items-end">
+                <label class="space-y-1">
+                  <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('editor.chapterSelector.label') }}</span>
+                  <UiSelect
+                    :model-value="chapterId"
+                    :options="chapterOptions"
+                    :placeholder="t('editor.chapterSelector.placeholder')"
+                    searchable
+                    :empty-text="t('editor.chapterSelector.empty')"
+                    @update:model-value="selectChapter"
+                  />
+                </label>
+                <p class="hidden truncate font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground md:block" :title="chapterMetaLabel">{{ chapterMetaLabel }}</p>
+              </div>
+              <div v-if="hasInvalidRouteChapter" class="rounded-xl border border-amber-300/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+                {{ t('editor.invalidChapterNotice', { id: routeChapterId }) }}
+              </div>
+              <UiInput v-model="title" class="h-auto min-h-0 px-3 py-2 text-xl font-semibold leading-tight sm:text-2xl" />
             </div>
             <div class="flex min-w-0 flex-wrap gap-2">
               <UiBadge variant="muted">{{ t('editor.metrics.words', { count: metrics.wordCount }) }}</UiBadge>
@@ -800,7 +1070,7 @@ function versionWordCount(version: ChapterVersion) {
       </UiCard>
 
       <aside class="min-w-0 space-y-6">
-        <UiCard class="p-4 sm:p-5">
+        <UiCard ref="sidePanelRef" tabindex="-1" class="p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-5">
           <UiTabs v-model="activePanel" :tabs="tabs" class="w-full justify-start xl:justify-center" />
 
           <div v-if="activePanel === 'reference'" class="mt-5 min-w-0 space-y-4">
@@ -827,6 +1097,28 @@ function versionWordCount(version: ChapterVersion) {
                   :label="t('editor.referenceFocusOptions.worldRules.label')"
                   :description="t('editor.referenceFocusOptions.worldRules.description')"
                 />
+              </div>
+
+              <div class="mt-4 rounded-2xl border border-border bg-card/80 p-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-foreground">{{ t('editor.referenceFocusOptions.previousChapters.label') }}</p>
+                    <p class="mt-1 text-xs leading-5 text-muted-foreground">{{ t('editor.referenceFocusOptions.previousChapters.description') }}</p>
+                  </div>
+                  <UiInput
+                    v-model.number="referenceSelection.previous_chapter_count"
+                    type="number"
+                    min="0"
+                    :max="previousChapterOptions.length"
+                    class="w-full sm:w-28"
+                  />
+                </div>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <UiBadge v-if="selectedPreviousChapters.length === 0" variant="muted">{{ t('editor.previousChapters.empty') }}</UiBadge>
+                  <UiBadge v-for="chapter in selectedPreviousChapters" :key="chapter.id" variant="violet">
+                    {{ chapter.title || chapter.id }}
+                  </UiBadge>
+                </div>
               </div>
 
               <div class="mt-4 rounded-2xl border border-border bg-card/80 p-4">
@@ -945,7 +1237,7 @@ function versionWordCount(version: ChapterVersion) {
                 <div v-else-if="!previewResult" class="rounded-xl border border-border bg-card/80 px-3 py-3 text-sm text-muted-foreground">
                   {{ t('editor.preview.empty') }}
                 </div>
-                <div v-else class="space-y-4">
+                <div v-else ref="previewResultRef" tabindex="-1" class="space-y-4 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                   <div class="rounded-xl border border-border bg-card/80 p-4">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                       <p class="text-sm font-medium text-foreground">{{ t('editor.preview.actualContext') }}</p>
@@ -1010,6 +1302,25 @@ function versionWordCount(version: ChapterVersion) {
 
                   <div class="rounded-xl border border-border bg-card/80 p-4">
                     <div class="flex flex-wrap items-center justify-between gap-2">
+                      <p class="text-sm font-medium text-foreground">{{ t('editor.toolTrace.title') }}</p>
+                      <UiBadge variant="muted">{{ previewToolTraceSummary.text }}</UiBadge>
+                    </div>
+                    <div v-if="!previewToolTraceSummary.hasTrace" class="mt-3 text-sm text-muted-foreground">
+                      {{ t('editor.toolTrace.empty') }}
+                    </div>
+                    <div v-else class="mt-3 space-y-2">
+                      <div v-for="trace in previewToolTraceSummary.items" :key="trace.id" class="rounded-xl border border-border bg-muted/20 p-3">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <UiBadge variant="violet">{{ toolTraceCategoryLabel(trace.category) }}</UiBadge>
+                          <span class="min-w-0 break-words text-sm font-medium text-foreground">{{ trace.name }}</span>
+                        </div>
+                        <p class="mt-2 break-words text-xs leading-5 text-muted-foreground">{{ trace.summary }}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-xl border border-border bg-card/80 p-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
                       <p class="text-sm font-medium text-foreground">{{ t('editor.preview.structuredContextTitle') }}</p>
                       <UiBadge v-if="previewStructuredContext" variant="muted">{{ t('editor.preview.actualContext') }}</UiBadge>
                     </div>
@@ -1035,6 +1346,7 @@ function versionWordCount(version: ChapterVersion) {
               <Lightbulb class="h-5 w-5 text-muted-foreground" />
               <h2 class="font-semibold">{{ t('editor.plan') }}</h2>
             </div>
+            <UiBadge v-if="planStatus === 'saved'" variant="success">{{ t('editor.feedback.planReady') }}</UiBadge>
             <p class="text-sm leading-6 text-muted-foreground">{{ t('editor.planDescription') }}</p>
             <label class="space-y-2">
               <span class="text-sm text-muted-foreground">{{ t('editor.instruction') }}</span>
@@ -1060,6 +1372,7 @@ function versionWordCount(version: ChapterVersion) {
               <Bot class="h-5 w-5 text-muted-foreground" />
               <h2 class="font-semibold">{{ t('editor.draft') }}</h2>
             </div>
+            <UiBadge v-if="draftStatus === 'appended'" variant="success">{{ t('editor.feedback.draftAppended') }}</UiBadge>
             <p class="text-sm leading-6 text-muted-foreground">{{ t('editor.draftDescription') }}</p>
             <div class="rounded-2xl border border-border bg-muted/35 p-4 text-sm leading-6 text-muted-foreground">
               <p class="font-medium text-foreground">{{ t('editor.currentPlanPreview') }}</p>
@@ -1224,6 +1537,25 @@ function versionWordCount(version: ChapterVersion) {
 
                 <div class="rounded-xl border border-border bg-card/80 p-4">
                   <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-sm font-medium text-foreground">{{ t('editor.toolTrace.title') }}</p>
+                    <UiBadge variant="muted">{{ toolTraceSummary.text }}</UiBadge>
+                  </div>
+                  <div v-if="!toolTraceSummary.hasTrace" class="mt-3 text-sm text-muted-foreground">
+                    {{ t('editor.toolTrace.empty') }}
+                  </div>
+                  <div v-else class="mt-3 grid gap-3 md:grid-cols-2">
+                    <div v-for="trace in toolTraceSummary.items" :key="trace.id" class="rounded-xl border border-border bg-muted/20 p-3">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <UiBadge variant="violet">{{ toolTraceCategoryLabel(trace.category) }}</UiBadge>
+                        <span class="min-w-0 break-words text-sm font-medium text-foreground">{{ trace.name }}</span>
+                      </div>
+                      <p class="mt-2 break-words text-xs leading-5 text-muted-foreground">{{ trace.summary }}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-xl border border-border bg-card/80 p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
                     <p class="text-sm font-medium text-foreground">{{ t('editor.diagnostics.latestIndexJobs') }}</p>
                     <UiBadge :variant="backgroundIndexState.variant">{{ backgroundIndexState.label }}</UiBadge>
                   </div>
@@ -1276,12 +1608,20 @@ function versionWordCount(version: ChapterVersion) {
               v-for="version in versions"
               :key="version.id"
               type="button"
-              class="w-full min-w-0 rounded-2xl border border-border bg-muted/35 p-4 text-left transition-all hover:border-primary/35"
-              @click="title = version.title; content = version.content; chapterPlan = version.metadata?.chapter_plan || chapterPlan"
+              :class="[
+                'w-full min-w-0 rounded-2xl border p-4 text-left transition-all hover:border-primary/35 focus-ring',
+                loadedVersionId === version.id
+                  ? 'border-primary/45 bg-primary/10 shadow-sm shadow-primary/10'
+                  : 'border-border bg-muted/35'
+              ]"
+              @click="loadVersion(version)"
             >
               <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
                 <p class="min-w-0 flex-1 break-words font-medium" :title="t('editor.versionLabel', { version: version.version, title: version.title })">{{ t('editor.versionLabel', { version: version.version, title: version.title }) }}</p>
-                <UiBadge class="shrink-0" :variant="version.author === 'ai' ? 'default' : 'muted'">{{ authorLabel(version.author) }}</UiBadge>
+                <div class="flex shrink-0 flex-wrap justify-end gap-2">
+                  <UiBadge v-if="loadedVersionId === version.id" variant="violet">{{ t('editor.feedback.versionLoaded') }}</UiBadge>
+                  <UiBadge :variant="version.author === 'ai' ? 'default' : 'muted'">{{ authorLabel(version.author) }}</UiBadge>
+                </div>
               </div>
               <p class="mt-2 break-words text-xs text-muted-foreground" :title="`${formatDateTime(version.created_at)} · ${version.change_note}`">{{ formatDateTime(version.created_at) }} · {{ version.change_note }}</p>
               <div class="mt-3 flex flex-wrap gap-2">

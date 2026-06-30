@@ -232,8 +232,8 @@ func normalizeOpenAIBaseURL(baseURL string) string {
 func responsesInput(req provider.TextRequest) (responses.ResponseNewParamsInputUnion, bool) {
 	items := make([]responses.ResponseInputItemUnionParam, 0, len(req.Messages)+1)
 	for _, msg := range req.Messages {
-		content := strings.TrimSpace(msg.Content)
-		if content == "" {
+		content := provider.MessageContent(msg)
+		if strings.TrimSpace(content) == "" {
 			continue
 		}
 		role := responses.EasyInputMessageRoleUser
@@ -245,7 +245,7 @@ func responsesInput(req provider.TextRequest) (responses.ResponseNewParamsInputU
 		case "assistant":
 			role = responses.EasyInputMessageRoleAssistant
 		}
-		items = append(items, easyInputMessage(role, msg.Content))
+		items = append(items, easyInputMessage(role, content))
 	}
 	if strings.TrimSpace(req.UserPrompt) != "" {
 		items = append(items, easyInputMessage(responses.EasyInputMessageRoleUser, req.UserPrompt))

@@ -318,7 +318,8 @@
     "resultScopes": {
       "storyBibleSave": "Story Bible 保存",
       "characterSync": "角色同步",
-      "characterGeneration": "角色生成"
+      "characterGeneration": "角色生成",
+      "chapterEnsure": "章节创建/确认"
     },
     "characterSync": {
       "syncing": "正在同步角色",
@@ -447,6 +448,8 @@
     "currentStoredValue": "当前底层值",
     "providerModelBreakdown": "{text} 个文本 / {embedding} 个向量",
     "unknownModel": "未在当前列表中找到",
+    "disabledModelReason": "该模型已停用，不能作为显式路由使用。",
+    "editingBadge": "正在编辑",
     "confirmDeleteModel": "确定删除模型“{name}”吗？",
     "confirmDeleteProvider": "确定删除 Provider“{name}”吗？关联模型也会一起删除。",
     "defaults": {
@@ -590,6 +593,13 @@
     "indexJobsRunning": "运行中 {count}",
     "indexJobsCompleted": "已完成 {count}",
     "indexJobsFailed": "失败 {count}",
+    "maintenance": {
+      "rebuildRunning": "正在重建向量集合",
+      "pendingRunning": "正在运行待处理索引",
+      "running": "维护任务运行中，请稍候。",
+      "saved": "维护任务已完成。",
+      "failed": "维护任务失败，请查看错误信息。"
+    },
     "resultScopes": {
       "providerSave": "Provider 保存",
       "providerDelete": "Provider 删除",
@@ -648,6 +658,7 @@
     "referenceFocusLabels": {
       "chapterPlan": "当前章节方案",
       "chapterSummary": "当前章节摘要",
+      "previousChapters": "前 {count} 章",
       "worldRules": "世界规则"
     },
     "referenceFocusOptions": {
@@ -662,6 +673,10 @@
       "worldRules": {
         "label": "世界规则",
         "description": "明确要求本次生成优先遵守世界规则。"
+      },
+      "previousChapters": {
+        "label": "参考前 N 章",
+        "description": "按章节顺序选取当前章之前的 N 章，加入本次 selection.chapter_ids。"
       },
       "characters": {
         "label": "角色",
@@ -679,6 +694,7 @@
     "selectionBrief": {
       "chapterPlan": "重点参考章节方案：\n{content}",
       "chapterSummary": "重点参考章节摘要：{content}",
+      "previousChapters": "重点参考前文：{content}",
       "worldRules": "重点参考世界规则：{content}",
       "characters": "重点参考角色：{content}",
       "autoCharacters": "本章重点角色：{content}",
@@ -702,7 +718,32 @@
       "wound": "创伤：{value}",
       "secret": "秘密：{value}"
     },
-    "invalidChapterLabel": "无效章节 {id}，已回退到 {fallback}",
+    "invalidChapterLabel": "目标章节 {id} 尚未创建",
+    "invalidChapterNotice": "章节 {id} 不在当前章节列表中；点击生成/保存时会自动创建并切换到真实章节 ID。",
+    "chapterFallbackTitle": "第 {number} 章",
+    "chapterOptionDescription": "第 {number} 章 · {status}",
+    "chapterSelector": {
+      "label": "当前章节",
+      "placeholder": "选择章节",
+      "empty": "暂无可选章节"
+    },
+    "previousChapters": {
+      "empty": "不参考前文"
+    },
+    "toolTrace": {
+      "title": "工具调用轨迹",
+      "empty": "本次响应没有返回 tool_trace。",
+      "unknownTool": "未知工具",
+      "count": "{count} 条",
+      "summary": "章节 {chapters} · 角色 {characters} · 事件 {events} · 时间线 {timeline} · 其他 {other}",
+      "categories": {
+        "chapters": "章节",
+        "characters": "角色/图谱",
+        "events": "事件/事实",
+        "timeline": "时间线",
+        "other": "其他"
+      }
+    },
     "workflowHintTitle": "写作工作流",
     "workflowHintDescription": "先确认本次重点参考范围，再生成方案或续写正文。索引任务由后端后台推进，这里只展示真实状态。",
     "backgroundIndex": {
@@ -737,6 +778,12 @@
     "emptyVersions": "暂无章节版本。保存后会显示历史版本。",
     "versionLabel": "v{version} · {title}",
     "jobAttempts": "{id} · 尝试 {count} 次",
+    "feedback": {
+      "planReady": "章节方案已更新",
+      "draftAppended": "草稿已追加到正文",
+      "versionSaved": "章节版本已保存",
+      "versionLoaded": "已载入"
+    },
     "preview": {
       "eyebrow": "上下文预览",
       "title": "本次实际命中",

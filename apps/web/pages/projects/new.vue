@@ -23,6 +23,7 @@ const initializing = ref(false)
 const localError = ref('')
 const createdProjectId = ref('')
 const createdProjectTitle = ref('')
+const successCard = ref<HTMLElement | { $el?: HTMLElement } | null>(null)
 
 watch(tagInput, (value) => {
   seed.tags = value.split(/[，,]/).map((tag) => tag.trim()).filter(Boolean)
@@ -110,6 +111,10 @@ async function initializeProject() {
       bible_status: result.data.story_bible.approved ? 'ready' : 'draft',
       chapter_count: result.data.story_bible.chapters.length
     })
+    await nextTick()
+    const target = successCard.value instanceof HTMLElement ? successCard.value : successCard.value?.$el
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    target?.focus({ preventScroll: true })
   } catch (error) {
     const apiError = workspace.recordError(t('actions.createProject'), error)
     localError.value = apiError.message || t('projectNew.errors.createFailed')
@@ -269,7 +274,7 @@ async function initializeProject() {
           </div>
         </UiCard>
 
-        <UiCard v-if="createdProjectId" class="p-6">
+        <UiCard v-if="createdProjectId" ref="successCard" tabindex="-1" class="p-6 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
           <UiBadge variant="success">{{ t('status.ready') }}</UiBadge>
           <h2 class="mt-3 text-lg font-semibold">{{ createdProjectTitle || t('nav.project') }}</h2>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t('projectNew.createdDescription') }}</p>

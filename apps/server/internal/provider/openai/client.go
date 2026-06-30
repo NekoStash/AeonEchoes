@@ -235,17 +235,17 @@ func openAIChatMessages(req provider.TextRequest) []openaisdk.ChatCompletionMess
 		messages = append(messages, openaisdk.SystemMessage(req.SystemPrompt))
 	}
 	for _, msg := range req.Messages {
-		content := strings.TrimSpace(msg.Content)
-		if content == "" {
+		content := provider.MessageContent(msg)
+		if strings.TrimSpace(content) == "" {
 			continue
 		}
 		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
 		case "system", "developer":
-			messages = append(messages, openaisdk.SystemMessage(msg.Content))
+			messages = append(messages, openaisdk.SystemMessage(content))
 		case "assistant":
-			messages = append(messages, openaisdk.AssistantMessage(msg.Content))
+			messages = append(messages, openaisdk.AssistantMessage(content))
 		default:
-			messages = append(messages, openaisdk.UserMessage(msg.Content))
+			messages = append(messages, openaisdk.UserMessage(content))
 		}
 	}
 	if strings.TrimSpace(req.UserPrompt) != "" {

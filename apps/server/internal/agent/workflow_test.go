@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -42,6 +43,46 @@ type fakeTextClient struct {
 type fakeIDSource struct {
 	id  string
 	err error
+}
+
+func (s *fakeWorkflowStore) NewID(prefix string) (string, error) {
+	return fmt.Sprintf("%s-%d", prefix, len(s.workflows)+len(s.projects)+len(s.chapterVersions)+1), nil
+}
+
+func (s *fakeWorkflowStore) SaveEntity(item domain.Entity) (domain.Entity, error) {
+	return item, nil
+}
+
+func (s *fakeWorkflowStore) SaveGraphEdge(item domain.GraphEdge) (domain.GraphEdge, error) {
+	return item, nil
+}
+
+func (s *fakeWorkflowStore) SavePlotThread(item domain.PlotThread) (domain.PlotThread, error) {
+	return item, nil
+}
+
+func (s *fakeWorkflowStore) ListEntities(projectID string) ([]domain.Entity, error) {
+	return nil, nil
+}
+
+func (s *fakeWorkflowStore) ListPlotThreads(projectID string) ([]domain.PlotThread, error) {
+	return nil, nil
+}
+
+func (s *fakeWorkflowStore) ExpandGraph(projectID string, entityIDs []string, depth int) (domain.GraphExpansion, error) {
+	return domain.GraphExpansion{ProjectID: projectID, Depth: depth}, nil
+}
+
+func (s *fakeWorkflowStore) EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error) {
+	return domain.Chapter{ID: firstText(req.ChapterID, "chapter-1"), ProjectID: req.ProjectID, Number: firstPositive(req.Number, 1), Title: req.Title, Status: firstText(req.Status, "draft")}, nil
+}
+
+func (s *fakeWorkflowStore) GetChapter(id string) (domain.Chapter, error) {
+	return domain.Chapter{ID: id, ProjectID: "project-1", Number: 1}, nil
+}
+
+func (s *fakeWorkflowStore) ListChapters(projectID string) ([]domain.Chapter, error) {
+	return nil, nil
 }
 
 func (s *fakeWorkflowStore) CreateProject(project domain.Project, bible domain.StoryBible) (domain.Project, domain.StoryBible, error) {
@@ -119,6 +160,22 @@ func (r fakeContextPackRepository) ListFacts(_ string) ([]domain.Fact, error) {
 
 func (r fakeContextPackRepository) ListPlotThreads(_ string) ([]domain.PlotThread, error) {
 	return r.threads, nil
+}
+
+func (r fakeContextPackRepository) ListChapters(projectID string) ([]domain.Chapter, error) {
+	chapters := make([]domain.Chapter, 0)
+	seen := map[string]struct{}{}
+	for _, version := range r.versions {
+		if version.ProjectID != "" && version.ProjectID != projectID {
+			continue
+		}
+		if _, ok := seen[version.ChapterID]; ok {
+			continue
+		}
+		seen[version.ChapterID] = struct{}{}
+		chapters = append(chapters, domain.Chapter{ID: version.ChapterID, ProjectID: projectID, Number: len(chapters) + 1, Title: version.Title, Status: "draft"})
+	}
+	return chapters, nil
 }
 
 func (r fakeContextPackRepository) ListChapterVersions(_, _ string) ([]domain.ChapterVersion, error) {
@@ -300,8 +357,8 @@ func TestWorkflowRunnerGenerateChapterIdeaUsesPlotArchitectBrief(t *testing.T) {
 	if req.MaxOutputTokens != 777 {
 		t.Fatalf("GenerateChapterIdea() max output tokens = %d, want request override 777", req.MaxOutputTokens)
 	}
-	if !strings.Contains(req.SystemPrompt, "Plot Architect Agent") || !strings.Contains(req.UserPrompt, "不要写正文") {
-		t.Fatalf("GenerateChapterIdea() prompt does not describe chapter idea contract: system=%q user=%q", req.SystemPrompt, req.UserPrompt)
+	if !strings.Contains(req.SystemPrompt, "Plot Architect Agent") || !requestContainsText(req, "不要写正文") {
+		t.Fatalf("GenerateChapterIdea() prompt does not describe chapter idea contract: system=%q user=%q messages=%+v", req.SystemPrompt, req.UserPrompt, req.Messages)
 	}
 	if result.ContextPack.Role != domain.AgentRolePlotArchitect || result.ContextPack.ProjectID != projectID {
 		t.Fatalf("GenerateChapterIdea() context pack mismatch: %+v", result.ContextPack)
@@ -330,8 +387,8 @@ func TestWorkflowRunnerDraftChapterWithIdeaRoutesBothStagesAndPersistsLink(t *te
 	if textClient.requests[1].Model != "writer-explicit" {
 		t.Fatalf("DraftChapterWithIdea() writer model = %q, want writer-explicit", textClient.requests[1].Model)
 	}
-	if !strings.Contains(textClient.requests[1].UserPrompt, "## 本章目标") {
-		t.Fatalf("DraftChapterWithIdea() writer prompt did not include generated chapter idea: %q", textClient.requests[1].UserPrompt)
+	if !requestContainsText(textClient.requests[1], "## 本章目标") {
+		t.Fatalf("DraftChapterWithIdea() writer prompt did not include generated chapter idea: user=%q messages=%+v", textClient.requests[1].UserPrompt, textClient.requests[1].Messages)
 	}
 	if result.Draft.Workflow.Input["chapter_idea_workflow_id"] != result.ChapterIdea.Workflow.ID {
 		t.Fatalf("DraftChapterWithIdea() workflow input idea link = %q, want %q", result.Draft.Workflow.Input["chapter_idea_workflow_id"], result.ChapterIdea.Workflow.ID)
@@ -348,9 +405,15 @@ func TestWorkflowRunnerDraftChapterWithIdeaRoutesBothStagesAndPersistsLink(t *te
 	}
 }
 
-func TestWorkflowRunnerGenerateCharacterProfilesUsesCharacterKeeperAndParsesProfiles(t *testing.T) {
-	_, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
-	textClient.responses = []provider.ModelResponse{{Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队的真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`}}
+func TestWorkflowRunnerGenerateCharacterProfilesUsesCharacterKeeperToolLoopAndParsesProfiles(t *testing.T) {
+	store, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
+	textClient.responses = []provider.ModelResponse{
+		{ToolCalls: []provider.ToolCall{
+			{ID: "call-search-lin", Name: "character.search", Arguments: mustRawJSON(t, map[string]any{"project_id": projectID, "query": "林烬", "limit": 5})},
+			{ID: "call-upsert-lin", Name: "character.upsert", Arguments: mustRawJSON(t, map[string]any{"project_id": projectID, "name": "林烬", "summary": "背负旧债的远航者。", "traits": map[string]any{"role": "主角", "desire": "找回失落舰队的真相", "wound": "曾在撤离中放弃同伴", "secret": "他携带舰队核心坐标"}, "metadata": map[string]any{"source": "ai_character_profiles"}})},
+		}},
+		{Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队的真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`},
+	}
 
 	result, err := runner.GenerateCharacterProfiles(context.Background(), CharacterProfilesRequest{ProjectID: projectID, Focus: "主角完整设定", Count: 1, Brief: "补全能支撑第一卷的主角人物弧", MaxOutputTokens: 888})
 	if err != nil {
@@ -369,8 +432,8 @@ func TestWorkflowRunnerGenerateCharacterProfilesUsesCharacterKeeperAndParsesProf
 	if character.Name != "林烬" || character.Role != "主角" || character.Desire == "" || character.Wound == "" || character.Secret == "" {
 		t.Fatalf("GenerateCharacterProfiles() character missing required profile fields: %+v", character)
 	}
-	if len(textClient.requests) != 1 {
-		t.Fatalf("GenerateCharacterProfiles() provider request count = %d, want 1", len(textClient.requests))
+	if len(textClient.requests) < 2 {
+		t.Fatalf("GenerateCharacterProfiles() provider request count = %d, want at least 2", len(textClient.requests))
 	}
 	req := textClient.requests[0]
 	if req.Model != "character-explicit" {
@@ -379,8 +442,37 @@ func TestWorkflowRunnerGenerateCharacterProfilesUsesCharacterKeeperAndParsesProf
 	if req.MaxOutputTokens != 888 {
 		t.Fatalf("GenerateCharacterProfiles() max output tokens = %d, want 888", req.MaxOutputTokens)
 	}
-	if !strings.Contains(req.SystemPrompt, "Character Keeper Agent") || !strings.Contains(req.SystemPrompt, "严格 JSON") || !strings.Contains(req.UserPrompt, "主角完整设定") || !strings.Contains(req.UserPrompt, "可直接写入 Story Bible") {
-		t.Fatalf("GenerateCharacterProfiles() prompt does not describe character profile contract: system=%q user=%q", req.SystemPrompt, req.UserPrompt)
+	if len(req.Tools) == 0 {
+		t.Fatalf("GenerateCharacterProfiles() first request missing tools")
+	}
+	if !strings.Contains(req.SystemPrompt, "Character Keeper Agent") || !strings.Contains(req.SystemPrompt, "严格 JSON") || !strings.Contains(req.SystemPrompt, "character.search") || !strings.Contains(req.SystemPrompt, "character.upsert") || !requestContainsText(req, "主角完整设定") || !requestContainsText(req, "可直接写入 Story Bible") {
+		t.Fatalf("GenerateCharacterProfiles() prompt does not describe character tool contract: system=%q messages=%+v", req.SystemPrompt, req.Messages)
+	}
+	if !requestHasToolResult(textClient.requests[1], "character.search") || !requestHasToolResult(textClient.requests[1], "character.upsert") {
+		t.Fatalf("GenerateCharacterProfiles() second request missing tool result history: %+v", textClient.requests[1].Messages)
+	}
+	entities, err := store.ListEntities(projectID)
+	if err != nil {
+		t.Fatalf("ListEntities() error: %v", err)
+	}
+	var saved domain.Entity
+	for _, entity := range entities {
+		if entity.Name == "林烬" && entity.Type == "character" {
+			saved = entity
+			break
+		}
+	}
+	if saved.ID == "" || saved.Summary != "背负旧债的远航者。" || saved.Traits["secret"] != "他携带舰队核心坐标" {
+		t.Fatalf("GenerateCharacterProfiles() did not persist character through tool call: %+v all=%+v", saved, entities)
+	}
+	if len(result.Entities) != 1 || result.Entities[0].ID != saved.ID {
+		t.Fatalf("GenerateCharacterProfiles() result entities not extracted from tool result: %+v saved=%+v", result.Entities, saved)
+	}
+	if len(result.Mappings) != 1 || result.Mappings[0].EntityID != saved.ID || result.Mappings[0].Action == "" {
+		t.Fatalf("GenerateCharacterProfiles() result mappings mismatch: %+v saved=%+v", result.Mappings, saved)
+	}
+	if len(result.ToolTrace) != 2 || !strings.Contains(strings.Join(result.ToolTrace, "\n"), "character.upsert") {
+		t.Fatalf("GenerateCharacterProfiles() tool trace mismatch: %+v", result.ToolTrace)
 	}
 	if result.ContextPack.Role != domain.AgentRoleCharacterKeeper || result.ModelResolution.RouteKey != string(domain.AgentRoleCharacterKeeper) {
 		t.Fatalf("GenerateCharacterProfiles() context/model role mismatch: pack=%+v resolution=%+v", result.ContextPack, result.ModelResolution)
@@ -389,7 +481,13 @@ func TestWorkflowRunnerGenerateCharacterProfilesUsesCharacterKeeperAndParsesProf
 
 func TestWorkflowRunnerGenerateCharacterProfilesRejectsInvalidJSON(t *testing.T) {
 	_, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
-	textClient.responses = []provider.ModelResponse{{Content: `{"characters":[{"name":"林烬","role":"主角"}]}`}}
+	textClient.responses = []provider.ModelResponse{
+		{ToolCalls: []provider.ToolCall{
+			{ID: "call-search-lin", Name: "character.search", Arguments: mustRawJSON(t, map[string]any{"project_id": projectID, "query": "林烬", "limit": 5})},
+			{ID: "call-upsert-lin", Name: "character.upsert", Arguments: mustRawJSON(t, map[string]any{"project_id": projectID, "name": "林烬", "summary": "背负旧债的远航者。", "traits": map[string]any{"role": "主角"}})},
+		}},
+		{Content: `{"characters":[{"name":"林烬","role":"主角"}]}`},
+	}
 
 	_, err := runner.GenerateCharacterProfiles(context.Background(), CharacterProfilesRequest{ProjectID: projectID, Focus: "主角完整设定", Count: 1, Brief: "补全主角"})
 	if err == nil {
@@ -397,6 +495,35 @@ func TestWorkflowRunnerGenerateCharacterProfilesRejectsInvalidJSON(t *testing.T)
 	}
 	if !strings.Contains(err.Error(), "desire must not be empty") {
 		t.Fatalf("GenerateCharacterProfiles() error = %v, want missing desire validation", err)
+	}
+}
+
+func TestWorkflowRunnerGenerateCharacterProfilesRejectsFinalJSONWithoutToolCall(t *testing.T) {
+	_, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
+	textClient.responses = []provider.ModelResponse{{Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队的真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`}}
+
+	_, err := runner.GenerateCharacterProfiles(context.Background(), CharacterProfilesRequest{ProjectID: projectID, Focus: "主角完整设定", Count: 1, Brief: "补全主角"})
+	if err == nil {
+		t.Fatalf("GenerateCharacterProfiles() error = nil, want missing tool call error")
+	}
+	if !strings.Contains(err.Error(), "require character.search and character.upsert tool calls") {
+		t.Fatalf("GenerateCharacterProfiles() error = %v, want missing tool call validation", err)
+	}
+}
+
+func TestWorkflowRunnerGenerateCharacterProfilesRejectsMissingUpsertForFinalCharacter(t *testing.T) {
+	_, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
+	textClient.responses = []provider.ModelResponse{
+		{ToolCalls: []provider.ToolCall{{ID: "call-search-lin", Name: "character.search", Arguments: mustRawJSON(t, map[string]any{"project_id": projectID, "query": "林烬", "limit": 5})}}},
+		{Content: `{"characters":[{"name":"林烬","role":"主角","desire":"找回失落舰队的真相","wound":"曾在撤离中放弃同伴","secret":"他携带舰队核心坐标","summary":"背负旧债的远航者。"}]}`},
+	}
+
+	_, err := runner.GenerateCharacterProfiles(context.Background(), CharacterProfilesRequest{ProjectID: projectID, Focus: "主角完整设定", Count: 1, Brief: "补全主角"})
+	if err == nil {
+		t.Fatalf("GenerateCharacterProfiles() error = nil, want missing upsert error")
+	}
+	if !strings.Contains(err.Error(), "without matching character.upsert tool result") {
+		t.Fatalf("GenerateCharacterProfiles() error = %v, want missing upsert validation", err)
 	}
 }
 
@@ -431,6 +558,80 @@ func TestWorkflowRunnerDraftChapterReturnsContinuityAudit(t *testing.T) {
 	}
 	if !hasContinuityAuditStep {
 		t.Fatalf("DraftChapter() workflow steps missing continuity_audit: %+v", result.Workflow.Steps)
+	}
+}
+
+func TestToolLoopExecutesGraphToolsAndReturnsResults(t *testing.T) {
+	store := memory.NewStore()
+	project, _, err := store.CreateProject(domain.Project{Title: "工具循环", Slug: "tools", Status: "active"}, domain.StoryBible{Title: "工具循环", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	anchor, err := store.SaveEntity(domain.Entity{ProjectID: project.ID, Name: "主线开始", Type: "time_node", Metadata: map[string]string{"chronology_key": "0100"}})
+	if err != nil {
+		t.Fatalf("SaveEntity(anchor) error: %v", err)
+	}
+	calls := []provider.ToolCall{
+		{ID: "call-character", Name: "character.upsert", Arguments: mustRawJSON(t, map[string]any{"project_id": project.ID, "name": "林烬", "summary": "背负旧债的远航者", "traits": map[string]any{"role": "主角"}})},
+		{ID: "call-event", Name: "event.upsert", Arguments: mustRawJSON(t, map[string]any{"project_id": project.ID, "name": "撤离夜", "summary": "林烬在撤离中失去同伴", "chronology_key": "0001"})},
+		{ID: "call-prequel", Name: "timeline.node.create_before", Arguments: mustRawJSON(t, map[string]any{"project_id": project.ID, "anchor_id": anchor.ID, "name": "前传节点", "summary": "灾难发生前的静夜"})},
+	}
+	textClient := &fakeTextClient{responses: []provider.ModelResponse{{ToolCalls: calls}, {Content: "完成工具写入"}}}
+	result, err := RunToolLoop(context.Background(), textClient, provider.TextRequest{Model: "fake", UserPrompt: "写入图谱", Tools: NarrativeToolSpecs()}, NewToolExecutor(store), 4)
+	if err != nil {
+		t.Fatalf("RunToolLoop() error: %v", err)
+	}
+	if result.Response.Content != "完成工具写入" {
+		t.Fatalf("final response content = %q", result.Response.Content)
+	}
+	if len(textClient.requests) != 2 {
+		t.Fatalf("provider request count = %d, want 2", len(textClient.requests))
+	}
+	if len(textClient.requests[1].Messages) < 5 {
+		t.Fatalf("second request missing tool result history: %+v", textClient.requests[1].Messages)
+	}
+	entities, err := store.ListEntities(project.ID)
+	if err != nil {
+		t.Fatalf("ListEntities() error: %v", err)
+	}
+	var characterID, eventID, prequelID string
+	for _, entity := range entities {
+		switch entity.Name {
+		case "林烬":
+			characterID = entity.ID
+			if entity.Type != "character" {
+				t.Fatalf("林烬 type = %q, want character", entity.Type)
+			}
+		case "撤离夜":
+			eventID = entity.ID
+			if entity.Type != "event" || entity.Metadata["chronology_key"] != "0001" {
+				t.Fatalf("event entity mismatch: %+v", entity)
+			}
+		case "前传节点":
+			prequelID = entity.ID
+			if entity.Type != "time_node" || entity.Metadata["time_scope"] != "prequel" || !strings.Contains(entity.Metadata["chronology_key"], "prequel") {
+				t.Fatalf("prequel node metadata mismatch: %+v", entity)
+			}
+		}
+	}
+	if characterID == "" || eventID == "" || prequelID == "" {
+		t.Fatalf("missing saved entities character=%q event=%q prequel=%q all=%+v", characterID, eventID, prequelID, entities)
+	}
+	relationCall := provider.ToolCall{ID: "call-relation", Name: "relationship.upsert", Arguments: mustRawJSON(t, map[string]any{"project_id": project.ID, "source_id": characterID, "target_id": eventID, "type": "involved_in", "label": "卷入"})}
+	if _, err := NewToolExecutor(store).Execute(context.Background(), relationCall); err != nil {
+		t.Fatalf("relationship Execute() error: %v", err)
+	}
+	expansion, err := store.ExpandGraph(project.ID, []string{characterID}, 1)
+	if err != nil {
+		t.Fatalf("ExpandGraph() error: %v", err)
+	}
+	if len(expansion.Edges) == 0 {
+		t.Fatalf("expected relationship edge in expansion: %+v", expansion)
+	}
+	for _, record := range result.ToolCalls {
+		if len(record.Result) == 0 || !json.Valid(record.Result) {
+			t.Fatalf("tool record %s result is not valid JSON: %q", record.Name, string(record.Result))
+		}
 	}
 }
 
@@ -482,15 +683,15 @@ func newConfiguredWorkflowRunner(t *testing.T) (*memory.Store, *WorkflowRunner, 
 	if err != nil {
 		t.Fatalf("CreateProvider(character) error: %v", err)
 	}
-	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_architect:architect-explicit", ProviderID: architectProvider.ID, Name: "architect-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 600, AllowedAgentRoles: []domain.AgentRole{domain.AgentRolePlotArchitect}})
+	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_architect:architect-explicit", ProviderID: architectProvider.ID, Name: "architect-explicit", Kind: domain.ModelKindText, Enabled: true, SupportsTools: true, MaxOutputTokens: 600, AllowedAgentRoles: []domain.AgentRole{domain.AgentRolePlotArchitect}})
 	if err != nil {
 		t.Fatalf("CreateModel(architect) error: %v", err)
 	}
-	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_writer:writer-explicit", ProviderID: writerProvider.ID, Name: "writer-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 1400, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleWriter}})
+	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_writer:writer-explicit", ProviderID: writerProvider.ID, Name: "writer-explicit", Kind: domain.ModelKindText, Enabled: true, SupportsTools: true, MaxOutputTokens: 1400, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleWriter}})
 	if err != nil {
 		t.Fatalf("CreateModel(writer) error: %v", err)
 	}
-	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_character:character-explicit", ProviderID: characterProvider.ID, Name: "character-explicit", Kind: domain.ModelKindText, Enabled: true, MaxOutputTokens: 900, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleCharacterKeeper}})
+	_, err = store.CreateModel(domain.ModelConfig{ID: "provider_character:character-explicit", ProviderID: characterProvider.ID, Name: "character-explicit", Kind: domain.ModelKindText, Enabled: true, SupportsTools: true, MaxOutputTokens: 900, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleCharacterKeeper}})
 	if err != nil {
 		t.Fatalf("CreateModel(character) error: %v", err)
 	}
@@ -602,6 +803,36 @@ func TestWorkflowRunnerInitializeProjectCreatesRuleBasedGenesis(t *testing.T) {
 	if containsFallback(result.Project.Metadata["genesis_mode"], result.Workflow.Output["mode"]) {
 		t.Fatalf("InitializeProject() genesis metadata/output contains fallback: %q / %q", result.Project.Metadata["genesis_mode"], result.Workflow.Output["mode"])
 	}
+}
+
+func mustRawJSON(t *testing.T, value any) json.RawMessage {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal JSON fixture: %v", err)
+	}
+	return payload
+}
+
+func requestContainsText(req provider.TextRequest, needle string) bool {
+	if strings.Contains(req.UserPrompt, needle) || strings.Contains(req.SystemPrompt, needle) {
+		return true
+	}
+	for _, message := range req.Messages {
+		if strings.Contains(message.Content, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func requestHasToolResult(req provider.TextRequest, toolName string) bool {
+	for _, message := range req.Messages {
+		if message.Role == "tool" && message.Name == toolName && strings.TrimSpace(message.Content) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func containsFallback(values ...string) bool {

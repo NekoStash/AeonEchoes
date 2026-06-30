@@ -20,6 +20,7 @@ const loading = ref(false)
 const localError = ref('')
 const cytoscapeError = ref('')
 const graphContainer = ref<HTMLElement | null>(null)
+const detailsPanel = ref<HTMLElement | { $el?: HTMLElement } | null>(null)
 let cy: Core | null = null
 
 const nodeTypeOptions = computed(() => [
@@ -107,6 +108,46 @@ async function loadGraph() {
   }
 }
 
+function resolveElement(element: HTMLElement | { $el?: HTMLElement } | null) {
+  if (!element) return null
+  if (element instanceof HTMLElement) return element
+  return element.$el || null
+}
+
+async function scrollToDetails() {
+  await nextTick()
+  const target = resolveElement(detailsPanel.value)
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  target?.focus({ preventScroll: true })
+}
+
+function syncCytoscapeSelection() {
+  if (!cy) return
+  cy.elements().removeClass('ae-selected')
+  if (selectedNode.value) cy.$id(selectedNode.value.id).addClass('ae-selected')
+  if (selectedEdge.value) cy.$id(selectedEdge.value.id).addClass('ae-selected')
+}
+
+async function selectNodeById(id: string) {
+  selectedNode.value = visibleNodes.value.find((node) => node.id === id) || null
+  selectedEdge.value = null
+  syncCytoscapeSelection()
+  await scrollToDetails()
+}
+
+async function selectEdge(edge: GraphEdge) {
+  selectedEdge.value = edge
+  selectedNode.value = null
+  syncCytoscapeSelection()
+  await scrollToDetails()
+}
+
+async function selectEdgeById(id: string) {
+  const edge = visibleEdges.value.find((item) => item.id === id)
+  if (!edge) return
+  await selectEdge(edge)
+}
+
 async function renderCytoscape() {
   if (!import.meta.client || !graphContainer.value) return
   try {
@@ -154,6 +195,10 @@ async function renderCytoscape() {
             style: { 'border-color': '#DC2626', 'border-width': 3 }
           },
           {
+            selector: 'node.ae-selected',
+            style: { 'border-color': '#38BDF8', 'border-width': 5, 'background-color': '#2563EB' }
+          },
+          {
             selector: 'edge',
             style: {
               label: 'data(label)',
@@ -175,6 +220,10 @@ async function renderCytoscape() {
           {
             selector: 'edge[type = "foreshadows"]',
             style: { 'line-color': '#B45309', 'target-arrow-color': '#B45309' }
+          },
+          {
+            selector: 'edge.ae-selected',
+            style: { 'line-color': '#2563EB', 'target-arrow-color': '#2563EB', width: 5 }
           }
         ],
         layout: {
@@ -187,23 +236,21 @@ async function renderCytoscape() {
         }
       })
       cy.on('tap', 'node', (event) => {
-        const id = event.target.id()
-        selectedNode.value = visibleNodes.value.find((node) => node.id === id) || null
-        selectedEdge.value = null
+        void selectNodeById(event.target.id())
       })
       cy.on('tap', 'edge', (event) => {
-        const id = event.target.id()
-        selectedEdge.value = visibleEdges.value.find((edge) => edge.id === id) || null
-        selectedNode.value = null
+        void selectEdgeById(event.target.id())
       })
       cy.on('tap', (event) => {
         if (event.target === cy) {
           selectedNode.value = null
           selectedEdge.value = null
+          syncCytoscapeSelection()
         }
       })
     }
     cy.layout({ name: 'cose', animate: true, fit: true, padding: 45 }).run()
+    syncCytoscapeSelection()
     cytoscapeError.value = ''
   } catch (error) {
     console.error('Cytoscape lazy load failed', error)
@@ -346,7 +393,7 @@ function edgeTypeLabel(type: string) {
         </div>
       </UiCard>
 
-      <UiCard class="p-4 sm:p-5">
+      <UiCard ref="detailsPanel" tabindex="-1" class="p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-5">
         <div class="flex items-center gap-2">
           <Info class="h-5 w-5 text-muted-foreground" />
           <h2 class="font-semibold">{{ t('graph.details') }}</h2>
@@ -407,8 +454,11 @@ function edgeTypeLabel(type: string) {
               v-for="edge in visibleEdges"
               :key="edge.id"
               type="button"
-              class="w-full min-w-0 rounded-xl border border-border bg-card p-3 text-left text-sm hover:border-primary/35"
-              @click="selectedEdge = edge; selectedNode = null"
+              :class="[
+                'w-full min-w-0 rounded-xl border p-3 text-left text-sm transition-all hover:border-primary/35 focus-ring',
+                selectedEdge?.id === edge.id ? 'border-primary/45 bg-primary/10' : 'border-border bg-card'
+              ]"
+              @click="selectEdge(edge)"
             >
               <p class="truncate font-medium" :title="edge.label">{{ edge.label }}</p>
               <p class="mt-1 truncate font-mono text-xs text-muted-foreground" :title="`${edge.source} → ${edge.target}`">{{ edge.source }} → {{ edge.target }}</p>

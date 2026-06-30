@@ -2,13 +2,16 @@ import { defineStore } from 'pinia'
 import { ApiClientError } from '~/lib/api'
 import type {
   ApiErrorState,
+  Chapter,
+  EnsureChapterRequest,
   GraphExpandResponse,
   HealthStatus,
   IndexJob,
   ModelConfig,
   ProjectSummary,
   ProviderConfig,
-  StoryBible
+  StoryBible,
+  StoryBibleChapter
 } from '~/lib/types'
 
 const OPENED_PROJECTS_STORAGE_KEY = 'aeon-echoes:opened-projects'
@@ -20,6 +23,7 @@ interface WorkspaceState {
   projects: ProjectSummary[]
   openedProjects: ProjectSummary[]
   activeBible: StoryBible | null
+  chapters: Record<string, Chapter[]>
   activeGraph: GraphExpandResponse | null
   indexJobs: IndexJob[]
   errors: ApiErrorState[]
@@ -55,6 +59,56 @@ function createErrorState(scope: string, error: unknown): ApiErrorState {
   }
 }
 
+function chapterSortValue(chapter: Chapter | StoryBibleChapter, index: number) {
+  if ('number' in chapter && Number.isFinite(chapter.number) && chapter.number > 0) return chapter.number
+  const metadataOrder = Number('metadata' in chapter ? chapter.metadata?.order || chapter.metadata?.number : undefined)
+  if (Number.isFinite(metadataOrder) && metadataOrder > 0) return metadataOrder
+  const match = chapter.id.match(/(\d+)$/)
+  return match ? Number(match[1]) : index + 1
+}
+
+function storyBibleChapterToChapter(projectId: string, chapter: StoryBibleChapter, index: number): Chapter {
+  return {
+    ...chapter,
+    project_id: projectId,
+    number: chapterSortValue(chapter, index),
+    metadata: {},
+    summary: chapter.summary || ''
+  }
+}
+
+function chapterToStoryBibleChapter(chapter: Chapter): StoryBibleChapter {
+  return {
+    id: chapter.id,
+    title: chapter.title,
+    status: chapter.status || 'planned',
+    summary: chapter.summary || chapter.metadata?.summary || ''
+  }
+}
+
+function mergeProjectChapters(projectId: string, bibleChapters: StoryBibleChapter[] = [], backendChapters: Chapter[] = []) {
+  const byId = new Map<string, Chapter>()
+  bibleChapters.forEach((chapter, index) => {
+    byId.set(chapter.id, storyBibleChapterToChapter(projectId, chapter, index))
+  })
+  backendChapters.forEach((chapter, index) => {
+    const existing = byId.get(chapter.id)
+    byId.set(chapter.id, {
+      ...(existing || {}),
+      ...chapter,
+      title: chapter.title || existing?.title || '',
+      status: chapter.status || existing?.status || 'planned',
+      summary: chapter.summary || chapter.metadata?.summary || existing?.summary || '',
+      number: Number(chapter.number || existing?.number || index + 1),
+      metadata: {
+        ...(existing?.metadata || {}),
+        ...(chapter.metadata || {})
+      }
+    })
+  })
+  return Array.from(byId.values()).sort((left, right) => chapterSortValue(left, 0) - chapterSortValue(right, 0))
+}
+
 export const useWorkspaceStore = defineStore('workspace', {
   state: (): WorkspaceState => ({
     health: null,
@@ -63,6 +117,7 @@ export const useWorkspaceStore = defineStore('workspace', {
     projects: [],
     openedProjects: [],
     activeBible: null,
+    chapters: {},
     activeGraph: null,
     indexJobs: [],
     errors: [],
@@ -71,7 +126,12 @@ export const useWorkspaceStore = defineStore('workspace', {
   getters: {
     enabledProviders: (state) => state.providers.filter((provider) => provider.enabled),
     enabledModels: (state) => state.models.filter((model) => model.enabled),
-    hasApiErrors: (state) => state.errors.length > 0
+    hasApiErrors: (state) => state.errors.length > 0,
+    activeChapters: (state) => {
+      const projectId = state.activeBible?.project_id || ''
+      if (!projectId) return []
+      return mergeProjectChapters(projectId, state.activeBible?.chapters || [], state.chapters[projectId] || [])
+    }
   },
   actions: {
     setLoading(key: string, value: boolean) {
@@ -226,14 +286,43 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.setLoading(`models:${providerId}`, false)
       }
     },
+    mergeActiveBibleChapters(projectId: string) {
+      if (!this.activeBible || this.activeBible.project_id !== projectId) return
+      const merged = mergeProjectChapters(projectId, this.activeBible.chapters, this.chapters[projectId] || [])
+      this.activeBible = {
+        ...this.activeBible,
+        chapters: merged.map(chapterToStoryBibleChapter)
+      }
+    },
     async loadStoryBible(projectId: string) {
       const api = useApi()
       this.setLoading(`bible:${projectId}`, true)
       try {
-        const result = await api.getStoryBible(projectId)
-        this.recordResult('story-bible', result)
-        this.activeBible = result.data
-        return result
+        const [bible, chapters] = await Promise.allSettled([
+          api.getStoryBible(projectId),
+          api.listChapters(projectId)
+        ])
+
+        if (bible.status !== 'fulfilled') {
+          this.recordError('story-bible', bible.reason)
+          throw bible.reason
+        }
+
+        this.recordResult('story-bible', bible.value)
+        this.activeBible = bible.value.data
+
+        if (chapters.status === 'fulfilled') {
+          this.recordResult('chapters-list', chapters.value)
+          this.chapters = {
+            ...this.chapters,
+            [projectId]: chapters.value.data
+          }
+        } else {
+          this.recordError('chapters-list', chapters.reason)
+        }
+
+        this.mergeActiveBibleChapters(projectId)
+        return bible.value
       } catch (error) {
         this.recordError('story-bible', error)
         throw error
@@ -248,6 +337,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         const result = await api.updateStoryBible(projectId, bible)
         this.recordResult('story-bible-save', result)
         this.activeBible = result.data
+        this.mergeActiveBibleChapters(projectId)
         return result
       } catch (error) {
         this.recordError('story-bible-save', error)
@@ -256,30 +346,88 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.setLoading(`bible-save:${projectId}`, false)
       }
     },
+    async listChapters(projectId: string) {
+      const api = useApi()
+      this.setLoading(`chapters:${projectId}`, true)
+      try {
+        const result = await api.listChapters(projectId)
+        this.recordResult('chapters-list', result)
+        this.chapters = {
+          ...this.chapters,
+          [projectId]: result.data
+        }
+        this.mergeActiveBibleChapters(projectId)
+        return result
+      } catch (error) {
+        this.recordError('chapters-list', error)
+        throw error
+      } finally {
+        this.setLoading(`chapters:${projectId}`, false)
+      }
+    },
+    async ensureChapter(projectId: string, request: EnsureChapterRequest) {
+      const api = useApi()
+      this.setLoading(`chapter-ensure:${projectId}`, true)
+      try {
+        const result = await api.ensureChapter(projectId, request)
+        this.recordResult('chapter-ensure', result)
+        const current = this.chapters[projectId] || []
+        const nextChapters = mergeProjectChapters(projectId, this.activeBible?.project_id === projectId ? this.activeBible.chapters : [], [
+          ...current.filter((chapter) => chapter.id !== result.data.chapter.id),
+          result.data.chapter
+        ])
+        this.chapters = {
+          ...this.chapters,
+          [projectId]: nextChapters
+        }
+        if (this.activeBible?.project_id === projectId) {
+          this.activeBible = {
+            ...this.activeBible,
+            chapters: nextChapters.map(chapterToStoryBibleChapter)
+          }
+        }
+        return result
+      } catch (error) {
+        this.recordError('chapter-ensure', error)
+        throw error
+      } finally {
+        this.setLoading(`chapter-ensure:${projectId}`, false)
+      }
+    },
     async syncCharacters(projectId: string, bible: StoryBible) {
       const api = useApi()
       this.setLoading(`characters-sync:${projectId}`, true)
       try {
         const result = await api.syncCharacters(projectId, bible)
         this.recordResult('characters-sync', result)
-        if (this.activeBible?.project_id === projectId) {
-          const entitiesById = new Map(result.data.characters.map((entity) => [entity.id, entity]))
-          const mappingsByName = new Map(result.data.mappings.map((mapping) => [mapping.name.trim(), mapping]))
-          this.activeBible = {
-            ...this.activeBible,
-            characters: this.activeBible.characters.map((character) => {
-              const mapping = mappingsByName.get(character.name.trim())
-              if (!mapping) return character
-              const entity = entitiesById.get(mapping.entity_id)
-              return {
-                ...character,
-                entity_id: mapping.entity_id,
-                sync_status: mapping.action || 'synced',
-                synced_at: entity?.updated_at,
-                summary: character.summary || entity?.summary
-              }
-            })
+        const baseBible = this.activeBible?.project_id === projectId ? this.activeBible : bible
+        const entitiesById = new Map(result.data.characters.map((entity) => [entity.id, entity]))
+        const mappingsByName = new Map(result.data.mappings.map((mapping) => [mapping.name.trim(), mapping]))
+        const syncedBible: StoryBible = {
+          ...baseBible,
+          characters: baseBible.characters.map((character) => {
+            const mapping = mappingsByName.get(character.name.trim())
+            if (!mapping) return character
+            const entity = entitiesById.get(mapping.entity_id)
+            return {
+              ...character,
+              entity_id: mapping.entity_id,
+              sync_status: mapping.action || 'synced',
+              synced_at: entity?.updated_at,
+              summary: character.summary || entity?.summary
+            }
+          })
+        }
+
+        try {
+          const saveResult = await api.updateStoryBible(projectId, syncedBible)
+          this.recordResult('characters-sync-persist', saveResult)
+          if (this.activeBible?.project_id === projectId || syncedBible.project_id === projectId) {
+            this.activeBible = saveResult.data
           }
+        } catch (error) {
+          this.recordError('characters-sync-persist', error)
+          throw error
         }
         return result
       } catch (error) {
