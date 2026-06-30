@@ -514,7 +514,8 @@ function storyBibleToBackend(bible: StoryBible) {
     role: character.role.trim(),
     desire: character.desire.trim(),
     wound: character.wound.trim(),
-    secret: character.secret?.trim()
+    secret: character.secret?.trim(),
+    summary: character.summary?.trim()
   }))
   const foreshadows = (bible.foreshadows || []).map((item) => ({
     ...item,
@@ -978,16 +979,15 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     syncCharacters(projectId, bible) {
       const characters = (bible.characters || [])
         .map((character) => ({
-          id: character.id?.trim(),
           name: character.name.trim(),
           role: character.role.trim(),
           desire: character.desire.trim(),
           wound: character.wound.trim(),
           secret: character.secret?.trim(),
-          metadata: character.metadata
+          summary: character.summary?.trim()
         }))
         .filter((character) => character.name)
-      return requestMapped<CharacterSyncResponse, CharacterSyncResponse>(
+      return requestResult<CharacterSyncResponse>(
         baseUrl,
         `/projects/${encodeURIComponent(projectId)}/characters/sync`,
         {
@@ -996,11 +996,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
             story_bible_id: bible.id || undefined,
             characters
           }
-        },
-        (response) => ({
-          ...response,
-          story_bible: response.story_bible ? normalizeStoryBible(response.story_bible, copy) : undefined
-        })
+        }
       )
     },
     generateCharacterProfiles(request) {

@@ -262,22 +262,21 @@ export const useWorkspaceStore = defineStore('workspace', {
       try {
         const result = await api.syncCharacters(projectId, bible)
         this.recordResult('characters-sync', result)
-        if (result.data.story_bible) {
-          this.activeBible = result.data.story_bible
-        } else if (this.activeBible?.project_id === projectId) {
-          const syncedByName = new Map(result.data.characters.map((character) => [character.name.trim(), character]))
+        if (this.activeBible?.project_id === projectId) {
+          const entitiesById = new Map(result.data.characters.map((entity) => [entity.id, entity]))
+          const mappingsByName = new Map(result.data.mappings.map((mapping) => [mapping.name.trim(), mapping]))
           this.activeBible = {
             ...this.activeBible,
-            entity_ids: result.data.entity_ids || this.activeBible.entity_ids,
             characters: this.activeBible.characters.map((character) => {
-              const synced = syncedByName.get(character.name.trim())
-              if (!synced) return character
+              const mapping = mappingsByName.get(character.name.trim())
+              if (!mapping) return character
+              const entity = entitiesById.get(mapping.entity_id)
               return {
                 ...character,
-                id: synced.id || character.id,
-                entity_id: synced.entity_id,
-                sync_status: synced.sync_status || 'synced',
-                synced_at: synced.synced_at
+                entity_id: mapping.entity_id,
+                sync_status: mapping.action || 'synced',
+                synced_at: entity?.updated_at,
+                summary: character.summary || entity?.summary
               }
             })
           }

@@ -130,6 +130,7 @@ function profileToDraftCharacter(profile: CharacterProfile, fallbackId: string):
     desire: profile.desire.trim(),
     wound: profile.wound.trim(),
     secret: profile.secret?.trim() || '',
+    summary: profile.summary?.trim(),
     metadata: profile.metadata
   }
 }
@@ -142,8 +143,32 @@ function characterToProfile(character: StoryBible['characters'][number]): Charac
     desire: character.desire,
     wound: character.wound,
     secret: character.secret,
+    summary: character.summary,
     metadata: character.metadata
   }
+}
+
+function characterProfileBrief(character: CharacterProfile) {
+  return [
+    character.name,
+    character.role,
+    character.desire,
+    character.wound,
+    character.secret,
+    character.summary
+  ].map((item) => item?.trim()).filter(Boolean).join(' / ')
+}
+
+function buildCharacterGenerationBrief(mode: CharacterProfileMode, bible: StoryBible) {
+  const protagonistHint = bible.source_seed?.metadata?.protagonist || bible.source_seed?.protagonist || bible.characters[0]?.name || ''
+  return [
+    mode === 'protagonist' ? t('projectOverview.characterGenerator.prompts.protagonist') : t('projectOverview.characterGenerator.prompts.character'),
+    bible.premise ? `${t('projectOverview.fields.premise')}：${bible.premise}` : '',
+    bible.themes.length ? `${t('projectOverview.fields.themes')}：${bible.themes.join('、')}` : '',
+    bible.world_rules.length ? `${t('projectOverview.worldRules')}：${bible.world_rules.join('；')}` : '',
+    protagonistHint ? `${t('projectNew.protagonist')}：${protagonistHint}` : '',
+    bible.characters.length ? `${t('projectOverview.characters')}：${bible.characters.map(characterToProfile).map(characterProfileBrief).filter(Boolean).join('；')}` : ''
+  ].filter(Boolean).join('\n')
 }
 
 function mergeGeneratedCharacters(profiles: CharacterProfile[]) {
@@ -173,9 +198,7 @@ async function syncDraftCharacters(bible: StoryBible, options: { rethrow?: boole
   characterSyncState.value = 'syncing'
   try {
     const result = await workspace.syncCharacters(projectId.value, bible)
-    if (result.data.story_bible) {
-      bibleDraft.value = cloneBible(result.data.story_bible)
-    } else if (activeBible.value) {
+    if (activeBible.value) {
       bibleDraft.value = cloneBible(activeBible.value)
     }
     characterSyncState.value = 'synced'
@@ -208,16 +231,17 @@ async function generateCharacters(mode: CharacterProfileMode) {
   characterGenerationState.value = 'generating'
   generatedCharacters.value = []
   try {
+    const characterNames = bibleDraft.value.characters.map((character) => character.name.trim()).filter(Boolean)
     const result = await api.generateCharacterProfiles({
       project_id: projectId.value,
-      mode,
-      premise: bibleDraft.value.premise,
-      themes: bibleDraft.value.themes,
-      world_rules: bibleDraft.value.world_rules,
-      existing_characters: bibleDraft.value.characters.map(characterToProfile),
-      protagonist_hint: bibleDraft.value.source_seed?.metadata?.protagonist || bibleDraft.value.source_seed?.protagonist || bibleDraft.value.characters[0]?.name || '',
-      prompt: mode === 'protagonist' ? t('projectOverview.characterGenerator.prompts.protagonist') : t('projectOverview.characterGenerator.prompts.character'),
-      count: 1
+      focus: mode === 'protagonist' ? '主角完整设定' : '新增配角设定',
+      count: 1,
+      brief: buildCharacterGenerationBrief(mode, bibleDraft.value),
+      context_selection: {
+        character_names: characterNames.length ? characterNames : undefined,
+        include_world_rules: true
+      },
+      max_output_tokens: 1200
     })
     workspace.recordResult(t('projectOverview.resultScopes.characterGeneration'), result)
     generatedCharacters.value = result.data.characters || []
@@ -631,6 +655,10 @@ function foreshadowStatusLabel(status: string) {
                     <label class="space-y-2 sm:col-span-2">
                       <span class="text-xs text-muted-foreground">{{ t('projectOverview.fields.characterSecret') }}</span>
                       <UiInput v-model="character.secret" />
+                    </label>
+                    <label class="space-y-2 sm:col-span-2">
+                      <span class="text-xs text-muted-foreground">{{ t('projectOverview.fields.characterSummary') }}</span>
+                      <UiTextarea v-model="character.summary" :rows="3" />
                     </label>
                   </div>
                   <UiButton size="icon" variant="destructive" class="self-end sm:self-start" @click="removeCharacter(index)">
