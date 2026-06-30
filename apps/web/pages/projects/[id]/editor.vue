@@ -86,20 +86,21 @@ const selectedCharacters = computed(() => availableCharacters.value.filter((char
 const hasManualCharacterSelection = computed(() => referenceSelection.character_ids.length > 0)
 const autoSelectedCharacters = computed(() => inferAutoSelectedCharacters())
 const requestCharacters = computed(() => (hasManualCharacterSelection.value ? selectedCharacters.value : autoSelectedCharacters.value))
+const requestCharacterEntityIds = computed(() => uniqueTrimmed(requestCharacters.value.map((character) => character.entity_id || '')).slice(0, 3))
+const unsyncedRequestCharacters = computed(() => requestCharacters.value.filter((character) => !character.entity_id?.trim()))
+const hasUnsyncedRequestCharacters = computed(() => unsyncedRequestCharacters.value.length > 0)
+const unsyncedRequestCharacterNames = computed(() => uniqueTrimmed(unsyncedRequestCharacters.value.map((character) => character.name)))
 const hasReferenceFocus = computed(() => Boolean(
   referenceSelection.include_chapter_plan
   || (referenceSelection.include_chapter_summary && hasRealCurrentChapter.value)
   || referenceSelection.include_world_rules
   || hasManualCharacterSelection.value
 ))
-const selectionPayload = computed<ContextSelection>(() => {
-  const characterNames = uniqueTrimmed(requestCharacters.value.map((character) => character.name)).slice(0, 3)
-  return {
-    chapter_ids: referenceSelection.include_chapter_summary && hasRealCurrentChapter.value && currentChapter.value?.id ? [currentChapter.value.id] : undefined,
-    include_world_rules: referenceSelection.include_world_rules || undefined,
-    character_names: characterNames.length ? characterNames : undefined
-  }
-})
+const selectionPayload = computed<ContextSelection>(() => ({
+  chapter_ids: referenceSelection.include_chapter_summary && hasRealCurrentChapter.value && currentChapter.value?.id ? [currentChapter.value.id] : undefined,
+  include_world_rules: referenceSelection.include_world_rules || undefined,
+  character_ids: requestCharacterEntityIds.value.length ? requestCharacterEntityIds.value : undefined
+}))
 const referenceFocusChips = computed(() => {
   const chips: string[] = []
   if (referenceSelection.include_chapter_plan && chapterPlan.value.trim()) chips.push(t('editor.referenceFocusLabels.chapterPlan'))
@@ -863,6 +864,7 @@ function versionWordCount(version: ChapterVersion) {
                   >
                     <span class="block truncate font-medium">{{ character.name }}</span>
                     <span v-if="character.role" class="mt-1 block truncate text-[11px] text-muted-foreground">{{ character.role }}</span>
+                    <span v-if="!character.entity_id" class="mt-1 block truncate text-[11px] text-amber-700 dark:text-amber-200">{{ t('editor.unsyncedCharacters.badge') }}</span>
                   </button>
                 </div>
 
@@ -881,7 +883,7 @@ function versionWordCount(version: ChapterVersion) {
                   </div>
                   <div v-else class="mt-3 flex flex-wrap gap-2">
                     <UiBadge v-for="character in autoSelectedCharacters" :key="character.id" variant="gold">
-                      {{ character.name }}
+                      {{ character.name }}{{ character.entity_id ? '' : ` · ${t('editor.unsyncedCharacters.badge')}` }}
                     </UiBadge>
                   </div>
                 </div>
@@ -891,6 +893,10 @@ function versionWordCount(version: ChapterVersion) {
             <div class="flex flex-wrap gap-2">
               <UiBadge v-if="referenceFocusChips.length === 0" variant="muted">{{ t('editor.referenceFocusDefault') }}</UiBadge>
               <UiBadge v-for="chip in referenceFocusChips" :key="chip" variant="violet">{{ chip }}</UiBadge>
+            </div>
+
+            <div v-if="hasUnsyncedRequestCharacters" class="rounded-2xl border border-amber-300/40 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+              {{ t('editor.unsyncedCharacters.message', { names: unsyncedRequestCharacterNames.join(t('common.listSeparator')) }) }}
             </div>
 
             <div v-if="referenceSections.length === 0" class="rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">

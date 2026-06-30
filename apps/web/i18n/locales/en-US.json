@@ -692,6 +692,10 @@
       "empty": "No character can be auto-recommended yet.",
       "chip": "Auto: {name}"
     },
+    "unsyncedCharacters": {
+      "badge": "Unsynced",
+      "message": "These characters have not been synced as real characters yet, so AI context requests will not reference them: {names}. Save the Story Bible and complete character sync first."
+    },
     "characterAnchor": {
       "role": "role: {value}",
       "desire": "desire: {value}",

@@ -692,6 +692,10 @@
       "empty": "暂无可自动推荐的角色。",
       "chip": "自动：{name}"
     },
+    "unsyncedCharacters": {
+      "badge": "未同步",
+      "message": "以下角色尚未同步为真实角色，AI 上下文请求不会引用它们：{names}。请先保存 Story Bible 并完成角色同步。"
+    },
     "characterAnchor": {
       "role": "定位：{value}",
       "desire": "欲望：{value}",

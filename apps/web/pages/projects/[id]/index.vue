@@ -231,16 +231,11 @@ async function generateCharacters(mode: CharacterProfileMode) {
   characterGenerationState.value = 'generating'
   generatedCharacters.value = []
   try {
-    const characterNames = bibleDraft.value.characters.map((character) => character.name.trim()).filter(Boolean)
     const result = await api.generateCharacterProfiles({
       project_id: projectId.value,
       focus: mode === 'protagonist' ? '主角完整设定' : '新增配角设定',
       count: 1,
       brief: buildCharacterGenerationBrief(mode, bibleDraft.value),
-      context_selection: {
-        character_names: characterNames.length ? characterNames : undefined,
-        include_world_rules: true
-      },
       max_output_tokens: 1200
     })
     workspace.recordResult(t('projectOverview.resultScopes.characterGeneration'), result)
