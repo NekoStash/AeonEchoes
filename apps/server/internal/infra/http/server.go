@@ -17,25 +17,40 @@ import (
 	"aeonechoes/server/internal/provider"
 	"aeonechoes/server/internal/repository"
 	"aeonechoes/server/internal/retrieval"
+	"aeonechoes/server/internal/skills"
+	"aeonechoes/server/internal/tooling"
 )
 
 // Server owns HTTP routing and request handlers.
 type Server struct {
-	cfg       config.Config
-	store     repository.AppStore
-	providers provider.ProviderFactory
-	workflow  *agent.WorkflowRunner
-	indexing  *indexing.Service
-	retrieval *retrieval.Service
-	indexWake indexing.WakeNotifier
-	logger    *slog.Logger
+	cfg               config.Config
+	store             repository.AppStore
+	providers         provider.ProviderFactory
+	workflow          *agent.WorkflowRunner
+	agentRuntime      *agent.Runtime
+	skillService      *skills.Service
+	toolRegistry      *tooling.Registry
+	mcpDefaultTimeout time.Duration
+	indexing          *indexing.Service
+	retrieval         *retrieval.Service
+	indexWake         indexing.WakeNotifier
+	logger            *slog.Logger
 }
 
 func NewServer(cfg config.Config, store repository.AppStore, providers provider.ProviderFactory, workflow *agent.WorkflowRunner, indexingService *indexing.Service, retrievalService *retrieval.Service, indexWake indexing.WakeNotifier, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{cfg: cfg, store: store, providers: providers, workflow: workflow, indexing: indexingService, retrieval: retrievalService, indexWake: indexWake, logger: logger}
+	return &Server{cfg: cfg, store: store, providers: providers, workflow: workflow, mcpDefaultTimeout: cfg.MCPDefaultTimeout, indexing: indexingService, retrieval: retrievalService, indexWake: indexWake, logger: logger}
+}
+
+func (s *Server) ConfigureAgents(runtime *agent.Runtime, skillService *skills.Service, toolRegistry *tooling.Registry, mcpDefaultTimeout time.Duration) {
+	s.agentRuntime = runtime
+	s.skillService = skillService
+	s.toolRegistry = toolRegistry
+	if mcpDefaultTimeout > 0 {
+		s.mcpDefaultTimeout = mcpDefaultTimeout
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -70,11 +85,35 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/retrieval/semantic-search", s.semanticSearch)
 	mux.HandleFunc("GET /api/system/status", s.systemStatus)
 	mux.HandleFunc("GET /api/graph/expand", s.expandGraph)
-	mux.HandleFunc("POST /api/ai/chapter-idea", s.generateChapterIdea)
-	mux.HandleFunc("POST /api/ai/character-profiles", s.generateCharacterProfiles)
-	mux.HandleFunc("POST /api/ai/context-selection/preview", s.previewContextSelection)
-	mux.HandleFunc("POST /api/ai/draft", s.draft)
-	mux.HandleFunc("POST /api/ai/draft-with-idea", s.draftWithIdea)
+	mux.HandleFunc("GET /api/agents", s.listAgents)
+	mux.HandleFunc("POST /api/agents", s.createAgent)
+	mux.HandleFunc("GET /api/agents/{id}", s.getAgent)
+	mux.HandleFunc("PUT /api/agents/{id}", s.updateAgent)
+	mux.HandleFunc("DELETE /api/agents/{id}", s.deleteAgent)
+	mux.HandleFunc("POST /api/agents/{id}/runs", s.runAgent)
+	mux.HandleFunc("GET /api/agent-runs", s.listAgentRuns)
+	mux.HandleFunc("GET /api/agent-runs/{id}", s.getAgentRun)
+	mux.HandleFunc("GET /api/skills", s.listSkills)
+	mux.HandleFunc("POST /api/skills", s.createSkill)
+	mux.HandleFunc("GET /api/skills/{id}", s.getSkill)
+	mux.HandleFunc("PUT /api/skills/{id}", s.updateSkill)
+	mux.HandleFunc("DELETE /api/skills/{id}", s.deleteSkill)
+	mux.HandleFunc("PUT /api/skills/{id}/enabled", s.setSkillEnabled)
+	mux.HandleFunc("GET /api/skills/sources", s.listSkillSources)
+	mux.HandleFunc("POST /api/skills/sources/default/scan", s.scanDefaultSkillSource)
+	mux.HandleFunc("POST /api/skills/sources/{id}/scan", s.scanSkillSource)
+	mux.HandleFunc("GET /api/mcp/servers", s.listMCPServers)
+	mux.HandleFunc("POST /api/mcp/servers", s.createMCPServer)
+	mux.HandleFunc("GET /api/mcp/servers/{id}", s.getMCPServer)
+	mux.HandleFunc("PUT /api/mcp/servers/{id}", s.updateMCPServer)
+	mux.HandleFunc("DELETE /api/mcp/servers/{id}", s.deleteMCPServer)
+	mux.HandleFunc("PUT /api/mcp/servers/{id}/enabled", s.setMCPServerEnabled)
+	mux.HandleFunc("POST /api/mcp/servers/{id}/test", s.testMCPServer)
+	mux.HandleFunc("POST /api/mcp/servers/{id}/refresh-tools", s.refreshMCPTools)
+	mux.HandleFunc("GET /api/mcp/servers/{id}/tools", s.listMCPServerTools)
+	mux.HandleFunc("GET /api/tools/catalog", s.listToolCatalog)
+	mux.HandleFunc("PUT /api/tools/catalog/{id}/enabled", s.setToolEnabled)
+	mux.HandleFunc("GET /api/tools/invocations", s.listToolInvocations)
 	mux.HandleFunc("GET /api/index/jobs", s.listIndexJobs)
 	mux.HandleFunc("POST /api/index/jobs/{id}/run", s.runIndexJob)
 	mux.HandleFunc("POST /api/index/run-pending", s.runPendingIndexJobs)
@@ -625,7 +664,17 @@ func (s *Server) draftWithIdea(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listIndexJobs(w http.ResponseWriter, r *http.Request) {
-	items, err := s.store.ListIndexJobs(r.URL.Query().Get("project_id"))
+	query := r.URL.Query()
+	limit := 0
+	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("limit must be a positive integer"))
+			return
+		}
+		limit = parsed
+	}
+	items, err := s.store.ListIndexJobs(repository.IndexJobFilter{ProjectID: query.Get("project_id"), Status: query.Get("status"), Limit: limit})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -930,9 +979,7 @@ func (p providerConfigRequest) toDomain() domain.ProviderConfig {
 	if p.APIKey != nil {
 		cfg.APIKey = *p.APIKey
 	}
-	if p.APIKeyEnv != nil {
-		cfg.APIKeyEnv = *p.APIKeyEnv
-	}
+	cfg.APIKeyEnv = ""
 	cfg.Metadata = p.normalizedMetadata(nil)
 	return cfg
 }
@@ -954,9 +1001,7 @@ func (p providerConfigRequest) applyTo(existing domain.ProviderConfig) domain.Pr
 	if p.APIKey != nil {
 		existing.APIKey = *p.APIKey
 	}
-	if p.APIKeyEnv != nil {
-		existing.APIKeyEnv = *p.APIKeyEnv
-	}
+	existing.APIKeyEnv = ""
 	if p.Enabled != nil {
 		existing.Enabled = *p.Enabled
 	}
@@ -1019,7 +1064,6 @@ func providerResponse(item domain.ProviderConfig) map[string]any {
 		"type":                        item.Type,
 		"provider_type":               item.Type,
 		"base_url":                    item.BaseURL,
-		"api_key_env":                 item.APIKeyEnv,
 		"api_key_hint":                providerAPIKeyHint(item),
 		"enabled":                     item.Enabled,
 		"streaming":                   metadata["streaming"] == "true",
@@ -1038,9 +1082,6 @@ func providerResponse(item domain.ProviderConfig) map[string]any {
 }
 
 func providerAPIKeyHint(item domain.ProviderConfig) string {
-	if strings.TrimSpace(item.APIKeyEnv) != "" {
-		return item.APIKeyEnv
-	}
 	if strings.TrimSpace(item.APIKey) != "" {
 		return "configured"
 	}

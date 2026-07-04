@@ -48,7 +48,6 @@ export interface ProviderConfig {
   type?: ProviderType
   base_url: string
   api_key?: string
-  api_key_env?: string
   api_key_hint?: string
   streaming: boolean
   enabled: boolean
@@ -330,13 +329,21 @@ export interface ChapterVersion {
   }
 }
 
+export type IndexJobStatus = 'pending' | 'running' | 'completed' | 'failed' | string
+
+export interface IndexJobListOptions {
+  projectId?: string
+  status?: IndexJobStatus
+  limit?: number
+}
+
 export interface IndexJob {
   id: string
   project_id: string
   chapter_id?: string
   chapter_version_id?: string
   kind: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | string
+  status: IndexJobStatus
   attempts: number
   error?: string
   payload?: Record<string, string>
@@ -395,6 +402,162 @@ export interface AIWorkflow {
   input?: Record<string, string>
   output?: Record<string, string>
   error?: ApiErrorState | string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AgentConfig {
+  id: string
+  project_id?: string
+  name: string
+  description?: string
+  role?: AgentRole
+  model_id?: string
+  enabled: boolean
+  system_prompt?: string
+  skill_ids?: string[]
+  tool_ids?: string[]
+  mcp_server_ids?: string[]
+  memory_policy?: Record<string, unknown>
+  runtime_options?: Record<string, unknown>
+  metadata?: Record<string, string>
+  created_at?: string
+  updated_at?: string
+}
+
+export type AgentRunStatus = 'running' | 'completed' | 'failed' | string
+
+export interface AgentRun {
+  id: string
+  agent_id: string
+  project_id?: string
+  status: AgentRunStatus
+  input?: Record<string, unknown>
+  output?: Record<string, unknown>
+  error?: string
+  tool_invocation_ids?: string[]
+  started_at?: string
+  completed_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AgentRunRequest {
+  project_id?: string
+  task_type?: string
+  input?: Record<string, unknown>
+  context_selection?: ContextSelection
+  max_output_tokens?: number
+}
+
+export interface AgentRunResult {
+  run: AgentRun
+  content: string
+  tool_trace?: ToolTrace[]
+  model_resolution: ModelResolution
+}
+
+export type SkillSourceType = 'inline_text' | 'directory' | string
+
+export interface SkillSource {
+  id: string
+  project_id?: string
+  name: string
+  type: SkillSourceType
+  path?: string
+  inline_text?: string
+  enabled: boolean
+  metadata?: Record<string, string>
+  created_at?: string
+  updated_at?: string
+}
+
+export interface Skill {
+  id: string
+  project_id?: string
+  source_id: string
+  name: string
+  description?: string
+  content?: string
+  path?: string
+  enabled: boolean
+  metadata?: Record<string, string>
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SkillScanResult {
+  source_id: string
+  path: string
+  created: number
+  updated: number
+  deleted: number
+  unchanged: number
+  errors?: string[]
+  scanned_at: string
+}
+
+export type MCPTransport = 'stdio' | 'streamable_http' | 'sse' | string
+export type MCPServerStatus = 'online' | 'offline' | 'disabled' | 'failed' | 'unknown' | string
+
+export interface MCPServerConfig {
+  id: string
+  project_id?: string
+  name: string
+  transport: MCPTransport
+  status: MCPServerStatus
+  enabled: boolean
+  command?: string
+  args?: string[]
+  url?: string
+  headers?: Record<string, string>
+  secret_headers?: Record<string, string>
+  secret_headers_hint?: string[]
+  env?: Record<string, string>
+  secret_env?: Record<string, string>
+  secret_env_hint?: string[]
+  timeout_sec?: number
+  metadata?: Record<string, string>
+  last_seen_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export type ToolDefinitionKind = 'builtin' | 'mcp' | 'skill' | string
+export type ToolStatus = 'active' | 'disabled' | 'unavailable' | string
+
+export interface ToolDefinition {
+  id: string
+  project_id?: string
+  name: string
+  display_name?: string
+  description?: string
+  kind: ToolDefinitionKind
+  status: ToolStatus
+  mcp_server_id?: string
+  source_id?: string
+  skill_id?: string
+  input_schema?: Record<string, unknown>
+  metadata?: Record<string, string>
+  created_at?: string
+  updated_at?: string
+}
+
+export type ToolInvocationStatus = 'running' | 'succeeded' | 'failed' | string
+
+export interface ToolInvocation {
+  id: string
+  agent_run_id?: string
+  agent_id?: string
+  project_id?: string
+  tool_id?: string
+  tool_name: string
+  status: ToolInvocationStatus
+  arguments?: Record<string, unknown>
+  result?: Record<string, unknown>
+  error?: string
+  started_at?: string
+  completed_at?: string
   created_at?: string
   updated_at?: string
 }

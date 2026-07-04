@@ -1,25 +1,16 @@
 import type {
-  AIDraftRequest,
-  AIDraftResponse,
-  CharacterProfileRequest,
-  CharacterProfileResponse,
+  AgentConfig,
+  AgentRun,
+  AgentRunRequest,
+  AgentRunResult,
   CharacterSyncResponse,
   Chapter,
-  ChapterIdeaRequest,
-  ChapterIdeaResponse,
-  ContextPreviewRequest,
-  ContextPreviewResponse,
-  ContextSelection,
-  DraftResultResponse,
-  DraftWithIdeaRequest,
-  DraftWithIdeaResponse,
   EnsureChapterRequest,
   EnsureChapterResponse,
   AIWorkflow,
   ApiErrorState,
   AppSetting,
   ChapterVersion,
-  ContextPack,
   Entity,
   Fact,
   GraphEdge,
@@ -28,10 +19,10 @@ import type {
   GraphExpansion,
   GraphNode,
   HealthStatus,
-  ToolTrace,
-  IndexFreshness,
   IndexJob,
+  IndexJobListOptions,
   InitializeProjectResponse,
+  MCPServerConfig,
   ModelConfig,
   ModelResolution,
   ModelUsageSettings,
@@ -42,7 +33,12 @@ import type {
   RebuildVectorsResponse,
   RunPendingIndexResponse,
   SaveChapterVersionResponse,
-  StoryBible
+  Skill,
+  SkillScanResult,
+  SkillSource,
+  StoryBible,
+  ToolDefinition,
+  ToolInvocation
 } from './types'
 
 export class ApiClientError extends Error {
@@ -130,7 +126,6 @@ type ProviderSaveRequest = {
   type: ProviderConfig['provider_type']
   base_url: string
   api_key?: string
-  api_key_env?: string
   enabled: boolean
   trace_enabled?: boolean
   trace_retention_days?: number
@@ -220,16 +215,56 @@ type BackendChapterVersionRequest = {
   metadata?: Record<string, string>
 }
 
-type RawDraftResponse = Omit<AIDraftResponse, 'content' | 'warnings' | 'context_pack' | 'index_freshness' | 'model_resolution' | 'continuity_audit' | 'tool_trace'> & {
-  content?: string
-  warnings?: string[]
-  chapter_version?: ChapterVersion
-  workflow: AIWorkflow
-  context_pack: ContextPack
-  index_freshness: IndexFreshness
-  model_resolution: ModelResolution
-  continuity_audit: AIDraftResponse['continuity_audit']
-  tool_trace?: ToolTrace[]
+export type AgentListOptions = {
+  projectId?: string
+  enabled?: boolean
+  limit?: number
+}
+
+export type AgentRunListOptions = {
+  agentId?: string
+  projectId?: string
+  status?: AgentRun['status']
+  limit?: number
+}
+
+export type SkillSourceListOptions = {
+  projectId?: string
+  enabled?: boolean
+  limit?: number
+}
+
+export type SkillListOptions = {
+  projectId?: string
+  sourceId?: string
+  enabled?: boolean
+  limit?: number
+}
+
+export type MCPServerListOptions = {
+  projectId?: string
+  enabled?: boolean
+  status?: MCPServerConfig['status']
+  limit?: number
+}
+
+export type ToolCatalogListOptions = {
+  projectId?: string
+  kind?: ToolDefinition['kind']
+  status?: ToolDefinition['status']
+  mcpServerId?: string
+  sourceId?: string
+  skillId?: string
+  limit?: number
+}
+
+export type ToolInvocationListOptions = {
+  agentRunId?: string
+  agentId?: string
+  projectId?: string
+  toolId?: string
+  status?: ToolInvocation['status']
+  limit?: number
 }
 
 export interface ApiClient {
@@ -251,17 +286,34 @@ export interface ApiClient {
   getStoryBible(projectId: string): Promise<ApiResult<StoryBible>>
   updateStoryBible(projectId: string, bible: StoryBible): Promise<ApiResult<StoryBible>>
   syncCharacters(projectId: string, bible: StoryBible): Promise<ApiResult<CharacterSyncResponse>>
-  generateCharacterProfiles(request: CharacterProfileRequest): Promise<ApiResult<CharacterProfileResponse>>
   expandGraph(request: GraphExpandRequest): Promise<ApiResult<GraphExpandResponse>>
   listChapters(projectId: string): Promise<ApiResult<Chapter[]>>
   ensureChapter(projectId: string, request: EnsureChapterRequest): Promise<ApiResult<EnsureChapterResponse>>
   listChapterVersions(projectId: string, chapterId: string): Promise<ApiResult<ChapterVersion[]>>
   saveChapterVersion(projectId: string, version: Partial<ChapterVersion>): Promise<ApiResult<SaveChapterVersionResponse>>
-  requestAIDraft(request: AIDraftRequest): Promise<ApiResult<AIDraftResponse>>
-  requestChapterIdea(request: ChapterIdeaRequest): Promise<ApiResult<ChapterIdeaResponse>>
-  previewContextSelection(request: ContextPreviewRequest): Promise<ApiResult<ContextPreviewResponse>>
-  requestDraftWithIdea(request: DraftWithIdeaRequest): Promise<ApiResult<DraftWithIdeaResponse>>
-  listIndexJobs(projectId?: string): Promise<ApiResult<IndexJob[]>>
+  listAgents(options?: AgentListOptions): Promise<ApiResult<AgentConfig[]>>
+  saveAgent(agent: AgentConfig, mode?: 'create' | 'edit'): Promise<ApiResult<AgentConfig>>
+  deleteAgent(id: string): Promise<ApiResult<{ status: string }>>
+  runAgent(agentId: string, request: AgentRunRequest): Promise<ApiResult<AgentRunResult>>
+  listAgentRuns(options?: AgentRunListOptions): Promise<ApiResult<AgentRun[]>>
+  listSkillSources(options?: SkillSourceListOptions): Promise<ApiResult<SkillSource[]>>
+  scanDefaultSkillSource(): Promise<ApiResult<SkillScanResult>>
+  scanSkillSource(id: string): Promise<ApiResult<SkillScanResult>>
+  listSkills(options?: SkillListOptions): Promise<ApiResult<Skill[]>>
+  saveSkill(skill: Skill, mode?: 'create' | 'edit'): Promise<ApiResult<Skill>>
+  deleteSkill(id: string): Promise<ApiResult<{ status: string }>>
+  setSkillEnabled(id: string, enabled: boolean): Promise<ApiResult<Skill>>
+  listMCPServers(options?: MCPServerListOptions): Promise<ApiResult<MCPServerConfig[]>>
+  saveMCPServer(server: MCPServerConfig, mode?: 'create' | 'edit'): Promise<ApiResult<MCPServerConfig>>
+  deleteMCPServer(id: string): Promise<ApiResult<{ status: string }>>
+  setMCPServerEnabled(id: string, enabled: boolean): Promise<ApiResult<MCPServerConfig>>
+  testMCPServer(id: string): Promise<ApiResult<{ ok: boolean; server: MCPServerConfig }>>
+  refreshMCPTools(id: string): Promise<ApiResult<{ tools: ToolDefinition[]; count: number; unavailable: number }>>
+  listMCPServerTools(id: string): Promise<ApiResult<ToolDefinition[]>>
+  listToolCatalog(options?: ToolCatalogListOptions): Promise<ApiResult<ToolDefinition[]>>
+  setToolEnabled(id: string, enabled: boolean): Promise<ApiResult<ToolDefinition>>
+  listToolInvocations(options?: ToolInvocationListOptions): Promise<ApiResult<ToolInvocation[]>>
+  listIndexJobs(options?: string | IndexJobListOptions): Promise<ApiResult<IndexJob[]>>
   runIndexJob(id: string): Promise<ApiResult<IndexJob>>
   runPendingIndexJobs(projectId?: string, limit?: number): Promise<ApiResult<RunPendingIndexResponse>>
   rebuildVectors(): Promise<ApiResult<RebuildVectorsResponse>>
@@ -401,7 +453,7 @@ function normalizeProvider(provider: ProviderConfig): ProviderConfig {
     type: provider.type || providerType,
     streaming: provider.streaming ?? provider.metadata?.streaming === 'true',
     enabled: provider.enabled ?? true,
-    api_key_hint: provider.api_key_hint || provider.api_key_env,
+    api_key_hint: provider.api_key_hint,
     default_model_id: provider.default_model_id || provider.metadata?.default_model_id,
     last_checked_at: provider.last_checked_at || provider.last_model_refresh_at || provider.updated_at,
     status: provider.status || (provider.enabled ? 'online' : 'unknown')
@@ -430,7 +482,6 @@ function providerToBackend(provider: ProviderConfig): ProviderSaveRequest {
 
   if (provider.id.trim()) request.id = provider.id.trim()
   if (provider.api_key?.trim()) request.api_key = provider.api_key.trim()
-  request.api_key_env = provider.api_key_env?.trim() || ''
 
   return request
 }
@@ -514,54 +565,6 @@ function normalizeModelResolution(modelResolution: ModelResolution): ModelResolu
     model_id: modelResolution.model_id || '',
     model_name: modelResolution.model_name || '',
     model_kind: modelResolution.model_kind || 'text'
-  }
-}
-
-function normalizeIndexFreshness(indexFreshness: IndexFreshness): IndexFreshness {
-  return {
-    ...indexFreshness,
-    project_id: indexFreshness.project_id || '',
-    chapter_id: indexFreshness.chapter_id || '',
-    status: indexFreshness.status || 'missing',
-    pending_job_count: Number(indexFreshness.pending_job_count || 0)
-  }
-}
-
-function normalizeToolTrace(trace?: ToolTrace[]): ToolTrace[] {
-  return Array.isArray(trace) ? trace : []
-}
-
-function normalizeContextPack(contextPack: ContextPack): ContextPack {
-  return {
-    ...contextPack,
-    world_rules: contextPack.world_rules || {},
-    facts: contextPack.facts || [],
-    entities: contextPack.entities || [],
-    edges: contextPack.edges || [],
-    plot_threads: contextPack.plot_threads || [],
-    chapter_summaries: contextPack.chapter_summaries || [],
-    tool_trace: normalizeToolTrace(contextPack.tool_trace),
-    metadata: contextPack.metadata || {}
-  }
-}
-
-function normalizeContinuityEvidenceRef(evidence: AIDraftResponse['continuity_audit']['issues'][number]['evidence'][number]) {
-  return {
-    ...evidence
-  }
-}
-
-function normalizeContinuityIssue(issue: AIDraftResponse['continuity_audit']['issues'][number]) {
-  return {
-    ...issue,
-    evidence: issue.evidence.map(normalizeContinuityEvidenceRef)
-  }
-}
-
-function normalizeContinuityAudit(audit: AIDraftResponse['continuity_audit']): AIDraftResponse['continuity_audit'] {
-  return {
-    ...audit,
-    issues: audit.issues.map(normalizeContinuityIssue)
   }
 }
 
@@ -810,110 +813,12 @@ function normalizeGraphExpansion(expansion: GraphExpansion): GraphExpandResponse
   }
 }
 
-function summarizeContextPreview(contextPack: ContextPack, summary: string): ContextPreviewResponse['summary'] {
-  return summary || [
-    `章节摘要 ${contextPack.chapter_summaries?.length || 0} 条`,
-    `实体 ${contextPack.entities?.length || 0} 个`,
-    `事实 ${contextPack.facts?.length || 0} 条`,
-    `情节线 ${contextPack.plot_threads?.length || 0} 条`,
-    `世界规则 ${Object.keys(contextPack.world_rules || {}).length} 条`
-  ].join('，')
-}
-
-function normalizeContextPreviewResponse(response: ContextPreviewResponse): ContextPreviewResponse {
-  const contextPack = normalizeContextPack(response.context_pack)
-  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : contextPack.tool_trace)
-  return {
-    ...response,
-    context_pack: {
-      ...contextPack,
-      tool_trace: toolTrace
-    },
-    summary: summarizeContextPreview(contextPack, response.summary),
-    estimated_tokens: Number(response.estimated_tokens || 0),
-    index_freshness: normalizeIndexFreshness(response.index_freshness),
-    model_resolution: normalizeModelResolution(response.model_resolution),
-    tool_trace: toolTrace
-  }
-}
-
-function normalizeChapterIdeaResponse(response: ChapterIdeaResponse): ChapterIdeaResponse {
-  const contextPack = normalizeContextPack(response.context_pack)
-  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : contextPack.tool_trace)
-  return {
-    ...response,
-    workflow: normalizeWorkflow(response.workflow),
-    context_pack: {
-      ...contextPack,
-      tool_trace: toolTrace
-    },
-    model_resolution: normalizeModelResolution(response.model_resolution),
-    tool_trace: toolTrace
-  }
-}
-
-function normalizeDraftResultResponse(response: DraftResultResponse, copy: ApiCopy): DraftResultResponse {
-  const contextPack = normalizeContextPack(response.context_pack)
-  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : contextPack.tool_trace)
-  return {
-    ...response,
-    workflow: normalizeWorkflow(response.workflow),
-    context_pack: {
-      ...contextPack,
-      tool_trace: toolTrace
-    },
-    chapter_version: normalizeChapterVersion(response.chapter_version, copy),
-    index_freshness: normalizeIndexFreshness(response.index_freshness),
-    model_resolution: normalizeModelResolution(response.model_resolution),
-    continuity_audit: normalizeContinuityAudit(response.continuity_audit),
-    tool_trace: toolTrace
-  }
-}
-
-function normalizeDraftWithIdeaResponse(response: DraftWithIdeaResponse, copy: ApiCopy): DraftWithIdeaResponse {
-  const chapterIdea = normalizeChapterIdeaResponse(response.chapter_idea)
-  const draft = normalizeDraftResultResponse(response.draft, copy)
-  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : [...(chapterIdea.tool_trace || []), ...(draft.tool_trace || [])])
-  return {
-    chapter_idea: chapterIdea,
-    draft,
-    model_resolution: response.model_resolution ? normalizeModelResolution(response.model_resolution) : undefined,
-    tool_trace: toolTrace
-  }
-}
-
-function normalizeDraftResponse(response: RawDraftResponse, copy: ApiCopy): AIDraftResponse {
-  const chapterVersion = response.chapter_version ? normalizeChapterVersion(response.chapter_version, copy) : undefined
-  const contextPack = normalizeContextPack(response.context_pack)
-  const toolTrace = normalizeToolTrace(response.tool_trace?.length ? response.tool_trace : contextPack.tool_trace)
-  return {
-    ...response,
-    workflow: normalizeWorkflow(response.workflow),
-    context_pack: {
-      ...contextPack,
-      tool_trace: toolTrace
-    },
-    chapter_version: chapterVersion,
-    content: response.content || chapterVersion?.content || '',
-    warnings: response.warnings || [],
-    index_job: response.index_job,
-    index_freshness: normalizeIndexFreshness(response.index_freshness),
-    model_resolution: normalizeModelResolution(response.model_resolution),
-    continuity_audit: normalizeContinuityAudit(response.continuity_audit),
-    tool_trace: toolTrace
-  }
-}
-
 function normalizeSaveChapterVersionResponse(response: SaveChapterVersionResponse, copy: ApiCopy): SaveChapterVersionResponse {
   return {
     ...response,
     chapter_version: normalizeChapterVersion(response.chapter_version, copy),
     index_job: response.index_job
   }
-}
-
-function selectionCharacterLabels(selection?: ContextSelection) {
-  return selection?.character_names?.length ? selection.character_names : selection?.character_ids || []
 }
 
 function isSyncableCharacter(character: StoryBible['characters'][number]) {
@@ -923,14 +828,6 @@ function isSyncableCharacter(character: StoryBible['characters'][number]) {
     && character.desire.trim()
     && character.wound.trim()
   )
-}
-
-function requestWithContextSelection<T extends { selection?: ContextSelection }>(request: T) {
-  return {
-    ...request,
-    context_selection: request.selection,
-    selection: undefined
-  }
 }
 
 function mapHealth(response: HealthResponse, copy: ApiCopy): HealthStatus {
@@ -1146,9 +1043,6 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
         }
       )
     },
-    generateCharacterProfiles(request) {
-      return requestResult<CharacterProfileResponse>(baseUrl, '/ai/character-profiles', { method: 'POST', body: request })
-    },
     expandGraph(request) {
       const entityIds = request.entity_ids?.map((item) => item.trim()).filter(Boolean) || []
       return requestMapped<GraphExpansion, GraphExpandResponse>(
@@ -1203,65 +1097,115 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
         (response) => normalizeSaveChapterVersionResponse(response, copy)
       )
     },
-    requestAIDraft(request) {
-      const styleConstraints = request.style_constraints || []
-      const selection = request.selection
-      const selectedCharacters = selectionCharacterLabels(selection)
-      const briefParts = [
-        request.brief || request.prompt || '',
-        styleConstraints.length ? `${copy.draftRequestLabels.styleConstraints}: ${styleConstraints.join(', ')}` : '',
-        request.chapter_idea ? `${copy.draftRequestLabels.selectedChapterPlan}: ${request.chapter_idea}` : '',
-        selection?.chapter_ids?.length ? `${copy.draftRequestLabels.selectedChapterSummary}: ${selection.chapter_ids.join(', ')}` : '',
-        selection?.include_world_rules ? copy.draftRequestLabels.selectedWorldRules : '',
-        selectedCharacters.length ? `${copy.draftRequestLabels.selectedCharacters}: ${selectedCharacters.join(', ')}` : ''
-      ]
-        .map((item) => item.trim())
-        .filter(Boolean)
-      return requestMapped<RawDraftResponse, AIDraftResponse>(baseUrl, '/ai/draft', {
-        method: 'POST',
-        body: {
-          project_id: request.project_id,
-          chapter_id: request.chapter_id,
-          brief: briefParts.join('\n'),
-          title: request.title,
-          chapter_idea: request.chapter_idea,
-          chapter_idea_workflow_id: request.chapter_idea_workflow_id,
-          context_selection: request.selection,
-          max_output_tokens: request.max_output_tokens
+    listAgents(options) {
+      return requestResult<AgentConfig[]>(baseUrl, '/agents', {
+        query: { project_id: options?.projectId, enabled: options?.enabled, limit: options?.limit }
+      })
+    },
+    saveAgent(agent, mode) {
+      const isExisting = mode === 'edit' || (!mode && Boolean(agent.id && agent.created_at))
+      const endpoint = isExisting ? `/agents/${pathSegment(agent.id)}` : '/agents'
+      const method = isExisting ? 'PUT' : 'POST'
+      return requestResult<AgentConfig>(baseUrl, endpoint, { method, body: agent })
+    },
+    deleteAgent(id) {
+      return requestResult<{ status: string }>(baseUrl, `/agents/${pathSegment(id)}`, { method: 'DELETE' })
+    },
+    runAgent(agentId, request) {
+      return requestResult<AgentRunResult>(baseUrl, `/agents/${pathSegment(agentId)}/runs`, { method: 'POST', body: request })
+    },
+    listAgentRuns(options) {
+      return requestResult<AgentRun[]>(baseUrl, '/agent-runs', {
+        query: { agent_id: options?.agentId, project_id: options?.projectId, status: options?.status, limit: options?.limit }
+      })
+    },
+    listSkillSources(options) {
+      return requestResult<SkillSource[]>(baseUrl, '/skills/sources', {
+        query: { project_id: options?.projectId, enabled: options?.enabled, limit: options?.limit }
+      })
+    },
+    scanDefaultSkillSource() {
+      return requestResult<SkillScanResult>(baseUrl, '/skills/sources/default/scan', { method: 'POST' })
+    },
+    scanSkillSource(id) {
+      return requestResult<SkillScanResult>(baseUrl, `/skills/sources/${pathSegment(id)}/scan`, { method: 'POST' })
+    },
+    listSkills(options) {
+      return requestResult<Skill[]>(baseUrl, '/skills', {
+        query: { project_id: options?.projectId, source_id: options?.sourceId, enabled: options?.enabled, limit: options?.limit }
+      })
+    },
+    saveSkill(skill, mode) {
+      const isExisting = mode === 'edit' || (!mode && Boolean(skill.id && skill.created_at))
+      const endpoint = isExisting ? `/skills/${pathSegment(skill.id)}` : '/skills'
+      const method = isExisting ? 'PUT' : 'POST'
+      return requestResult<Skill>(baseUrl, endpoint, { method, body: skill })
+    },
+    deleteSkill(id) {
+      return requestResult<{ status: string }>(baseUrl, `/skills/${pathSegment(id)}`, { method: 'DELETE' })
+    },
+    setSkillEnabled(id, enabled) {
+      return requestResult<Skill>(baseUrl, `/skills/${pathSegment(id)}/enabled`, { method: 'PUT', body: { enabled } })
+    },
+    listMCPServers(options) {
+      return requestResult<MCPServerConfig[]>(baseUrl, '/mcp/servers', {
+        query: { project_id: options?.projectId, enabled: options?.enabled, status: options?.status, limit: options?.limit }
+      })
+    },
+    saveMCPServer(server, mode) {
+      const isExisting = mode === 'edit' || (!mode && Boolean(server.id && server.created_at))
+      const endpoint = isExisting ? `/mcp/servers/${pathSegment(server.id)}` : '/mcp/servers'
+      const method = isExisting ? 'PUT' : 'POST'
+      return requestResult<MCPServerConfig>(baseUrl, endpoint, { method, body: server })
+    },
+    deleteMCPServer(id) {
+      return requestResult<{ status: string }>(baseUrl, `/mcp/servers/${pathSegment(id)}`, { method: 'DELETE' })
+    },
+    setMCPServerEnabled(id, enabled) {
+      return requestResult<MCPServerConfig>(baseUrl, `/mcp/servers/${pathSegment(id)}/enabled`, { method: 'PUT', body: { enabled } })
+    },
+    testMCPServer(id) {
+      return requestResult<{ ok: boolean; server: MCPServerConfig }>(baseUrl, `/mcp/servers/${pathSegment(id)}/test`, { method: 'POST' })
+    },
+    refreshMCPTools(id) {
+      return requestResult<{ tools: ToolDefinition[]; count: number; unavailable: number }>(baseUrl, `/mcp/servers/${pathSegment(id)}/refresh-tools`, { method: 'POST' })
+    },
+    listMCPServerTools(id) {
+      return requestResult<ToolDefinition[]>(baseUrl, `/mcp/servers/${pathSegment(id)}/tools`)
+    },
+    listToolCatalog(options) {
+      return requestResult<ToolDefinition[]>(baseUrl, '/tools/catalog', {
+        query: {
+          project_id: options?.projectId,
+          kind: options?.kind,
+          status: options?.status,
+          mcp_server_id: options?.mcpServerId,
+          source_id: options?.sourceId,
+          skill_id: options?.skillId,
+          limit: options?.limit
         }
-
-      }, (response) => normalizeDraftResponse(response, copy))
+      })
     },
-    requestChapterIdea(request) {
-      return requestMapped<ChapterIdeaResponse, ChapterIdeaResponse>(baseUrl, '/ai/chapter-idea', {
-        method: 'POST',
-        body: requestWithContextSelection(request)
-      }, normalizeChapterIdeaResponse)
+    setToolEnabled(id, enabled) {
+      return requestResult<ToolDefinition>(baseUrl, `/tools/catalog/${pathSegment(id)}/enabled`, { method: 'PUT', body: { enabled } })
     },
-    previewContextSelection(request) {
-      return requestMapped<ContextPreviewResponse, ContextPreviewResponse>(baseUrl, '/ai/context-selection/preview', {
-        method: 'POST',
-        body: {
-          project_id: request.project_id,
-          chapter_id: request.chapter_id,
-          title: request.title,
-          brief: request.brief,
-          prompt: request.prompt,
-          context_selection: request.selection,
-          style_constraints: request.style_constraints,
-          role: request.role,
-          token_budget: request.token_budget
+    listToolInvocations(options) {
+      return requestResult<ToolInvocation[]>(baseUrl, '/tools/invocations', {
+        query: {
+          agent_run_id: options?.agentRunId,
+          agent_id: options?.agentId,
+          project_id: options?.projectId,
+          tool_id: options?.toolId,
+          status: options?.status,
+          limit: options?.limit
         }
-      }, normalizeContextPreviewResponse)
+      })
     },
-    requestDraftWithIdea(request) {
-      return requestMapped<DraftWithIdeaResponse, DraftWithIdeaResponse>(baseUrl, '/ai/draft-with-idea', {
-        method: 'POST',
-        body: requestWithContextSelection(request)
-      }, (response) => normalizeDraftWithIdeaResponse(response, copy))
-    },
-    listIndexJobs(projectId) {
-      return requestResult<IndexJob[]>(baseUrl, '/index/jobs', { query: { project_id: projectId } })
+    listIndexJobs(options) {
+      const query = typeof options === 'string'
+        ? { project_id: options }
+        : { project_id: options?.projectId, status: options?.status, limit: options?.limit }
+      return requestResult<IndexJob[]>(baseUrl, '/index/jobs', { query })
     },
     runIndexJob(id) {
       return requestResult<IndexJob>(baseUrl, `/index/jobs/${pathSegment(id)}/run`, { method: 'POST' })

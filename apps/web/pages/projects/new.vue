@@ -18,6 +18,7 @@ const seed = reactive<ProjectSeed>({
 })
 
 const tagInput = ref(seed.tags.join(t('common.listSeparator')))
+const activeProjectNewTab = ref('core')
 const optimizing = ref(false)
 const initializing = ref(false)
 const localError = ref('')
@@ -57,6 +58,12 @@ const draftSteps = computed(() => {
 })
 
 const allReady = computed(() => draftSteps.value.every((step) => step.complete))
+const projectNewTabs = computed(() => [
+  { label: t('projectNew.tabs.core'), value: 'core', badge: draftSteps.value[0]?.complete ? t('status.ready') : undefined },
+  { label: t('projectNew.tabs.world'), value: 'setup', badge: draftSteps.value[1]?.complete ? t('status.ready') : undefined },
+  { label: t('projectNew.tabs.style'), value: 'style', badge: draftSteps.value[2]?.complete ? t('status.ready') : undefined },
+  { label: t('projectNew.tabs.confirm'), value: 'confirm', badge: allReady.value ? t('status.ready') : undefined }
+])
 
 const seedPreview = computed(() => {
   if (seed.optimized_prompt?.trim()) return seed.optimized_prompt.trim()
@@ -156,9 +163,11 @@ async function initializeProject() {
       </UiCard>
     </div>
 
+    <UiTabs v-model="activeProjectNewTab" :tabs="projectNewTabs" />
+
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div class="space-y-6">
-        <UiCard class="p-4 sm:p-6">
+        <UiCard v-show="activeProjectNewTab === 'core'" class="p-4 sm:p-6">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('projectNew.stepLabel', { number: 1 }) }}</p>
@@ -182,7 +191,7 @@ async function initializeProject() {
           </div>
         </UiCard>
 
-        <UiCard class="p-4 sm:p-6">
+        <UiCard v-show="activeProjectNewTab === 'setup'" class="p-4 sm:p-6">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('projectNew.stepLabel', { number: 2 }) }}</p>
@@ -206,7 +215,7 @@ async function initializeProject() {
           </div>
         </UiCard>
 
-        <UiCard class="p-4 sm:p-6">
+        <UiCard v-show="activeProjectNewTab === 'style'" class="p-4 sm:p-6">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('projectNew.stepLabel', { number: 3 }) }}</p>
@@ -226,7 +235,7 @@ async function initializeProject() {
           </div>
         </UiCard>
 
-        <UiCard class="p-4 sm:p-6">
+        <UiCard v-show="activeProjectNewTab === 'confirm'" class="p-4 sm:p-6">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 class="text-lg font-semibold">{{ t('projectNew.finalizeTitle') }}</h2>

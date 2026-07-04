@@ -33,7 +33,7 @@ function toggle() {
     :disabled="disabled"
     :class="
       cn(
-        'group flex min-h-14 w-full items-center justify-between gap-4 rounded-2xl border border-border bg-card/70 px-4 py-3 text-left text-sm shadow-sm transition-all hover:border-primary/30 hover:bg-muted/50 focus-ring disabled:cursor-not-allowed disabled:opacity-50',
+        'group flex min-h-14 w-full items-center justify-between gap-4 rounded-2xl border border-border bg-card/75 px-4 py-3 text-left text-sm leading-6 shadow-sm transition-all hover:border-primary/30 hover:bg-muted/50 focus-ring disabled:cursor-not-allowed disabled:opacity-50',
         modelValue && 'border-primary/35 bg-primary/10',
         props.class
       )

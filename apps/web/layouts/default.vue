@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpen, FileText, FolderOpen, GitFork, Home, Menu, PlusCircle, Settings, X } from '@lucide/vue'
+import { Bot, BookOpen, FileText, FolderOpen, GitFork, Home, Menu, PlusCircle, Settings, X } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
 
 const route = useRoute()
@@ -20,6 +20,7 @@ const navigation = computed(() => [
   { label: t('nav.dashboard'), to: '/', icon: Home, active: route.path === '/' },
   { label: t('nav.projects'), to: '/projects', icon: FolderOpen, active: route.path === '/projects' },
   { label: t('nav.models'), to: '/admin/models', icon: Settings, active: route.path.startsWith('/admin/models') },
+  { label: t('nav.agents'), to: '/admin/agents', icon: Bot, active: route.path.startsWith('/admin/agents') },
   { label: t('nav.newProject'), to: '/projects/new', icon: PlusCircle, active: route.path === '/projects/new' }
 ])
 
@@ -195,7 +196,7 @@ function closeOpenedProject(projectId: string) {
           </div>
         </header>
 
-        <main class="mx-auto w-full max-w-[1440px] px-4 py-6 lg:px-8">
+        <main class="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-8 2xl:px-10">
           <slot />
         </main>
       </div>

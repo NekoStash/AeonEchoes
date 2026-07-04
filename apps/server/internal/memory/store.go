@@ -33,6 +33,14 @@ type Store struct {
 	indexJobs       map[string]domain.IndexJob
 	workflows       map[string]domain.AIWorkflow
 	settings        map[string]domain.AppSetting
+
+	agentConfigs    map[string]domain.AgentConfig
+	agentRuns       map[string]domain.AgentRun
+	skillSources    map[string]domain.SkillSource
+	skills          map[string]domain.Skill
+	mcpServers      map[string]domain.MCPServerConfig
+	toolDefinitions map[string]domain.ToolDefinition
+	toolInvocations map[string]domain.ToolInvocation
 }
 
 func NewStore() *Store {
@@ -51,6 +59,13 @@ func NewStore() *Store {
 		indexJobs:       make(map[string]domain.IndexJob),
 		workflows:       make(map[string]domain.AIWorkflow),
 		settings:        make(map[string]domain.AppSetting),
+		agentConfigs:    make(map[string]domain.AgentConfig),
+		agentRuns:       make(map[string]domain.AgentRun),
+		skillSources:    make(map[string]domain.SkillSource),
+		skills:          make(map[string]domain.Skill),
+		mcpServers:      make(map[string]domain.MCPServerConfig),
+		toolDefinitions: make(map[string]domain.ToolDefinition),
+		toolInvocations: make(map[string]domain.ToolInvocation),
 	}
 }
 
@@ -961,16 +976,25 @@ func (s *Store) GetIndexJob(id string) (domain.IndexJob, error) {
 	return item, nil
 }
 
-func (s *Store) ListIndexJobs(projectID string) ([]domain.IndexJob, error) {
+func (s *Store) ListIndexJobs(filter repository.IndexJobFilter) ([]domain.IndexJob, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	projectID := strings.TrimSpace(filter.ProjectID)
+	status := strings.TrimSpace(filter.Status)
 	items := make([]domain.IndexJob, 0)
 	for _, item := range s.indexJobs {
-		if projectID == "" || item.ProjectID == projectID {
-			items = append(items, item)
+		if projectID != "" && item.ProjectID != projectID {
+			continue
 		}
+		if status != "" && item.Status != status {
+			continue
+		}
+		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
+	if filter.Limit > 0 && len(items) > filter.Limit {
+		items = items[:filter.Limit]
+	}
 	return items, nil
 }
 

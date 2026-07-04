@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -204,13 +203,7 @@ func JoinURL(baseURL, suffix string) string {
 
 // AuthHeaderValue resolves the outgoing bearer token if one is configured.
 func AuthHeaderValue(cfg domain.ProviderConfig) string {
-	if strings.TrimSpace(cfg.APIKey) != "" {
-		return strings.TrimSpace(cfg.APIKey)
-	}
-	if strings.TrimSpace(cfg.APIKeyEnv) != "" {
-		return strings.TrimSpace(os.Getenv(strings.TrimSpace(cfg.APIKeyEnv)))
-	}
-	return ""
+	return strings.TrimSpace(cfg.APIKey)
 }
 
 // NewJSONRequest creates a JSON POST/PUT request with the provided payload.

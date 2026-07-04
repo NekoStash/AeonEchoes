@@ -11,6 +11,7 @@ import (
 	"aeonechoes/server/internal/extractor"
 	"aeonechoes/server/internal/memory"
 	"aeonechoes/server/internal/provider"
+	"aeonechoes/server/internal/repository"
 	"aeonechoes/server/internal/vector"
 )
 
@@ -178,7 +179,7 @@ func TestServiceRebuildVectorsRecreatesCollectionAndRequeuesAllChapterVersions(t
 	if updatedA.IndexStatus != "pending" || updatedB.IndexStatus != "pending" {
 		t.Fatalf("expected chapter versions reset to pending, got A=%q B=%q", updatedA.IndexStatus, updatedB.IndexStatus)
 	}
-	jobs, err := store.ListIndexJobs("")
+	jobs, err := store.ListIndexJobs(repository.IndexJobFilter{})
 	if err != nil {
 		t.Fatalf("ListIndexJobs() error: %v", err)
 	}

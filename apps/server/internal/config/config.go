@@ -25,6 +25,10 @@ type Config struct {
 	IndexWorkerIntervalSeconds          int
 	IndexWorkerBatchSize                int
 	IndexWorkerWakeDebounceMilliseconds int
+	SkillsDir                           string
+	SkillsAutoScan                      bool
+	SkillsScanOnStart                   bool
+	MCPDefaultTimeout                   time.Duration
 }
 
 // Load reads configuration from environment variables and validates it immediately.
@@ -61,6 +65,18 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	skillsAutoScan, err := getEnvBool("AE_SKILLS_AUTO_SCAN", true)
+	if err != nil {
+		return Config{}, err
+	}
+	skillsScanOnStart, err := getEnvBool("AE_SKILLS_SCAN_ON_START", true)
+	if err != nil {
+		return Config{}, err
+	}
+	mcpDefaultTimeoutSeconds, err := getEnvInt("AE_MCP_DEFAULT_TIMEOUT_SECONDS", 60)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		Host:                                getEnv("AE_SERVER_HOST", "127.0.0.1"),
@@ -77,6 +93,10 @@ func Load() (Config, error) {
 		IndexWorkerIntervalSeconds:          indexWorkerIntervalSeconds,
 		IndexWorkerBatchSize:                indexWorkerBatchSize,
 		IndexWorkerWakeDebounceMilliseconds: indexWorkerWakeDebounceMilliseconds,
+		SkillsDir:                           getEnv("AE_SKILLS_DIR", filepath.Join(".", "skills")),
+		SkillsAutoScan:                      skillsAutoScan,
+		SkillsScanOnStart:                   skillsScanOnStart,
+		MCPDefaultTimeout:                   time.Duration(mcpDefaultTimeoutSeconds) * time.Second,
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -112,6 +132,12 @@ func (c Config) Validate() error {
 	}
 	if c.IndexWorkerWakeDebounceMilliseconds < 0 {
 		return fmt.Errorf("AE_INDEX_WORKER_WAKE_DEBOUNCE_MILLISECONDS must not be negative")
+	}
+	if strings.TrimSpace(c.SkillsDir) == "" {
+		return fmt.Errorf("AE_SKILLS_DIR must not be empty")
+	}
+	if c.MCPDefaultTimeout <= 0 {
+		return fmt.Errorf("AE_MCP_DEFAULT_TIMEOUT_SECONDS must be positive")
 	}
 	return nil
 }

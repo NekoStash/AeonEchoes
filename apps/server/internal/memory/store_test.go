@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"aeonechoes/server/internal/domain"
+	"aeonechoes/server/internal/repository"
 )
 
 func TestProviderModelAndProjectLifecycle(t *testing.T) {
@@ -59,7 +60,7 @@ func TestSaveChapterVersionSupersedesOlderPendingJobs(t *testing.T) {
 	if secondJob.Status != "pending" {
 		t.Fatalf("second job status = %q, want pending", secondJob.Status)
 	}
-	allJobs, err := store.ListIndexJobs(project.ID)
+	allJobs, err := store.ListIndexJobs(repository.IndexJobFilter{ProjectID: project.ID})
 	if err != nil {
 		t.Fatalf("ListIndexJobs() error: %v", err)
 	}
@@ -80,7 +81,7 @@ func TestSaveChapterVersionSupersedesOlderPendingJobs(t *testing.T) {
 	if thirdVersion.ID == secondVersion.ID {
 		t.Fatalf("expected third chapter version to be new")
 	}
-	allJobs, err = store.ListIndexJobs(project.ID)
+	allJobs, err = store.ListIndexJobs(repository.IndexJobFilter{ProjectID: project.ID})
 	if err != nil {
 		t.Fatalf("ListIndexJobs() error: %v", err)
 	}

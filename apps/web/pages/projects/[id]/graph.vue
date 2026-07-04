@@ -19,9 +19,17 @@ const selectedEdge = ref<GraphEdge | null>(null)
 const loading = ref(false)
 const localError = ref('')
 const cytoscapeError = ref('')
+const activeGraphTab = ref('graph')
 const graphContainer = ref<HTMLElement | null>(null)
 const detailsPanel = ref<HTMLElement | { $el?: HTMLElement } | null>(null)
 let cy: Core | null = null
+
+const graphTabs = computed(() => [
+  { label: t('graph.tabs.graph'), value: 'graph', badge: String(visibleNodes.value.length) },
+  { label: t('graph.tabs.nodes'), value: 'nodes', badge: String(visibleNodes.value.length) },
+  { label: t('graph.tabs.edges'), value: 'edges', badge: String(visibleEdges.value.length) },
+  { label: t('graph.tabs.metadata'), value: 'metadata' }
+])
 
 const nodeTypeOptions = computed(() => [
   { label: t('graph.nodeTypes.character'), value: 'character' },
@@ -301,7 +309,9 @@ function edgeTypeLabel(type: string) {
       <p v-if="cytoscapeError">{{ cytoscapeError }}</p>
     </div>
 
-    <div class="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)_minmax(0,360px)]">
+    <UiTabs v-model="activeGraphTab" :tabs="graphTabs" />
+
+    <div v-if="activeGraphTab === 'graph'" class="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)_minmax(0,360px)]">
       <UiCard class="p-4 sm:p-5">
         <div class="flex items-center gap-2">
           <SlidersHorizontal class="h-5 w-5 text-muted-foreground" />
@@ -467,5 +477,70 @@ function edgeTypeLabel(type: string) {
         </div>
       </UiCard>
     </div>
+
+    <UiCard v-else-if="activeGraphTab === 'nodes'" class="p-4 sm:p-5">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="text-lg font-semibold">{{ t('graph.tabs.nodes') }}</h2>
+          <p class="mt-2 text-sm text-muted-foreground">{{ t('graph.nodeListDescription') }}</p>
+        </div>
+        <UiBadge variant="muted">{{ t('graph.counts', { nodes: visibleNodes.length, edges: visibleEdges.length }) }}</UiBadge>
+      </div>
+      <div v-if="visibleNodes.length === 0" class="mt-5 rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
+        {{ t('graph.emptyNodes') }}
+      </div>
+      <div v-else class="mt-5 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        <button v-for="node in visibleNodes" :key="node.id" type="button" class="min-w-0 rounded-2xl border border-border bg-muted/25 p-4 text-left transition-colors hover:border-primary/35 focus-ring" @click="selectNodeById(node.id)">
+          <div class="flex min-w-0 items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="break-words font-medium">{{ node.label }}</p>
+              <p class="mt-1 break-all font-mono text-xs text-muted-foreground">{{ node.id }}</p>
+            </div>
+            <UiBadge class="shrink-0" variant="muted">{{ nodeTypeLabel(node.type) }}</UiBadge>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <UiBadge :variant="node.status === 'conflict' ? 'rose' : node.status === 'stable' ? 'success' : 'gold'">{{ nodeStatusLabel(node.status) }}</UiBadge>
+            <UiBadge variant="muted">{{ t('graph.depthLimit', { value: node.depth }) }}</UiBadge>
+            <UiBadge variant="muted">{{ t('graph.timelineValue', { value: node.timeline }) }}</UiBadge>
+          </div>
+        </button>
+      </div>
+    </UiCard>
+
+    <UiCard v-else-if="activeGraphTab === 'edges'" class="p-4 sm:p-5">
+      <h2 class="text-lg font-semibold">{{ t('graph.tabs.edges') }}</h2>
+      <p class="mt-2 text-sm text-muted-foreground">{{ t('graph.edgeListDescription') }}</p>
+      <div v-if="visibleEdges.length === 0" class="mt-5 rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
+        {{ t('graph.emptyEdges') }}
+      </div>
+      <div v-else class="mt-5 grid gap-3 lg:grid-cols-2">
+        <button v-for="edge in visibleEdges" :key="edge.id" type="button" class="min-w-0 rounded-2xl border border-border bg-muted/25 p-4 text-left transition-colors hover:border-primary/35 focus-ring" @click="selectEdge(edge)">
+          <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
+            <p class="min-w-0 flex-1 break-words font-medium">{{ edge.label }}</p>
+            <UiBadge variant="muted">{{ edgeTypeLabel(edge.type) }}</UiBadge>
+          </div>
+          <p class="mt-2 break-all font-mono text-xs text-muted-foreground">{{ edge.source }} → {{ edge.target }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <UiBadge variant="gold">{{ t('graph.weightValue', { value: edge.weight }) }}</UiBadge>
+            <UiBadge variant="muted">{{ t('graph.timelineValue', { value: edge.timeline }) }}</UiBadge>
+          </div>
+        </button>
+      </div>
+    </UiCard>
+
+    <UiCard v-else class="p-4 sm:p-5">
+      <h2 class="text-lg font-semibold">{{ t('graph.tabs.metadata') }}</h2>
+      <p class="mt-2 text-sm text-muted-foreground">{{ t('graph.metadataDescription') }}</p>
+      <div class="mt-5 grid gap-4 lg:grid-cols-2">
+        <div class="rounded-2xl border border-border bg-muted/30 p-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('graph.node') }}</p>
+          <pre class="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground subtle-scrollbar">{{ selectedNode ? JSON.stringify(selectedNode.metadata, null, 2) : t('graph.emptyDetails') }}</pre>
+        </div>
+        <div class="rounded-2xl border border-border bg-muted/30 p-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('graph.edge') }}</p>
+          <pre class="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground subtle-scrollbar">{{ selectedEdge ? JSON.stringify(selectedEdge.metadata || {}, null, 2) : t('graph.emptyDetails') }}</pre>
+        </div>
+      </div>
+    </UiCard>
   </div>
 </template>

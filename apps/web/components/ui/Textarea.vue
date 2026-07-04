@@ -34,7 +34,7 @@ const emit = defineEmits<{
     :rows="rows"
     :class="
       cn(
-        'min-h-24 w-full min-w-0 resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm leading-6 text-foreground shadow-sm transition-colors placeholder:text-muted-foreground hover:border-primary/35 focus:border-ring focus-ring disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70 dark:bg-muted/30 dark:hover:border-primary/45',
+        'min-h-24 w-full min-w-0 resize-y rounded-xl border border-input bg-background px-3.5 py-3 text-sm leading-7 text-foreground shadow-sm transition-colors placeholder:text-muted-foreground hover:border-primary/35 focus:border-ring focus-ring disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70 dark:bg-muted/30 dark:hover:border-primary/45',
         props.class
       )
     "

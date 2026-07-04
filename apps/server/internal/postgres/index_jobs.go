@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aeonechoes/server/internal/domain"
+	"aeonechoes/server/internal/repository"
 )
 
 func (s *Store) CreateIndexJob(job domain.IndexJob) (domain.IndexJob, error) {
@@ -84,17 +85,29 @@ func (s *Store) UpdateIndexJobStatus(id, status, errorMessage string) (domain.In
 	return s.GetIndexJob(id)
 }
 
-func (s *Store) ListIndexJobs(projectID string) ([]domain.IndexJob, error) {
+func (s *Store) ListIndexJobs(filter repository.IndexJobFilter) ([]domain.IndexJob, error) {
 	if err := requireStore(s); err != nil {
 		return nil, err
 	}
 	query := indexJobSelectSQL()
 	args := []any{}
-	if strings.TrimSpace(projectID) != "" {
-		query += ` WHERE project_id=$1`
+	conditions := []string{}
+	if projectID := strings.TrimSpace(filter.ProjectID); projectID != "" {
 		args = append(args, projectID)
+		conditions = append(conditions, fmt.Sprintf("project_id=$%d", len(args)))
+	}
+	if status := strings.TrimSpace(filter.Status); status != "" {
+		args = append(args, status)
+		conditions = append(conditions, fmt.Sprintf("status=$%d", len(args)))
+	}
+	if len(conditions) > 0 {
+		query += ` WHERE ` + strings.Join(conditions, ` AND `)
 	}
 	query += ` ORDER BY created_at DESC, id DESC`
+	if filter.Limit > 0 {
+		args = append(args, filter.Limit)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
 	return s.queryIndexJobs(query, args...)
 }
 

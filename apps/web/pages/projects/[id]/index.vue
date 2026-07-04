@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowRight, BookMarked, CheckCircle2, FilePenLine, FileText, GitFork, Loader2, PenLine, Plus, Save, ShieldCheck, Sparkles, Trash2, UserRound, WifiOff } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
-import type { CharacterProfile, CharacterProfileMode, CharacterProfileResponse, StoryBible } from '~/lib/types'
+import type { CharacterProfile, CharacterProfileMode, StoryBible } from '~/lib/types'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -235,22 +235,28 @@ function buildCharacterGenerationBrief(mode: CharacterProfileMode, bible: StoryB
   ].filter(Boolean).join('\n')
 }
 
-function persistCharacterMappingsToDraft(mappings: NonNullable<CharacterProfileResponse['mappings']>) {
-  const draft = bibleDraft.value
-  if (!draft || !mappings?.length) return false
-  const mappingsByName = new Map(mappings.map((mapping) => [mapping.name.trim(), mapping]))
-  let changed = false
-  draft.characters = draft.characters.map((character) => {
-    const mapping = mappingsByName.get(character.name.trim()) || (character.id ? mappings.find((item) => item.local_id === character.id) : undefined)
-    if (!mapping?.entity_id || character.entity_id === mapping.entity_id) return character
-    changed = true
+function buildLocalCharacterProfile(mode: CharacterProfileMode, bible: StoryBible): CharacterProfile {
+  const protagonistHint = protagonistHintFromBible(bible)
+  const theme = bible.themes.find((item) => item.trim()) || t('projectOverview.characterGenerator.localFallback.theme')
+  const rule = bible.world_rules.find((item) => item.trim()) || t('projectOverview.characterGenerator.localFallback.rule')
+  if (mode === 'protagonist') {
     return {
-      ...character,
-      entity_id: mapping.entity_id,
-      sync_status: mapping.action || 'synced'
+      name: protagonistHint || t('projectOverview.characterGenerator.localFallback.protagonistName'),
+      role: t('projectOverview.characterGenerator.localFallback.protagonistRole'),
+      desire: t('projectOverview.characterGenerator.localFallback.protagonistDesire', { premise: bible.premise || theme }),
+      wound: t('projectOverview.characterGenerator.localFallback.protagonistWound', { rule }),
+      secret: t('projectOverview.characterGenerator.localFallback.protagonistSecret', { theme }),
+      summary: buildCharacterGenerationBrief(mode, bible)
     }
-  })
-  return changed
+  }
+  return {
+    name: t('projectOverview.characterGenerator.localFallback.supportingName', { count: bible.characters.length + 1 }),
+    role: t('projectOverview.characterGenerator.localFallback.supportingRole'),
+    desire: t('projectOverview.characterGenerator.localFallback.supportingDesire', { premise: bible.premise || theme }),
+    wound: t('projectOverview.characterGenerator.localFallback.supportingWound', { rule }),
+    secret: t('projectOverview.characterGenerator.localFallback.supportingSecret', { theme }),
+    summary: buildCharacterGenerationBrief(mode, bible)
+  }
 }
 
 function mergeGeneratedCharacters(profiles: CharacterProfile[], mode: CharacterProfileMode) {
@@ -325,19 +331,8 @@ async function generateCharacters(mode: CharacterProfileMode) {
   characterGenerationState.value = 'generating'
   generatedCharacters.value = []
   try {
-    const result = await api.generateCharacterProfiles({
-      project_id: projectId.value,
-      focus: mode === 'protagonist' ? '主角完整设定' : '新增配角设定',
-      count: 1,
-      brief: buildCharacterGenerationBrief(mode, bibleDraft.value),
-      max_output_tokens: 1200
-    })
-    workspace.recordResult(t('projectOverview.resultScopes.characterGeneration'), result)
-    generatedCharacters.value = result.data.characters || []
+    generatedCharacters.value = [buildLocalCharacterProfile(mode, bibleDraft.value)]
     mergeGeneratedCharacters(generatedCharacters.value, mode)
-    if (result.data.mappings?.length) {
-      persistCharacterMappingsToDraft(result.data.mappings)
-    }
     if (bibleDraft.value) {
       await persistStoryBibleDraft({ syncCharactersAfterSave: true })
     }

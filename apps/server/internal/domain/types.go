@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // ProviderType identifies the upstream model provider protocol.
 type ProviderType string
@@ -96,6 +100,348 @@ const (
 	AgentRoleFactExtractor    AgentRole = "fact-extractor"
 	AgentRoleGraphCurator     AgentRole = "graph-curator"
 )
+
+// SkillSourceType identifies how skill material is supplied to the catalog.
+type SkillSourceType string
+
+const (
+	SkillSourceInlineText SkillSourceType = "inline_text"
+	SkillSourceDirectory  SkillSourceType = "directory"
+)
+
+func (t SkillSourceType) Valid() bool {
+	switch t {
+	case SkillSourceInlineText, SkillSourceDirectory:
+		return true
+	default:
+		return false
+	}
+}
+
+// MCPTransport declares the transport protocol used to reach an MCP server.
+type MCPTransport string
+
+const (
+	MCPTransportStdio          MCPTransport = "stdio"
+	MCPTransportStreamableHTTP MCPTransport = "streamable_http"
+	MCPTransportSSE            MCPTransport = "sse"
+)
+
+func (t MCPTransport) Valid() bool {
+	switch t {
+	case MCPTransportStdio, MCPTransportStreamableHTTP, MCPTransportSSE:
+		return true
+	default:
+		return false
+	}
+}
+
+// MCPServerStatus describes the last known availability of an MCP server.
+type MCPServerStatus string
+
+const (
+	MCPServerStatusOnline   MCPServerStatus = "online"
+	MCPServerStatusOffline  MCPServerStatus = "offline"
+	MCPServerStatusDisabled MCPServerStatus = "disabled"
+	MCPServerStatusFailed   MCPServerStatus = "failed"
+	MCPServerStatusUnknown  MCPServerStatus = "unknown"
+)
+
+func (s MCPServerStatus) Valid() bool {
+	switch s {
+	case MCPServerStatusOnline, MCPServerStatusOffline, MCPServerStatusDisabled, MCPServerStatusFailed, MCPServerStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// ToolDefinitionKind separates builtin, MCP-backed and skill-backed tool definitions.
+type ToolDefinitionKind string
+
+const (
+	ToolDefinitionBuiltin ToolDefinitionKind = "builtin"
+	ToolDefinitionMCP     ToolDefinitionKind = "mcp"
+	ToolDefinitionSkill   ToolDefinitionKind = "skill"
+)
+
+func (k ToolDefinitionKind) Valid() bool {
+	switch k {
+	case ToolDefinitionBuiltin, ToolDefinitionMCP, ToolDefinitionSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// ToolStatus is the catalog availability state for a tool definition.
+type ToolStatus string
+
+const (
+	ToolStatusActive      ToolStatus = "active"
+	ToolStatusDisabled    ToolStatus = "disabled"
+	ToolStatusUnavailable ToolStatus = "unavailable"
+)
+
+func (s ToolStatus) Valid() bool {
+	switch s {
+	case ToolStatusActive, ToolStatusDisabled, ToolStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// ToolInvocationStatus tracks one persisted tool call attempt.
+type ToolInvocationStatus string
+
+const (
+	ToolInvocationStatusRunning   ToolInvocationStatus = "running"
+	ToolInvocationStatusSucceeded ToolInvocationStatus = "succeeded"
+	ToolInvocationStatusFailed    ToolInvocationStatus = "failed"
+)
+
+func (s ToolInvocationStatus) Valid() bool {
+	switch s {
+	case ToolInvocationStatusRunning, ToolInvocationStatusSucceeded, ToolInvocationStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// AgentRunStatus tracks the lifecycle of an agent run.
+type AgentRunStatus string
+
+const (
+	AgentRunStatusRunning   AgentRunStatus = "running"
+	AgentRunStatusCompleted AgentRunStatus = "completed"
+	AgentRunStatusFailed    AgentRunStatus = "failed"
+)
+
+func (s AgentRunStatus) Valid() bool {
+	switch s {
+	case AgentRunStatusRunning, AgentRunStatusCompleted, AgentRunStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// AgentConfig stores an agent configuration, including selected skills and tools.
+type AgentConfig struct {
+	ID             string            `json:"id"`
+	ProjectID      string            `json:"project_id,omitempty"`
+	Name           string            `json:"name"`
+	Description    string            `json:"description,omitempty"`
+	Role           AgentRole         `json:"role,omitempty"`
+	ModelID        string            `json:"model_id,omitempty"`
+	Enabled        bool              `json:"enabled"`
+	SystemPrompt   string            `json:"system_prompt,omitempty"`
+	SkillIDs       []string          `json:"skill_ids,omitempty"`
+	ToolIDs        []string          `json:"tool_ids,omitempty"`
+	MCPServerIDs   []string          `json:"mcp_server_ids,omitempty"`
+	MemoryPolicy   map[string]any    `json:"memory_policy,omitempty"`
+	RuntimeOptions map[string]any    `json:"runtime_options,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
+}
+
+func (cfg AgentConfig) Valid() error {
+	if strings.TrimSpace(cfg.Name) == "" {
+		return fmt.Errorf("agent config name must not be empty")
+	}
+	return nil
+}
+
+// AgentRun records one agent execution and its input/output snapshots.
+type AgentRun struct {
+	ID                string         `json:"id"`
+	AgentID           string         `json:"agent_id"`
+	ProjectID         string         `json:"project_id,omitempty"`
+	Status            AgentRunStatus `json:"status"`
+	Input             map[string]any `json:"input,omitempty"`
+	Output            map[string]any `json:"output,omitempty"`
+	Error             string         `json:"error,omitempty"`
+	ToolInvocationIDs []string       `json:"tool_invocation_ids,omitempty"`
+	StartedAt         *time.Time     `json:"started_at,omitempty"`
+	CompletedAt       *time.Time     `json:"completed_at,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+}
+
+func (run AgentRun) Valid() error {
+	if strings.TrimSpace(run.AgentID) == "" {
+		return fmt.Errorf("agent run agent_id must not be empty")
+	}
+	if !run.Status.Valid() {
+		return fmt.Errorf("agent run status %q is invalid", run.Status)
+	}
+	return nil
+}
+
+// SkillSource stores the source from which one or more skills are produced.
+type SkillSource struct {
+	ID         string            `json:"id"`
+	ProjectID  string            `json:"project_id,omitempty"`
+	Name       string            `json:"name"`
+	Type       SkillSourceType   `json:"type"`
+	Path       string            `json:"path,omitempty"`
+	InlineText string            `json:"inline_text,omitempty"`
+	Enabled    bool              `json:"enabled"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+	CreatedAt  time.Time         `json:"created_at"`
+	UpdatedAt  time.Time         `json:"updated_at"`
+}
+
+func (source SkillSource) Valid() error {
+	if strings.TrimSpace(source.Name) == "" {
+		return fmt.Errorf("skill source name must not be empty")
+	}
+	if !source.Type.Valid() {
+		return fmt.Errorf("skill source type %q is invalid", source.Type)
+	}
+	if source.Type == SkillSourceDirectory && strings.TrimSpace(source.Path) == "" {
+		return fmt.Errorf("directory skill source path must not be empty")
+	}
+	return nil
+}
+
+// Skill is a normalized skill entry available to agents.
+type Skill struct {
+	ID          string            `json:"id"`
+	ProjectID   string            `json:"project_id,omitempty"`
+	SourceID    string            `json:"source_id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Content     string            `json:"content,omitempty"`
+	Path        string            `json:"path,omitempty"`
+	Enabled     bool              `json:"enabled"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+}
+
+func (skill Skill) Valid() error {
+	if strings.TrimSpace(skill.SourceID) == "" {
+		return fmt.Errorf("skill source_id must not be empty")
+	}
+	if strings.TrimSpace(skill.Name) == "" {
+		return fmt.Errorf("skill name must not be empty")
+	}
+	return nil
+}
+
+// MCPServerConfig stores one MCP server connection definition.
+type MCPServerConfig struct {
+	ID            string            `json:"id"`
+	ProjectID     string            `json:"project_id,omitempty"`
+	Name          string            `json:"name"`
+	Transport     MCPTransport      `json:"transport"`
+	Status        MCPServerStatus   `json:"status"`
+	Enabled       bool              `json:"enabled"`
+	Command       string            `json:"command,omitempty"`
+	Args          []string          `json:"args,omitempty"`
+	URL           string            `json:"url,omitempty"`
+	Headers       map[string]string `json:"headers,omitempty"`
+	SecretHeaders map[string]string `json:"secret_headers,omitempty"`
+	Env           map[string]string `json:"env,omitempty"`
+	SecretEnv     map[string]string `json:"secret_env,omitempty"`
+	TimeoutSec    int               `json:"timeout_sec,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	LastSeenAt    *time.Time        `json:"last_seen_at,omitempty"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
+}
+
+func (cfg MCPServerConfig) Valid() error {
+	if strings.TrimSpace(cfg.Name) == "" {
+		return fmt.Errorf("mcp server name must not be empty")
+	}
+	if !cfg.Transport.Valid() {
+		return fmt.Errorf("mcp transport %q is invalid", cfg.Transport)
+	}
+	if !cfg.Status.Valid() {
+		return fmt.Errorf("mcp server status %q is invalid", cfg.Status)
+	}
+	switch cfg.Transport {
+	case MCPTransportStdio:
+		if strings.TrimSpace(cfg.Command) == "" {
+			return fmt.Errorf("stdio mcp server command must not be empty")
+		}
+	case MCPTransportStreamableHTTP, MCPTransportSSE:
+		if strings.TrimSpace(cfg.URL) == "" {
+			return fmt.Errorf("%s mcp server url must not be empty", cfg.Transport)
+		}
+	}
+	return nil
+}
+
+// ToolDefinition is a catalog entry that can be exposed to agent runs.
+type ToolDefinition struct {
+	ID          string             `json:"id"`
+	ProjectID   string             `json:"project_id,omitempty"`
+	Name        string             `json:"name"`
+	DisplayName string             `json:"display_name,omitempty"`
+	Description string             `json:"description,omitempty"`
+	Kind        ToolDefinitionKind `json:"kind"`
+	Status      ToolStatus         `json:"status"`
+	MCPServerID string             `json:"mcp_server_id,omitempty"`
+	SourceID    string             `json:"source_id,omitempty"`
+	SkillID     string             `json:"skill_id,omitempty"`
+	InputSchema map[string]any     `json:"input_schema,omitempty"`
+	Metadata    map[string]string  `json:"metadata,omitempty"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+func (tool ToolDefinition) Valid() error {
+	if strings.TrimSpace(tool.Name) == "" {
+		return fmt.Errorf("tool definition name must not be empty")
+	}
+	if !tool.Kind.Valid() {
+		return fmt.Errorf("tool definition kind %q is invalid", tool.Kind)
+	}
+	if !tool.Status.Valid() {
+		return fmt.Errorf("tool status %q is invalid", tool.Status)
+	}
+	if tool.Kind == ToolDefinitionMCP && strings.TrimSpace(tool.MCPServerID) == "" {
+		return fmt.Errorf("mcp tool definition mcp_server_id must not be empty")
+	}
+	if tool.Kind == ToolDefinitionSkill && strings.TrimSpace(tool.SourceID) == "" && strings.TrimSpace(tool.SkillID) == "" {
+		return fmt.Errorf("skill tool definition source_id or skill_id must not be empty")
+	}
+	return nil
+}
+
+// ToolInvocation records one tool call snapshot without depending on catalog retention.
+type ToolInvocation struct {
+	ID          string               `json:"id"`
+	AgentRunID  string               `json:"agent_run_id,omitempty"`
+	AgentID     string               `json:"agent_id,omitempty"`
+	ProjectID   string               `json:"project_id,omitempty"`
+	ToolID      string               `json:"tool_id,omitempty"`
+	ToolName    string               `json:"tool_name"`
+	Status      ToolInvocationStatus `json:"status"`
+	Arguments   map[string]any       `json:"arguments,omitempty"`
+	Result      map[string]any       `json:"result,omitempty"`
+	Error       string               `json:"error,omitempty"`
+	StartedAt   *time.Time           `json:"started_at,omitempty"`
+	CompletedAt *time.Time           `json:"completed_at,omitempty"`
+	CreatedAt   time.Time            `json:"created_at"`
+	UpdatedAt   time.Time            `json:"updated_at"`
+}
+
+func (invocation ToolInvocation) Valid() error {
+	if strings.TrimSpace(invocation.ToolName) == "" {
+		return fmt.Errorf("tool invocation tool_name must not be empty")
+	}
+	if !invocation.Status.Valid() {
+		return fmt.Errorf("tool invocation status %q is invalid", invocation.Status)
+	}
+	return nil
+}
 
 // ProviderConfig is an administrator-controlled provider connection.
 type ProviderConfig struct {

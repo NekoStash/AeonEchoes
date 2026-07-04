@@ -21,6 +21,8 @@ import (
 	"aeonechoes/server/internal/memory"
 	"aeonechoes/server/internal/provider"
 	"aeonechoes/server/internal/providerregistry"
+	"aeonechoes/server/internal/skills"
+	"aeonechoes/server/internal/tooling"
 	"aeonechoes/server/internal/vector"
 )
 
@@ -240,152 +242,254 @@ func TestHandlerCharacterSyncUpsertsStoryBibleProfiles(t *testing.T) {
 	}
 }
 
-func TestHandlerCharacterProfilesEndpointReturnsWorkflowContextAndCharacters(t *testing.T) {
-	store, workflow, projectID := newWorkflowBackedServerFixture(t)
-	workflow = newCharacterProfileWorkflowForStore(t, store)
-	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), workflow, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+func TestHandlerLegacyAIEndpointsAreRemoved(t *testing.T) {
+	handler := newSmokeTestHandler(t)
+	paths := []string{
+		"/api/ai/character-profiles",
+		"/api/ai/context-selection/preview",
+		"/api/ai/draft",
+		"/api/ai/draft-with-idea",
+		"/api/ai/chapter-idea",
+	}
+	for _, path := range paths {
+		response := sendJSON(t, handler, http.MethodPost, path, map[string]any{"project_id": "project_removed"})
+		assertStatus(t, response, http.StatusNotFound)
+	}
+}
 
-	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/ai/character-profiles", map[string]any{
-		"project_id": projectID,
-		"focus":      "主角完整设定",
-		"count":      1,
-		"brief":      "补全能支撑第一卷的主角人物弧",
-	})
-	assertStatus(t, response, http.StatusCreated)
-	var body struct {
-		Workflow        domain.AIWorkflow                `json:"workflow"`
-		ContextPack     domain.ContextPack               `json:"context_pack"`
-		Characters      []domain.CharacterProfile        `json:"characters"`
-		Entities        []domain.Entity                  `json:"entities"`
-		Mappings        []domain.CharacterProfileMapping `json:"mappings"`
-		ModelResolution domain.ModelResolution           `json:"model_resolution"`
-		ToolTrace       []string                         `json:"tool_trace"`
-	}
-	decodeJSON(t, response, &body)
-	if body.Workflow.Kind != "character_profiles" || body.Workflow.Role != domain.AgentRoleCharacterKeeper || body.Workflow.Status != "completed" {
-		t.Fatalf("unexpected character profile workflow: %+v", body.Workflow)
-	}
-	if body.ContextPack.Role != domain.AgentRoleCharacterKeeper || body.ContextPack.ID == "" {
-		t.Fatalf("unexpected character profile context pack: %+v", body.ContextPack)
-	}
-	if body.ModelResolution.ModelID == "" || body.ModelResolution.RouteKey != string(domain.AgentRoleCharacterKeeper) {
-		t.Fatalf("character profile model resolution missing: %+v", body.ModelResolution)
-	}
-	if len(body.Characters) != 1 || body.Characters[0].Name != "林烬" || body.Characters[0].Role != "主角" || body.Characters[0].Desire == "" || body.Characters[0].Wound == "" || body.Characters[0].Secret == "" || body.Characters[0].Summary == "" {
-		t.Fatalf("character profile response missing complete profile: %+v", body.Characters)
-	}
-	if len(body.Entities) != 1 || body.Entities[0].ProjectID != projectID || body.Entities[0].Type != "character" || body.Entities[0].Name != "林烬" || body.Entities[0].Summary != body.Characters[0].Summary || body.Entities[0].Traits["secret"] != body.Characters[0].Secret {
-		t.Fatalf("character profile response missing saved entity: entities=%+v characters=%+v", body.Entities, body.Characters)
-	}
-	if len(body.Mappings) != 1 || body.Mappings[0].Name != "林烬" || body.Mappings[0].EntityID != body.Entities[0].ID || body.Mappings[0].Action == "" {
-		t.Fatalf("character profile response missing entity mapping: mappings=%+v entities=%+v", body.Mappings, body.Entities)
-	}
-	if len(body.ToolTrace) != 2 || !strings.Contains(strings.Join(body.ToolTrace, "\n"), "character.search") || !strings.Contains(strings.Join(body.ToolTrace, "\n"), "character.upsert") {
-		t.Fatalf("character profile response missing tool trace: %+v", body.ToolTrace)
-	}
-	savedEntities, err := store.ListEntities(projectID)
+func TestHandlerAgentCRUDAndRunListing(t *testing.T) {
+	handler, store := newAgentTestHandler(t)
+	project, _, err := store.CreateProject(domain.Project{Title: "智能体项目", Slug: "agents"}, domain.StoryBible{Title: "智能体项目", Logline: "测试智能体"})
 	if err != nil {
-		t.Fatalf("ListEntities() error: %v", err)
+		t.Fatalf("CreateProject() error: %v", err)
 	}
-	if !containsEntityID(savedEntities, body.Mappings[0].EntityID) {
-		t.Fatalf("character profile entity was not persisted through tool call: id=%q entities=%+v", body.Mappings[0].EntityID, savedEntities)
+
+	createResponse := sendJSON(t, handler, http.MethodPost, "/api/agents", map[string]any{
+		"project_id":    project.ID,
+		"name":          "主写作代理",
+		"description":   "用于验证智能体配置",
+		"role":          domain.AgentRoleWriter,
+		"enabled":       true,
+		"system_prompt": "只输出正文",
+		"tool_ids":      []string{"builtin:character.search"},
+	})
+	assertStatus(t, createResponse, http.StatusCreated)
+	var created domain.AgentConfig
+	decodeJSON(t, createResponse, &created)
+	if created.ID == "" || created.ProjectID != project.ID || !created.Enabled || created.Role != domain.AgentRoleWriter {
+		t.Fatalf("created agent config invalid: %+v", created)
+	}
+
+	updateResponse := sendJSON(t, handler, http.MethodPut, "/api/agents/"+created.ID, map[string]any{
+		"project_id":    project.ID,
+		"name":          "主写作代理（暂停）",
+		"description":   created.Description,
+		"role":          domain.AgentRoleEditor,
+		"enabled":       false,
+		"system_prompt": created.SystemPrompt,
+	})
+	assertStatus(t, updateResponse, http.StatusOK)
+	var updated domain.AgentConfig
+	decodeJSON(t, updateResponse, &updated)
+	if updated.ID != created.ID || updated.Enabled || updated.Role != domain.AgentRoleEditor {
+		t.Fatalf("updated agent config invalid: %+v", updated)
+	}
+
+	listResponse := sendJSON(t, handler, http.MethodGet, "/api/agents?project_id="+project.ID+"&enabled=false", nil)
+	assertStatus(t, listResponse, http.StatusOK)
+	var agents []domain.AgentConfig
+	decodeJSON(t, listResponse, &agents)
+	if len(agents) != 1 || agents[0].ID != created.ID {
+		t.Fatalf("filtered agents = %+v, want updated agent", agents)
+	}
+
+	run, err := store.CreateAgentRun(domain.AgentRun{AgentID: created.ID, ProjectID: project.ID, Status: domain.AgentRunStatusCompleted, Input: map[string]any{"brief": "验证"}, Output: map[string]any{"text": "完成"}})
+	if err != nil {
+		t.Fatalf("CreateAgentRun() error: %v", err)
+	}
+	runsResponse := sendJSON(t, handler, http.MethodGet, "/api/agent-runs?agent_id="+created.ID+"&status=completed", nil)
+	assertStatus(t, runsResponse, http.StatusOK)
+	var runs []domain.AgentRun
+	decodeJSON(t, runsResponse, &runs)
+	if len(runs) != 1 || runs[0].ID != run.ID {
+		t.Fatalf("filtered agent runs = %+v, want %q", runs, run.ID)
 	}
 }
 
-func TestHandlerPreviewReturnsFreshnessAndModelResolution(t *testing.T) {
-	store, workflow, projectID := newWorkflowBackedServerFixture(t)
-	_ = store
-	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), workflow, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
-
-	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/ai/context-selection/preview", map[string]any{
-		"project_id": projectID,
-		"chapter_id": "chapter-manual",
-		"brief":      "围绕林烬推进",
-		"context_selection": map[string]any{
-			"chapter_ids":     []string{"chapter-manual"},
-			"character_names": []string{"林烬"},
-		},
+func TestHandlerAgentSkillsAndToolToggles(t *testing.T) {
+	handler, store := newAgentTestHandler(t)
+	disabled := false
+	createResponse := sendJSON(t, handler, http.MethodPost, "/api/skills", map[string]any{
+		"name":        "Style Guard",
+		"description": "限制叙事风格",
+		"content":     "保持第三人称有限视角。",
+		"enabled":     disabled,
+		"metadata":    map[string]string{"origin": "inline"},
 	})
-	assertStatus(t, response, http.StatusOK)
-	var body struct {
-		ContextPack struct {
-			ID string `json:"id"`
-		} `json:"context_pack"`
-		Summary         string                 `json:"summary"`
-		EstimatedTokens int                    `json:"estimated_tokens"`
-		IndexFreshness  domain.IndexFreshness  `json:"index_freshness"`
-		ModelResolution domain.ModelResolution `json:"model_resolution"`
+	assertStatus(t, createResponse, http.StatusCreated)
+	var skill domain.Skill
+	decodeJSON(t, createResponse, &skill)
+	if skill.ID == "" || skill.SourceID == "" || skill.Enabled {
+		t.Fatalf("created inline skill invalid: %+v", skill)
 	}
-	decodeJSON(t, response, &body)
-	if body.ContextPack.ID == "" {
-		t.Fatalf("preview context_pack.id is empty")
+
+	enableResponse := sendJSON(t, handler, http.MethodPut, "/api/skills/"+skill.ID+"/enabled", map[string]any{"enabled": true})
+	assertStatus(t, enableResponse, http.StatusOK)
+	var enabledSkill domain.Skill
+	decodeJSON(t, enableResponse, &enabledSkill)
+	if !enabledSkill.Enabled {
+		t.Fatalf("enabled skill is still disabled: %+v", enabledSkill)
 	}
-	if body.Summary == "" || body.EstimatedTokens <= 0 {
-		t.Fatalf("preview summary/tokens invalid: %+v", body)
+
+	tool, err := store.UpsertToolDefinition(domain.ToolDefinition{Name: "style.guard", Kind: domain.ToolDefinitionSkill, Status: domain.ToolStatusActive, SkillID: skill.ID})
+	if err != nil {
+		t.Fatalf("UpsertToolDefinition() error: %v", err)
 	}
-	if body.IndexFreshness.Status == "" {
-		t.Fatalf("preview freshness missing: %+v", body.IndexFreshness)
+	disableToolResponse := sendJSON(t, handler, http.MethodPut, "/api/tools/catalog/"+tool.ID+"/enabled", map[string]any{"enabled": false})
+	assertStatus(t, disableToolResponse, http.StatusOK)
+	var disabledTool domain.ToolDefinition
+	decodeJSON(t, disableToolResponse, &disabledTool)
+	if disabledTool.Status != domain.ToolStatusDisabled {
+		t.Fatalf("disabled tool status = %q, want disabled", disabledTool.Status)
 	}
-	if body.ModelResolution.ModelID == "" || body.ModelResolution.ProviderID == "" {
-		t.Fatalf("preview model_resolution missing: %+v", body.ModelResolution)
+
+	catalogResponse := sendJSON(t, handler, http.MethodGet, "/api/tools/catalog?kind=skill&status=disabled", nil)
+	assertStatus(t, catalogResponse, http.StatusOK)
+	var catalog []domain.ToolDefinition
+	decodeJSON(t, catalogResponse, &catalog)
+	if len(catalog) != 1 || catalog[0].ID != tool.ID {
+		t.Fatalf("filtered tool catalog = %+v, want %q", catalog, tool.ID)
 	}
 }
 
-func TestHandlerDraftNotifiesWorkerAndReturnsFreshnessAndModelResolution(t *testing.T) {
-	store, workflow, projectID := newWorkflowBackedServerFixture(t)
-	wake := &integrationWakeNotifier{}
-	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), workflow, nil, nil, wake, slog.New(slog.NewTextHandler(io.Discard, nil)))
-
-	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/ai/draft", map[string]any{
-		"project_id": projectID,
-		"chapter_id": "chapter-manual",
-		"title":      "手动测试",
-		"brief":      "围绕林烬推进",
+func TestHandlerAgentMCPServerSecretsAreHiddenAndToggleStatus(t *testing.T) {
+	handler, _ := newAgentTestHandler(t)
+	createResponse := sendJSON(t, handler, http.MethodPost, "/api/mcp/servers", map[string]any{
+		"name":           "Local MCP",
+		"transport":      domain.MCPTransportStdio,
+		"enabled":        true,
+		"command":        "node",
+		"args":           []string{"server.js"},
+		"secret_env":     map[string]string{"TOKEN": "secret-token"},
+		"secret_headers": map[string]string{"Authorization": "Bearer secret"},
 	})
-	assertStatus(t, response, http.StatusCreated)
-	var body struct {
-		IndexFreshness  domain.IndexFreshness  `json:"index_freshness"`
-		ModelResolution domain.ModelResolution `json:"model_resolution"`
-		ContinuityAudit domain.ContinuityAudit `json:"continuity_audit"`
+	assertStatus(t, createResponse, http.StatusCreated)
+	var created map[string]any
+	decodeJSON(t, createResponse, &created)
+	id, _ := created["id"].(string)
+	if id == "" || created["secret_env"] != nil || created["secret_headers"] != nil {
+		t.Fatalf("mcp server response exposed secrets or missed id: %+v", created)
 	}
-	decodeJSON(t, response, &body)
-	if wake.count != 1 {
-		t.Fatalf("wake count = %d, want 1", wake.count)
+	if !containsAnyString(created["secret_env_hint"], "TOKEN") || !containsAnyString(created["secret_headers_hint"], "Authorization") {
+		t.Fatalf("mcp server response missing secret hints: %+v", created)
 	}
-	if body.IndexFreshness.Status == "" {
-		t.Fatalf("draft freshness missing: %+v", body.IndexFreshness)
-	}
-	if body.ModelResolution.ModelID == "" || body.ModelResolution.ProviderID == "" {
-		t.Fatalf("draft model_resolution missing: %+v", body.ModelResolution)
-	}
-	if body.ContinuityAudit.Status == "" {
-		t.Fatalf("draft continuity_audit missing: %+v", body.ContinuityAudit)
+
+	disableResponse := sendJSON(t, handler, http.MethodPut, "/api/mcp/servers/"+id+"/enabled", map[string]any{"enabled": false})
+	assertStatus(t, disableResponse, http.StatusOK)
+	var disabledMCP map[string]any
+	decodeJSON(t, disableResponse, &disabledMCP)
+	if disabledMCP["enabled"] != false || disabledMCP["status"] != string(domain.MCPServerStatusDisabled) {
+		t.Fatalf("disabled mcp response invalid: %+v", disabledMCP)
 	}
 }
 
-func TestHandlerDraftWithIdeaReturnsDraftContinuityAudit(t *testing.T) {
-	store, workflow, projectID := newWorkflowBackedServerFixture(t)
-	wake := &integrationWakeNotifier{}
-	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), workflow, nil, nil, wake, slog.New(slog.NewTextHandler(io.Discard, nil)))
+func TestHandlerIndexJobsFiltersAndLimit(t *testing.T) {
+	store := memory.NewStore()
+	projectA, _, err := store.CreateProject(domain.Project{Title: "索引项目 A", Slug: "index-a"}, domain.StoryBible{Title: "索引项目 A", Logline: "A"})
+	if err != nil {
+		t.Fatalf("CreateProject(A) error: %v", err)
+	}
+	projectB, _, err := store.CreateProject(domain.Project{Title: "索引项目 B", Slug: "index-b"}, domain.StoryBible{Title: "索引项目 B", Logline: "B"})
+	if err != nil {
+		t.Fatalf("CreateProject(B) error: %v", err)
+	}
+	jobs := []domain.IndexJob{
+		{ProjectID: projectA.ID, ChapterID: "chapter-a", Kind: "chapter_version", Status: "pending"},
+		{ProjectID: projectA.ID, ChapterID: "chapter-a", Kind: "chapter_version", Status: "failed", Error: "embed failed"},
+		{ProjectID: projectB.ID, ChapterID: "chapter-b", Kind: "chapter_version", Status: "completed"},
+	}
+	for _, job := range jobs {
+		if _, err := store.CreateIndexJob(job); err != nil {
+			t.Fatalf("CreateIndexJob() error: %v", err)
+		}
+	}
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/ai/draft-with-idea", map[string]any{
-		"project_id": projectID,
-		"chapter_id": "chapter-manual",
-		"title":      "手动测试",
-		"brief":      "围绕林烬推进",
+	allResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/index/jobs", nil)
+	assertStatus(t, allResponse, http.StatusOK)
+	var allJobs []domain.IndexJob
+	decodeJSON(t, allResponse, &allJobs)
+	if len(allJobs) != 3 {
+		t.Fatalf("GET /api/index/jobs len = %d, want 3", len(allJobs))
+	}
+
+	filteredResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/index/jobs?project_id="+projectA.ID+"&status=failed&limit=1", nil)
+	assertStatus(t, filteredResponse, http.StatusOK)
+	var filteredJobs []domain.IndexJob
+	decodeJSON(t, filteredResponse, &filteredJobs)
+	if len(filteredJobs) != 1 || filteredJobs[0].ProjectID != projectA.ID || filteredJobs[0].Status != "failed" {
+		t.Fatalf("filtered index jobs = %+v, want one failed job for project A", filteredJobs)
+	}
+
+	invalidLimitResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/index/jobs?limit=not-a-number", nil)
+	assertStatus(t, invalidLimitResponse, http.StatusBadRequest)
+}
+
+func TestHandlerProviderAPIKeyEnvIsIgnoredAndHidden(t *testing.T) {
+	store := memory.NewStore()
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	createResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/providers", map[string]any{
+		"id":          "provider_env_ignored",
+		"name":        "Env Ignored",
+		"type":        "openai",
+		"base_url":    "https://example.invalid/v1",
+		"api_key_env": "AEON_TEST_KEY",
+		"enabled":     true,
 	})
-	assertStatus(t, response, http.StatusCreated)
-	var body struct {
-		Draft struct {
-			ContinuityAudit domain.ContinuityAudit `json:"continuity_audit"`
-		} `json:"draft"`
+	assertStatus(t, createResponse, http.StatusCreated)
+	var created map[string]any
+	decodeJSON(t, createResponse, &created)
+	if _, ok := created["api_key_env"]; ok {
+		t.Fatalf("provider response exposed api_key_env: %+v", created)
 	}
-	decodeJSON(t, response, &body)
-	if wake.count != 1 {
-		t.Fatalf("wake count = %d, want 1", wake.count)
+	if created["api_key_hint"] != "" {
+		t.Fatalf("provider api_key_hint = %q, want empty when only api_key_env was submitted", created["api_key_hint"])
 	}
-	if body.Draft.ContinuityAudit.Status == "" {
-		t.Fatalf("draft-with-idea draft.continuity_audit missing: %+v", body.Draft.ContinuityAudit)
+	createdProvider, err := store.GetProvider("provider_env_ignored")
+	if err != nil {
+		t.Fatalf("GetProvider(created) error: %v", err)
+	}
+	if createdProvider.APIKeyEnv != "" {
+		t.Fatalf("created provider APIKeyEnv = %q, want empty", createdProvider.APIKeyEnv)
+	}
+
+	legacyProvider, err := store.CreateProvider(domain.ProviderConfig{ID: "legacy_env", Name: "Legacy Env", Type: domain.ProviderOpenAI, BaseURL: "https://example.invalid/v1", APIKeyEnv: "OLD_ENV", Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateProvider(legacy) error: %v", err)
+	}
+	updateResponse := sendJSON(t, server.Handler(), http.MethodPut, "/api/providers/"+legacyProvider.ID, map[string]any{
+		"name":     legacyProvider.Name,
+		"type":     legacyProvider.Type,
+		"base_url": legacyProvider.BaseURL,
+		"api_key":  "new-key",
+		"enabled":  true,
+	})
+	assertStatus(t, updateResponse, http.StatusOK)
+	var updated map[string]any
+	decodeJSON(t, updateResponse, &updated)
+	if _, ok := updated["api_key_env"]; ok {
+		t.Fatalf("updated provider response exposed api_key_env: %+v", updated)
+	}
+	if updated["api_key_hint"] != "configured" {
+		t.Fatalf("updated provider api_key_hint = %q, want configured", updated["api_key_hint"])
+	}
+	updatedProvider, err := store.GetProvider(legacyProvider.ID)
+	if err != nil {
+		t.Fatalf("GetProvider(updated) error: %v", err)
+	}
+	if updatedProvider.APIKeyEnv != "" || updatedProvider.APIKey != "new-key" {
+		t.Fatalf("updated provider credentials = api_key_env:%q api_key:%q, want env cleared and key saved", updatedProvider.APIKeyEnv, updatedProvider.APIKey)
 	}
 }
 
@@ -401,6 +505,20 @@ func newSmokeTestHandler(t *testing.T) http.Handler {
 		DefaultProviderTimeout: time.Second,
 	}, store, providers, workflow, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return server.Handler()
+}
+
+func newAgentTestHandler(t *testing.T) (http.Handler, *memory.Store) {
+	t.Helper()
+	store := memory.NewStore()
+	providers := providerregistry.New(nil, time.Second)
+	toolRegistry := tooling.NewRegistry(store, store)
+	if err := toolRegistry.SeedBuiltinTools(context.Background()); err != nil {
+		t.Fatalf("SeedBuiltinTools() error: %v", err)
+	}
+	cfg := config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second, MCPDefaultTimeout: time.Second}
+	server := httpapi.NewServer(cfg, store, providers, nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server.ConfigureAgents(nil, skills.NewService(store, t.TempDir()), toolRegistry, time.Second)
+	return server.Handler(), store
 }
 
 func newWorkflowBackedServerFixture(t *testing.T) (*memory.Store, *agent.WorkflowRunner, string) {
@@ -592,6 +710,19 @@ func containsProject(projects []domain.Project, projectID string) bool {
 func containsEntityID(entities []domain.Entity, entityID string) bool {
 	for _, entity := range entities {
 		if entity.ID == entityID {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAnyString(value any, want string) bool {
+	items, ok := value.([]any)
+	if !ok {
+		return false
+	}
+	for _, item := range items {
+		if text, ok := item.(string); ok && text == want {
 			return true
 		}
 	}

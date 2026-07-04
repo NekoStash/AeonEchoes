@@ -12,6 +12,7 @@
     "dashboard": "Dashboard",
     "projects": "Projects",
     "models": "Models",
+    "agents": "Agents",
     "newProject": "New project",
     "project": "Project overview",
     "editor": "Editor",
@@ -41,7 +42,9 @@
     "reset": "Reset",
     "add": "Add",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "close": "Close"
   },
   "theme": {
     "system": "System",
@@ -127,6 +130,14 @@
   "dashboard": {
     "title": "Dashboard",
     "description": "Monitor projects, model providers, and indexing tasks.",
+    "tabs": {
+      "continue": "Continue writing",
+      "flow": "Creation flow",
+      "system": "System status"
+    },
+    "systemStatusDescription": "Review backend health, model providers, and index jobs in one place.",
+    "systemHealth": "Service health",
+    "activeIndexJobs": "Pending or running index jobs",
     "quickStart": "Quick start",
     "systemStatus": "System status",
     "projects": "Projects",
@@ -177,6 +188,12 @@
   "projectNew": {
     "title": "Create project",
     "description": "Start with the story direction. The system will turn it into a maintainable story bible.",
+    "tabs": {
+      "core": "Story core",
+      "world": "World & characters",
+      "style": "Writing style",
+      "confirm": "Pre-create check"
+    },
     "name": "Project name",
     "brief": "One-line brief",
     "tags": "Genre tags",
@@ -335,10 +352,24 @@
       "generateProtagonist": "Generate protagonist",
       "generateCharacter": "Generate character",
       "latestResult": "Latest generated result",
-      "failed": "Character generation failed. Check the backend character-profile endpoint.",
+      "failed": "Character draft generation failed. Check the current Story Bible.",
       "prompts": {
         "protagonist": "Generate or complete the protagonist profile. Include name, role, desire/goal, wound/gap, and secret, and anchor it tightly to the current premise.",
         "character": "Generate one key character suitable for the next stage of this story. Include name, role, desire/goal, wound/gap, and secret."
+      },
+      "localFallback": {
+        "theme": "the core theme",
+        "rule": "the current world rule",
+        "protagonistName": "Unnamed protagonist",
+        "protagonistRole": "Protagonist",
+        "protagonistDesire": "Actively pursues the truth around “{premise}”.",
+        "protagonistWound": "Paid a price because of “{rule}” and now resists trusting systems again.",
+        "protagonistSecret": "Has not revealed key information tied to “{theme}”.",
+        "supportingName": "Key character {count}",
+        "supportingRole": "Key supporting character",
+        "supportingDesire": "Wants to use “{premise}” to change their situation.",
+        "supportingWound": "Developed a rigid stance under the influence of “{rule}”.",
+        "supportingSecret": "Holds a hidden clue tied to “{theme}”."
       }
     },
     "metrics": {
@@ -358,10 +389,103 @@
       "chapters": "No chapters yet."
     }
   },
+  "taskBoard": {
+    "tabs": {
+      "all": "All",
+      "pending": "Pending",
+      "running": "Running",
+      "failed": "Failed",
+      "completed": "Completed"
+    },
+    "stats": {
+      "all": "All",
+      "pending": "Pending",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "empty": "No index jobs yet.",
+    "emptyProject": "No index jobs for this project yet.",
+    "details": "Show raw details",
+    "fields": {
+      "id": "Raw ID",
+      "kind": "Index job type",
+      "scope": "Scope",
+      "project": "Project",
+      "chapter": "Chapter",
+      "chapterVersion": "Chapter version",
+      "attempts": "Attempts",
+      "createdAt": "Created at",
+      "updatedAt": "Updated at",
+      "startedAt": "Started at",
+      "completedAt": "Completed at",
+      "scheduledAt": "Scheduled at",
+      "payload": "Payload",
+      "error": "Failure reason"
+    }
+  },
+  "tooltips": {
+    "providerType": "The model provider type determines the upstream protocol and request format. API Key, Base URL, and model refresh must match it.",
+    "baseUrl": "The upstream API endpoint. A wrong Base URL can look like an authentication or model refresh failure.",
+    "apiKey": "Only API Key is saved. Leave it blank while editing to keep the saved key; enter a new key to replace it.",
+    "streaming": "Streaming returns content incrementally. Disable it when the upstream provider or model does not support streaming.",
+    "modelKind": "Model kind separates text generation models from embedding models and affects routing and indexing.",
+    "contextWindow": "Maximum context window accepted by the model, measured in Token.",
+    "maxOutputTokens": "Maximum output Token count allowed for one generation.",
+    "dimension": "Embedding vector dimension. It must match the vector collection dimension.",
+    "routingWeight": "When multiple candidates of the same kind are available, higher weight wins first.",
+    "defaultForKind": "Default candidate for a model kind when explicit model routing is empty.",
+    "supportsTools": "Whether this model supports tool calls or function calls.",
+    "allowedRoles": "Restrict which Agent roles may use this model. Empty means all roles are allowed.",
+    "modelRouting": "Model routing decides which model is used by each writing, review, or indexing role. Explicit settings outrank kind defaults and weights.",
+    "roleRoute": "Choose a model for this Agent role. Leave empty to use default model routing.",
+    "embeddingRoute": "Embedding routing affects index job vector dimensions. Rebuild vectors after changing it.",
+    "indexJobs": "Index jobs write chapter versions, facts, and graph data into retrieval/vector systems.",
+    "indexJobKind": "The index job type explains what object or workflow the job processes.",
+    "indexJobScope": "Project, chapter, and chapter version IDs locate the impact scope of this index job.",
+    "indexJobAttempts": "How many times the backend has tried to run this index job.",
+    "indexJobCreatedAt": "When this index job was queued.",
+    "indexJobUpdatedAt": "The latest status update time for this index job.",
+    "indexJobError": "Backend error returned when the index job failed.",
+    "indexJobRawId": "Raw backend index job ID for log lookup.",
+    "indexJobPayload": "Raw parameters attached to the index job.",
+    "editorVersions": "Saved chapter versions with prose, author role, word count, and index status.",
+    "runLog": "Run log shows model provider, model, Token-related context, tool trace, index freshness, and index jobs.",
+    "modelResolution": "The model provider, model, and route source resolved for this request.",
+    "indexFreshness": "Index freshness shows whether the latest chapter version has been indexed.",
+    "toolTrace": "Tool trace records context, graph, fact, or chapter tools called during generation."
+  },
   "models": {
     "title": "Model settings",
-    "description": "Manage provider connections, the real model catalog, and the routing rules that actually take effect.",
-    "providers": "Providers",
+    "description": "Manage model provider connections, the real model catalog, and the routing rules that actually take effect.",
+    "tabs": {
+      "providers": "Model providers",
+      "models": "Models",
+      "routing": "Model routing",
+      "indexJobs": "Index jobs"
+    },
+    "providerDialogDescription": "Add or edit a model provider connection in a dialog. Leave API Key blank to keep the saved key.",
+    "modelDialogDescription": "Maintain model context, output, embedding, and routing capabilities in a dialog.",
+    "apiKeyBlankKeepsExisting": "When editing, leaving API Key blank keeps the saved key. Enter a new API Key only to replace it.",
+    "apiKeySavedConfigured": "API Key configured",
+    "confirmDeleteTitle": "Confirm deletion",
+    "confirmDeleteWarning": "This action cannot be undone. Make sure the target is no longer used by routing or projects.",
+    "indexJobsTitle": "Index job board",
+    "routeGroups": {
+      "writing": {
+        "title": "Writing and editing",
+        "description": "Model routes for chapter plans, prose continuation, and editorial checks."
+      },
+      "canon": {
+        "title": "Canon and continuity",
+        "description": "Model routes for Story Bible, world rules, characters, and continuity audits."
+      },
+      "knowledge": {
+        "title": "Knowledge and indexing",
+        "description": "Model routes for fact extraction, graph curation, and embeddings."
+      }
+    },
+    "providers": "Model providers",
     "providersEyebrow": "Providers",
     "providerConfig": "Provider configuration",
     "newProvider": "Add provider",
@@ -390,10 +514,8 @@
     "type": "API type",
     "baseUrl": "Base URL",
     "apiKey": "API key",
-    "apiKeyEnv": "API key environment variable",
     "apiKeyPlaceholder": "Leave blank to keep the saved key; enter a new key only when replacing it",
     "apiKeySavedUnverified": "Saved key hint: {hint} (unverified; a wrong protocol or Base URL can also look like a credential error)",
-    "apiKeyEnvConfiguredUnverified": "Environment variable configured: {env} (unverified; a wrong protocol or Base URL can also look like a credential error)",
     "protocolCompatibilityHint": "Provider type is the upstream protocol. The API key, Base URL, and model refresh endpoint must match that protocol; for example, an Anthropic key cannot be used with the OpenAI Chat protocol. Choosing the wrong protocol often appears as a credential error.",
     "streaming": "Streaming",
     "enabled": "Enabled",
@@ -404,8 +526,7 @@
     "defaultModelIdStored": "Stored but not used for current routing:",
     "apiKeyHint": "Key configuration status",
     "apiKeyHintPlaceholder": "sk-... suffix or key location",
-    "apiKeyEnvPlaceholder": "OPENAI_API_KEY",
-    "noApiKeyHint": "No key or environment variable configured",
+    "noApiKeyHint": "No API Key configured",
     "enableProvider": "Enable Provider",
     "lastCheckedAt": "Last checked at",
     "notChecked": "Not checked yet",
@@ -460,26 +581,22 @@
         "openaiResponses": {
           "id": "provider-openai-responses",
           "name": "OpenAI Responses Gateway",
-          "baseUrl": "https://api.openai.com/v1",
-          "apiKeyEnv": "OPENAI_API_KEY"
+          "baseUrl": "https://api.openai.com/v1"
         },
         "openai": {
           "id": "provider-openai-chat",
           "name": "OpenAI Chat Gateway",
-          "baseUrl": "https://api.openai.com/v1",
-          "apiKeyEnv": "OPENAI_API_KEY"
+          "baseUrl": "https://api.openai.com/v1"
         },
         "anthropic": {
           "id": "provider-anthropic",
           "name": "Anthropic Messages Gateway",
-          "baseUrl": "https://api.anthropic.com/v1",
-          "apiKeyEnv": "ANTHROPIC_API_KEY"
+          "baseUrl": "https://api.anthropic.com/v1"
         },
         "gemini": {
           "id": "provider-gemini",
           "name": "Gemini Gateway",
-          "baseUrl": "https://generativelanguage.googleapis.com",
-          "apiKeyEnv": "GEMINI_API_KEY"
+          "baseUrl": "https://generativelanguage.googleapis.com"
         }
       },
       "model": {
@@ -763,6 +880,23 @@
     "versionsEyebrow": "Versions",
     "indexJobs": "Index jobs",
     "indexJobsEyebrow": "Index jobs",
+    "assistantTabs": {
+      "context": "Context",
+      "plan": "Plan",
+      "draft": "Prose",
+      "review": "Review",
+      "versions": "Versions",
+      "runLog": "Run log"
+    },
+    "runLog": {
+      "title": "Run log",
+      "description": "Inspect the latest actual model resolution, index freshness, tool trace, and index jobs.",
+      "empty": "No run log yet. Preview context or generate content first.",
+      "modelResolution": "Model resolution",
+      "toolTrace": "Tool trace",
+      "indexFreshness": "Index freshness",
+      "indexJobs": "Index jobs"
+    },
     "instruction": "Instruction",
     "style": "Style constraints",
     "chapterPlan": "Story idea / chapter plan",
@@ -928,6 +1062,13 @@
       "review": {
         "name": "Check consistency",
         "message": "Review results will appear after generation."
+      },
+      "agentRun": {
+        "name": "Agent run"
+      },
+      "agentOutput": {
+        "name": "Generated output",
+        "message": "The agent returned content."
       }
     },
     "metrics": {
@@ -943,7 +1084,8 @@
       "aiPlan": "AI chapter plan",
       "aiDraft": "AI chapter draft",
       "saveVersion": "Chapter version save",
-      "previewContext": "Context preview"
+      "previewContext": "Context preview",
+      "agentRuns": "Agent run"
     },
     "changeNotes": {
       "manualSave": "Manual save"
@@ -954,12 +1096,100 @@
       "generatePlanFailed": "Failed to generate chapter plan",
       "generateDraftFailed": "Failed to generate AI draft",
       "saveVersionFailed": "Failed to save chapter version",
-      "previewContextFailed": "Failed to preview context"
+      "previewContextFailed": "Failed to preview context",
+      "previewContextRemoved": "The legacy context preview endpoint has been removed. Configure agents, skills, and tools in Agent Management, then run a plan or draft directly.",
+      "loadAgentsFailed": "Failed to load agent configs",
+      "noAgentConfigured": "No enabled agent is available. Create and enable a writing or plot agent in Agent Management first."
+    }
+  },
+  "agents": {
+    "eyebrow": "Agent console",
+    "title": "Agents, skills, and tools",
+    "description": "Manage agent configs, inline skills, MCP servers, and the tool catalog. The chapter editor now runs enabled agents instead of calling legacy workflow endpoints.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "stats": {
+      "agents": "Enabled agents",
+      "skills": "Enabled skills",
+      "mcp": "Enabled MCP",
+      "tools": "Active tools"
+    },
+    "sections": {
+      "agents": "Agent configs",
+      "agentsDescription": "Configure roles, system prompts, and runtime switches.",
+      "skills": "Skill library",
+      "skillsDescription": "Create inline skills or scan the default skill directory.",
+      "mcp": "MCP servers",
+      "mcpDescription": "Configure stdio / HTTP MCP services and refresh tools.",
+      "tools": "Tool catalog",
+      "toolsDescription": "Enable or disable builtin, MCP, and skill tools."
+    },
+    "roles": {
+      "default": "Default role",
+      "writer": "Writer",
+      "editor": "Editor",
+      "plot_architect": "Plot architect",
+      "world_builder": "World builder",
+      "character_keeper": "Character keeper",
+      "continuity_auditor": "Continuity auditor"
+    },
+    "placeholders": {
+      "agentName": "Agent name",
+      "description": "Description",
+      "systemPrompt": "System prompt",
+      "skillName": "Skill name",
+      "skillContent": "Skill content",
+      "mcpName": "MCP server name",
+      "command": "Command, e.g. node",
+      "url": "Service URL",
+      "args": "Arguments separated by spaces"
+    },
+    "actions": {
+      "createAgent": "Create agent",
+      "createSkill": "Create inline skill",
+      "createMCP": "Create MCP",
+      "scanSkills": "Scan skills",
+      "refreshTools": "Refresh tools"
+    },
+    "empty": {
+      "agents": "No agent configs yet.",
+      "skills": "No skills yet.",
+      "mcp": "No MCP servers yet.",
+      "tools": "No tool definitions yet."
+    },
+    "messages": {
+      "agentSaved": "Agent saved.",
+      "skillSaved": "Skill saved.",
+      "mcpSaved": "MCP server saved.",
+      "skillScanComplete": "Skill scan complete. {count} created or updated.",
+      "toolsRefreshed": "Tool refresh complete. {count} tools are available."
+    },
+    "resultScopes": {
+      "load": "Agent data load",
+      "agentSave": "Agent save",
+      "skillSave": "Skill save",
+      "mcpSave": "MCP save",
+      "skillScan": "Skill scan",
+      "toolRefresh": "Tool refresh"
+    },
+    "errors": {
+      "loadFailed": "Failed to load agent data",
+      "saveAgentFailed": "Failed to save agent",
+      "saveSkillFailed": "Failed to save skill",
+      "saveMCPFailed": "Failed to save MCP server",
+      "scanSkillsFailed": "Failed to scan skills",
+      "refreshToolsFailed": "Failed to refresh tools"
     }
   },
   "graph": {
     "title": "Story graph",
     "description": "Explore relationships between characters, events, and story facts.",
+    "tabs": {
+      "graph": "Graph",
+      "nodes": "Nodes",
+      "edges": "Edges",
+      "metadata": "Metadata"
+    },
     "controls": "Filters",
     "details": "Details panel",
     "reload": "Reload",

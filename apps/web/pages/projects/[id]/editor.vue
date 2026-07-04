@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { Bot, BrainCircuit, FileClock, Lightbulb, Loader2, Save, Sparkles } from '@lucide/vue'
 import type {
-  AIDraftResponse,
-  ChapterIdeaResponse,
+  AgentConfig,
+  AgentRunResult,
   ChapterVersion,
+  ContinuityAudit,
+  ContinuityIssue,
   ContextPack,
   ContextPreviewResponse,
   ContextPreviewSummary,
@@ -47,8 +49,9 @@ const chapterPlan = ref(t('editor.defaults.chapterPlan'))
 const chapterIdeaWorkflowId = ref('')
 const styleConstraints = ref(t('editor.defaults.styleConstraints'))
 const versions = ref<ChapterVersion[]>([])
-const draft = ref<AIDraftResponse | null>(null)
-const chapterIdeaResult = ref<ChapterIdeaResponse | null>(null)
+const agentRunResult = ref<AgentRunResult | null>(null)
+const agents = ref<AgentConfig[]>([])
+const loadingAgents = ref(false)
 const loadingVersions = ref(false)
 const planning = ref(false)
 const drafting = ref(false)
@@ -76,10 +79,12 @@ const referenceSelection = reactive<ReferenceSelectionState>({
 })
 
 const tabs = computed(() => [
-  { label: t('editor.reference'), value: 'reference' },
+  { label: t('editor.context'), value: 'reference' },
   { label: t('editor.plan'), value: 'plan' },
   { label: t('editor.draft'), value: 'draft' },
-  { label: t('editor.review'), value: 'review' }
+  { label: t('editor.review'), value: 'review' },
+  { label: t('editor.versions'), value: 'versions', badge: String(versions.value.length) },
+  { label: t('editor.runLog'), value: 'runs', badge: String(projectIndexJobs.value.length) }
 ])
 
 const availableChapters = computed(() => workspace.activeChapters)
@@ -172,10 +177,7 @@ const previewContextSections = computed(() => buildPreviewContextSections(previe
 const previewStructuredContext = computed(() => previewContextSections.value.length > 0)
 const previewTargetLabelValue = computed(() => (previewTarget.value ? previewTargetLabel(previewTarget.value) : t('common.emptyValue')))
 const currentToolTrace = computed(() => normalizeTraceItems(
-  draft.value?.tool_trace
-  || draft.value?.context_pack?.tool_trace
-  || chapterIdeaResult.value?.tool_trace
-  || chapterIdeaResult.value?.context_pack?.tool_trace
+  agentRunResult.value?.tool_trace
   || previewResult.value?.tool_trace
   || previewResult.value?.context_pack?.tool_trace
   || []
@@ -184,9 +186,13 @@ const previewToolTrace = computed(() => normalizeTraceItems(previewResult.value?
 const toolTraceSummary = computed(() => buildToolTraceSummary(currentToolTrace.value))
 const previewToolTraceSummary = computed(() => buildToolTraceSummary(previewToolTrace.value))
 
-const currentWorkflow = computed(() => draft.value?.workflow || chapterIdeaResult.value?.workflow || null)
 const workflowSteps = computed(() => {
-  if (currentWorkflow.value?.steps.length) return currentWorkflow.value.steps
+  if (agentRunResult.value?.run) {
+    return [
+      { id: 'agent-run', name: t('editor.workflow.agentRun.name'), status: agentRunResult.value.run.status === 'completed' ? 'completed' as const : agentRunResult.value.run.status === 'failed' ? 'failed' as const : 'running' as const, message: agentRunResult.value.run.id },
+      { id: 'agent-output', name: t('editor.workflow.agentOutput.name'), status: agentRunResult.value.content ? 'completed' as const : 'idle' as const, message: agentRunResult.value.content ? t('editor.workflow.agentOutput.message') : t('editor.workflow.context.message') }
+    ]
+  }
   return [
     { id: 'idle-context', name: t('editor.workflow.context.name'), status: 'idle' as const, message: t('editor.workflow.context.message') },
     { id: 'idle-plan', name: t('editor.workflow.plan.name'), status: 'idle' as const, message: t('editor.workflow.plan.message') },
@@ -197,7 +203,7 @@ const workflowSteps = computed(() => {
 
 const projectIndexJobs = computed(() => workspace.indexJobs.filter((item) => item.project_id === projectId.value))
 const latestIndexJobs = computed(() => projectIndexJobs.value.slice(0, 5))
-const indexJobsLoading = computed(() => Boolean(workspace.loading[`index-jobs:${projectId.value}`]))
+const indexJobsLoading = computed(() => Object.entries(workspace.loading).some(([key, value]) => key.startsWith(`index-jobs:${projectId.value}`) && value))
 const backgroundIndexState = computed(() => {
   const jobs = projectIndexJobs.value
   if (indexJobsLoading.value) return { variant: 'gold' as const, label: t('editor.backgroundIndex.loading') }
@@ -210,23 +216,22 @@ const backgroundIndexState = computed(() => {
 })
 
 const diagnosticsModelResolution = computed<ModelResolution | null>(() => (
-  draft.value?.model_resolution
-  || chapterIdeaResult.value?.model_resolution
-  || currentWorkflow.value?.model_resolution
+  agentRunResult.value?.model_resolution
   || previewResult.value?.model_resolution
   || null
 ))
-const diagnosticsFreshness = computed<IndexFreshness | null>(() => draft.value?.index_freshness || previewResult.value?.index_freshness || null)
+const diagnosticsFreshness = computed<IndexFreshness | null>(() => previewResult.value?.index_freshness || null)
 const diagnosticsExecutionTarget = computed(() => {
-  if (draft.value) return t('editor.diagnostics.executionTargets.draft')
-  if (chapterIdeaResult.value) return t('editor.diagnostics.executionTargets.chapterIdea')
+  const taskType = String(agentRunResult.value?.run?.input?.task_type || '')
+  if (taskType === 'draft') return t('editor.diagnostics.executionTargets.draft')
+  if (taskType === 'chapter_idea') return t('editor.diagnostics.executionTargets.chapterIdea')
   if (previewTarget.value) return previewTargetLabel(previewTarget.value)
-  return t('common.emptyValue')
+  return t('editor.diagnostics.executionTargets.idle')
 })
-const draftContinuityAudit = computed(() => draft.value?.continuity_audit || null)
-const continuityAuditIssues = computed(() => draftContinuityAudit.value?.issues || [])
-const continuityAuditPassed = computed(() => Boolean(draftContinuityAudit.value) && continuityAuditIssues.value.length === 0)
-const draftWarnings = computed(() => draft.value?.warnings || [])
+const draftContinuityAudit = computed<ContinuityAudit | null>(() => null)
+const continuityAuditIssues = computed<ContinuityIssue[]>(() => [])
+const continuityAuditPassed = computed(() => false)
+const draftWarnings = computed(() => [])
 
 watch(availableCharacters, (characters) => {
   const validIds = new Set(characters.map((character) => character.id))
@@ -236,6 +241,7 @@ watch(availableCharacters, (characters) => {
 onMounted(async () => {
   await workspace.loadStoryBible(projectId.value)
   initializeSelectedChapter()
+  await loadAgents()
   await loadVersions()
   await refreshIndexJobs()
 })
@@ -567,8 +573,7 @@ function resetChapterState() {
   content.value = chapter?.summary ? `${chapter.summary}\n\n${t('editor.defaults.emptyContent')}` : t('editor.defaults.emptyContent')
   prompt.value = chapter?.summary || t('editor.defaults.prompt')
   chapterPlan.value = chapter?.summary ? t('editor.defaults.chapterPlanFromSummary', { summary: chapter.summary }) : t('editor.defaults.chapterPlan')
-  draft.value = null
-  chapterIdeaResult.value = null
+  agentRunResult.value = null
   versions.value = []
   chapterIdeaWorkflowId.value = ''
   previewError.value = ''
@@ -608,6 +613,33 @@ async function focusSidePanel() {
 async function focusPreviewResult() {
   await nextTick()
   focusPanel(previewResultRef.value)
+}
+
+async function loadAgents() {
+  loadingAgents.value = true
+  try {
+    const result = await api.listAgents({ projectId: projectId.value, enabled: true })
+    workspace.recordResult(t('editor.resultScopes.agentRuns'), result)
+    agents.value = result.data
+  } catch (error) {
+    const apiError = workspace.recordError(t('editor.resultScopes.agentRuns'), error)
+    localError.value = apiError.message || t('editor.errors.loadAgentsFailed')
+  } finally {
+    loadingAgents.value = false
+  }
+}
+
+async function resolveAgentForRole(role: AgentConfig['role']) {
+  if (agents.value.length === 0) {
+    await loadAgents()
+  }
+  const agent = agents.value.find((item) => item.enabled && item.role === role)
+    || agents.value.find((item) => item.enabled && !item.role)
+    || agents.value.find((item) => item.enabled)
+  if (!agent?.id) {
+    throw new Error(t('editor.errors.noAgentConfigured'))
+  }
+  return agent
 }
 
 async function loadVersion(version: ChapterVersion) {
@@ -740,33 +772,12 @@ function mergeIndexJobs(items: IndexJob[]) {
   ]
 }
 
-async function previewContextSelection(target: PreviewTarget) {
-  previewError.value = ''
-  previewLoading.value = true
-  previewResult.value = null
+async function showContextPreviewNotice(target: PreviewTarget) {
   previewTarget.value = target
-  try {
-    const ensuredChapterId = await ensureCurrentChapter()
-    const isChapterIdea = target === 'chapter_idea'
-    const result = await api.previewContextSelection({
-      project_id: projectId.value,
-      chapter_id: ensuredChapterId,
-      title: title.value,
-      brief: isChapterIdea ? buildChapterIdeaBrief() : buildDraftBrief(),
-      prompt: isChapterIdea ? t('editor.planPromptPrefix') : t('editor.draftPromptPrefix'),
-      selection: selectionPayload.value,
-      style_constraints: styleConstraintList(),
-      role: isChapterIdea ? 'plot-architect' : 'writer'
-    })
-    workspace.recordResult(t('editor.resultScopes.previewContext'), result)
-    previewResult.value = result.data
-    await focusPreviewResult()
-  } catch (error) {
-    const apiError = workspace.recordError(t('editor.resultScopes.previewContext'), error)
-    previewError.value = apiError.message || t('editor.errors.previewContextFailed')
-  } finally {
-    previewLoading.value = false
-  }
+  previewResult.value = null
+  previewError.value = t('editor.errors.previewContextRemoved')
+  await nextTick()
+  await focusPreviewResult()
 }
 
 async function requestChapterPlan() {
@@ -775,21 +786,24 @@ async function requestChapterPlan() {
   planning.value = true
   try {
     const ensuredChapterId = await ensureCurrentChapter()
-    const result = await api.requestChapterIdea({
+    const agent = await resolveAgentForRole('plot-architect')
+    const result = await api.runAgent(agent.id, {
       project_id: projectId.value,
-      chapter_id: ensuredChapterId,
-      brief: buildChapterIdeaBrief(),
-      prompt: t('editor.planPromptPrefix'),
-      title: title.value,
-      selection: selectionPayload.value,
-      style_constraints: styleConstraintList(),
+      task_type: 'chapter_idea',
+      input: {
+        chapter_id: ensuredChapterId,
+        brief: buildChapterIdeaBrief(),
+        prompt: t('editor.planPromptPrefix'),
+        title: title.value,
+        style_constraints: styleConstraintList()
+      },
+      context_selection: selectionPayload.value,
       max_output_tokens: 1200
     })
     workspace.recordResult(t('editor.resultScopes.aiPlan'), result)
-    draft.value = null
-    chapterIdeaResult.value = result.data
-    chapterPlan.value = result.data.chapter_idea.trim() || chapterPlan.value
-    chapterIdeaWorkflowId.value = result.data.workflow.id
+    agentRunResult.value = result.data
+    chapterPlan.value = result.data.content.trim() || chapterPlan.value
+    chapterIdeaWorkflowId.value = result.data.run.id
     activePanel.value = 'plan'
     planStatus.value = 'saved'
     await focusSidePanel()
@@ -808,29 +822,24 @@ async function requestDraft() {
   drafting.value = true
   try {
     const ensuredChapterId = await ensureCurrentChapter()
-    const result = await api.requestAIDraft({
+    const agent = await resolveAgentForRole('writer')
+    const result = await api.runAgent(agent.id, {
       project_id: projectId.value,
-      chapter_id: ensuredChapterId,
-      brief: buildDraftBrief(),
-      prompt: t('editor.draftPromptPrefix'),
-      title: title.value,
-      chapter_idea: chapterPlan.value,
-      chapter_idea_workflow_id: chapterIdeaWorkflowId.value,
-      selection: selectionPayload.value,
-      style_constraints: styleConstraintList()
+      task_type: 'draft',
+      input: {
+        chapter_id: ensuredChapterId,
+        brief: buildDraftBrief(),
+        prompt: t('editor.draftPromptPrefix'),
+        title: title.value,
+        chapter_idea: chapterPlan.value,
+        chapter_idea_run_id: chapterIdeaWorkflowId.value,
+        style_constraints: styleConstraintList()
+      },
+      context_selection: selectionPayload.value
     })
     workspace.recordResult(t('editor.resultScopes.aiDraft'), result)
-    draft.value = result.data
-    const version = result.data.chapter_version
-    if (version) {
-      content.value = [content.value.trim(), version.content.trim()].filter(Boolean).join('\n\n')
-      versions.value = [version, ...versions.value.filter((item) => item.id !== version.id)]
-    } else {
-      content.value = [content.value.trim(), result.data.content.trim()].filter(Boolean).join('\n\n')
-    }
-    if (result.data.index_job) {
-      mergeIndexJobs([result.data.index_job])
-    }
+    agentRunResult.value = result.data
+    content.value = [content.value.trim(), result.data.content.trim()].filter(Boolean).join('\n\n')
     activePanel.value = 'review'
     draftStatus.value = 'appended'
     await focusMainEditor()
@@ -999,7 +1008,7 @@ function versionWordCount(version: ChapterVersion) {
       <UiBadge v-if="planStatus === 'saved'" variant="success">{{ t('editor.feedback.planReady') }}</UiBadge>
     </div>
 
-    <div class="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+    <div class="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,460px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(420px,520px)]">
       <UiCard ref="editorMainRef" tabindex="-1" class="min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
         <div class="rounded-t-2xl border-b border-border bg-muted/35 p-4 sm:p-5">
           <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1214,12 +1223,12 @@ function versionWordCount(version: ChapterVersion) {
                   <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t('editor.preview.description') }}</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                  <UiButton size="sm" variant="outline" :disabled="previewLoading" @click="previewContextSelection('chapter_idea')">
+                  <UiButton size="sm" variant="outline" :disabled="previewLoading" @click="showContextPreviewNotice('chapter_idea')">
                     <Loader2 v-if="previewLoading && previewTarget === 'chapter_idea'" class="h-4 w-4 animate-spin" />
                     <Lightbulb v-else class="h-4 w-4" />
                     {{ t('editor.preview.actions.chapter_idea') }}
                   </UiButton>
-                  <UiButton size="sm" variant="outline" :disabled="previewLoading" @click="previewContextSelection('draft')">
+                  <UiButton size="sm" variant="outline" :disabled="previewLoading" @click="showContextPreviewNotice('draft')">
                     <Loader2 v-if="previewLoading && previewTarget === 'draft'" class="h-4 w-4 animate-spin" />
                     <Sparkles v-else class="h-4 w-4" />
                     {{ t('editor.preview.actions.draft') }}
@@ -1385,7 +1394,7 @@ function versionWordCount(version: ChapterVersion) {
             </UiButton>
           </div>
 
-          <div v-else class="mt-5 min-w-0 space-y-4">
+          <div v-else-if="activePanel === 'review'" class="mt-5 min-w-0 space-y-4">
             <div class="flex items-center gap-2">
               <BrainCircuit class="h-5 w-5 text-muted-foreground" />
               <h2 class="font-semibold">{{ t('editor.review') }}</h2>
@@ -1590,76 +1599,171 @@ function versionWordCount(version: ChapterVersion) {
               <p v-for="warning in draftWarnings" :key="warning" class="rounded-xl border border-amber-300/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">{{ warning }}</p>
             </div>
           </div>
-        </UiCard>
 
-        <UiCard class="p-4 sm:p-5">
-          <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
-            <div class="min-w-0 flex-1">
-              <p class="break-words text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('editor.versionsEyebrow') }}</p>
-              <h2 class="mt-2 break-words text-lg font-semibold">{{ t('editor.versions') }}</h2>
+          <div v-else-if="activePanel === 'versions'" class="mt-5 min-w-0 space-y-4">
+            <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="field-label text-xs uppercase tracking-[0.18em]">
+                  {{ t('editor.versionsEyebrow') }}
+                  <UiInfoTooltip :text="t('tooltips.editorVersions')" />
+                </p>
+                <h2 class="mt-2 break-words text-lg font-semibold">{{ t('editor.versions') }}</h2>
+              </div>
+              <FileClock :class="['h-5 w-5 shrink-0 text-muted-foreground', loadingVersions && 'animate-pulse']" />
             </div>
-            <FileClock :class="['h-5 w-5 shrink-0 text-muted-foreground', loadingVersions && 'animate-pulse']" />
+            <div v-if="versions.length === 0" class="rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
+              {{ t('editor.emptyVersions') }}
+            </div>
+            <div v-else class="space-y-3">
+              <button
+                v-for="version in versions"
+                :key="version.id"
+                type="button"
+                :class="[
+                  'w-full min-w-0 rounded-2xl border p-4 text-left transition-all hover:border-primary/35 focus-ring',
+                  loadedVersionId === version.id
+                    ? 'border-primary/45 bg-primary/10 shadow-sm shadow-primary/10'
+                    : 'border-border bg-muted/35'
+                ]"
+                @click="loadVersion(version)"
+              >
+                <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+                  <p class="min-w-0 flex-1 break-words font-medium" :title="t('editor.versionLabel', { version: version.version, title: version.title })">{{ t('editor.versionLabel', { version: version.version, title: version.title }) }}</p>
+                  <div class="flex shrink-0 flex-wrap justify-end gap-2">
+                    <UiBadge v-if="loadedVersionId === version.id" variant="violet">{{ t('editor.feedback.versionLoaded') }}</UiBadge>
+                    <UiBadge :variant="version.author === 'ai' ? 'default' : 'muted'">{{ authorLabel(version.author) }}</UiBadge>
+                  </div>
+                </div>
+                <p class="mt-2 break-words text-xs text-muted-foreground" :title="`${formatDateTime(version.created_at)} · ${version.change_note}`">{{ formatDateTime(version.created_at) }} · {{ version.change_note }}</p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <UiBadge variant="muted">{{ t('editor.metrics.words', { count: versionWordCount(version) }) }}</UiBadge>
+                  <UiBadge variant="muted">{{ version.index_status || t('common.emptyValue') }}</UiBadge>
+                </div>
+              </button>
+            </div>
           </div>
-          <div v-if="versions.length === 0" class="mt-5 rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
-            {{ t('editor.emptyVersions') }}
-          </div>
-          <div v-else class="mt-5 space-y-3">
-            <button
-              v-for="version in versions"
-              :key="version.id"
-              type="button"
-              :class="[
-                'w-full min-w-0 rounded-2xl border p-4 text-left transition-all hover:border-primary/35 focus-ring',
-                loadedVersionId === version.id
-                  ? 'border-primary/45 bg-primary/10 shadow-sm shadow-primary/10'
-                  : 'border-border bg-muted/35'
-              ]"
-              @click="loadVersion(version)"
-            >
-              <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
-                <p class="min-w-0 flex-1 break-words font-medium" :title="t('editor.versionLabel', { version: version.version, title: version.title })">{{ t('editor.versionLabel', { version: version.version, title: version.title }) }}</p>
-                <div class="flex shrink-0 flex-wrap justify-end gap-2">
-                  <UiBadge v-if="loadedVersionId === version.id" variant="violet">{{ t('editor.feedback.versionLoaded') }}</UiBadge>
-                  <UiBadge :variant="version.author === 'ai' ? 'default' : 'muted'">{{ authorLabel(version.author) }}</UiBadge>
+
+          <div v-else class="mt-5 min-w-0 space-y-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p class="field-label text-xs uppercase tracking-[0.18em]">
+                  {{ t('editor.runLog') }}
+                  <UiInfoTooltip :text="t('tooltips.runLog')" />
+                </p>
+                <h2 class="mt-2 font-semibold">{{ t('editor.runLogTitle') }}</h2>
+                <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ t('editor.runLogDescription') }}</p>
+              </div>
+              <UiBadge :variant="backgroundIndexState.variant">{{ backgroundIndexState.label }}</UiBadge>
+            </div>
+
+            <div class="grid gap-4">
+              <div class="rounded-2xl border border-border bg-muted/35 p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="field-label text-sm font-medium text-foreground">
+                    {{ t('editor.diagnostics.modelResolution') }}
+                    <UiInfoTooltip :text="t('tooltips.modelResolution')" />
+                  </p>
+                  <UiBadge v-if="diagnosticsModelResolution" variant="muted">{{ modelResolutionSourceLabel(diagnosticsModelResolution.resolution_source) }}</UiBadge>
+                </div>
+                <div v-if="!diagnosticsModelResolution" class="mt-3 text-sm text-muted-foreground">
+                  {{ t('editor.diagnostics.emptyModelResolution') }}
+                </div>
+                <dl v-else class="mt-3 space-y-2 text-sm leading-6">
+                  <div class="flex items-start justify-between gap-3">
+                    <dt class="field-label text-muted-foreground">{{ t('editor.diagnostics.provider') }}<UiInfoTooltip :text="t('tooltips.providerType')" /></dt>
+                    <dd class="text-right break-all">{{ diagnosticsModelResolution.provider_name || diagnosticsModelResolution.provider_id || t('common.emptyValue') }}</dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-3">
+                    <dt class="field-label text-muted-foreground">{{ t('editor.diagnostics.model') }}<UiInfoTooltip :text="t('tooltips.modelKind')" /></dt>
+                    <dd class="text-right break-all">{{ diagnosticsModelResolution.model_name || diagnosticsModelResolution.model_id || t('common.emptyValue') }}</dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-3">
+                    <dt class="field-label text-muted-foreground">{{ t('editor.diagnostics.route') }}<UiInfoTooltip :text="t('tooltips.modelRouting')" /></dt>
+                    <dd class="text-right break-all">{{ diagnosticsModelResolution.route_key || t('common.emptyValue') }}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div class="rounded-2xl border border-border bg-muted/35 p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="field-label text-sm font-medium text-foreground">
+                    {{ t('editor.diagnostics.freshness') }}
+                    <UiInfoTooltip :text="t('tooltips.indexFreshness')" />
+                  </p>
+                  <UiBadge v-if="diagnosticsFreshness" :variant="freshnessStatusVariant(diagnosticsFreshness.status)">
+                    {{ freshnessStatusLabel(diagnosticsFreshness.status) }}
+                  </UiBadge>
+                </div>
+                <div v-if="!diagnosticsFreshness" class="mt-3 text-sm text-muted-foreground">
+                  {{ t('editor.diagnostics.emptyFreshness') }}
+                </div>
+                <dl v-else class="mt-3 space-y-2 text-sm leading-6">
+                  <div class="flex items-start justify-between gap-3">
+                    <dt class="text-muted-foreground">{{ t('editor.freshness.pendingJobs') }}</dt>
+                    <dd class="text-right">{{ diagnosticsFreshness.pending_job_count }}</dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-3">
+                    <dt class="text-muted-foreground">{{ t('editor.freshness.latestChapterVersion') }}</dt>
+                    <dd class="text-right break-all">{{ diagnosticsFreshness.latest_chapter_version_id || t('common.emptyValue') }}</dd>
+                  </div>
+                  <div class="flex items-start justify-between gap-3">
+                    <dt class="text-muted-foreground">{{ t('editor.freshness.latestIndexedVersion') }}</dt>
+                    <dd class="text-right break-all">{{ diagnosticsFreshness.latest_indexed_chapter_version_id || t('common.emptyValue') }}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div class="rounded-2xl border border-border bg-muted/35 p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="field-label text-sm font-medium text-foreground">
+                    {{ t('editor.toolTrace.title') }}
+                    <UiInfoTooltip :text="t('tooltips.toolTrace')" />
+                  </p>
+                  <UiBadge variant="muted">{{ toolTraceSummary.text }}</UiBadge>
+                </div>
+                <div v-if="!toolTraceSummary.hasTrace" class="mt-3 text-sm text-muted-foreground">
+                  {{ t('editor.toolTrace.empty') }}
+                </div>
+                <div v-else class="mt-3 space-y-3">
+                  <div v-for="trace in toolTraceSummary.items" :key="trace.id" class="rounded-xl border border-border bg-card/80 p-3">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <UiBadge variant="violet">{{ toolTraceCategoryLabel(trace.category) }}</UiBadge>
+                      <span class="min-w-0 break-words text-sm font-medium text-foreground">{{ trace.name }}</span>
+                    </div>
+                    <p class="mt-2 break-words text-xs leading-5 text-muted-foreground">{{ trace.summary }}</p>
+                  </div>
                 </div>
               </div>
-              <p class="mt-2 break-words text-xs text-muted-foreground" :title="`${formatDateTime(version.created_at)} · ${version.change_note}`">{{ formatDateTime(version.created_at) }} · {{ version.change_note }}</p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <UiBadge variant="muted">{{ t('editor.metrics.words', { count: versionWordCount(version) }) }}</UiBadge>
-                <UiBadge variant="muted">{{ version.index_status || t('common.emptyValue') }}</UiBadge>
+
+              <div class="rounded-2xl border border-border bg-muted/35 p-4">
+                <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p class="field-label text-sm font-medium text-foreground">
+                    {{ t('editor.indexJobs') }}
+                    <UiInfoTooltip :text="t('tooltips.indexJobs')" />
+                  </p>
+                  <UiButton size="sm" variant="outline" @click="refreshIndexJobs">
+                    <RefreshCw class="h-4 w-4" />
+                    {{ t('actions.refresh') }}
+                  </UiButton>
+                </div>
+                <AppTaskBoard :jobs="projectIndexJobs" project-scoped />
               </div>
-            </button>
+
+              <div class="space-y-3">
+                <div v-for="stepItem in workflowSteps" :key="stepItem.id" class="min-w-0 rounded-2xl border border-border bg-muted/35 p-4">
+                  <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+                    <p class="min-w-0 flex-1 break-words font-medium">{{ stepItem.name }}</p>
+                    <UiBadge class="shrink-0" :variant="workflowStatusVariant(stepItem.status)">
+                      {{ workflowStatusLabel(stepItem.status) }}
+                    </UiBadge>
+                  </div>
+                  <p class="mt-2 break-words text-sm leading-6 text-muted-foreground">{{ stepItem.message }}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </UiCard>
 
-        <UiCard class="p-4 sm:p-5">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div class="min-w-0">
-              <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('editor.indexJobsEyebrow') }}</p>
-              <h2 class="mt-2 text-lg font-semibold">{{ t('editor.indexJobs') }}</h2>
-            </div>
-            <UiBadge :variant="backgroundIndexState.variant">
-              {{ backgroundIndexState.label }}
-            </UiBadge>
-          </div>
-          <div class="mt-5 space-y-3">
-            <div v-if="latestIndexJobs.length === 0" class="rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
-              {{ t('editor.noIndexJobs') }}
-            </div>
-            <div
-              v-for="job in latestIndexJobs"
-              :key="job.id"
-              class="min-w-0 rounded-2xl border border-border bg-muted/35 p-4"
-            >
-              <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
-                <p class="min-w-0 flex-1 break-words font-medium">{{ job.kind }}</p>
-                <UiBadge class="shrink-0" :variant="indexJobStatusVariant(job.status)">{{ indexJobStatusLabel(job.status) }}</UiBadge>
-              </div>
-              <p class="mt-2 break-words font-mono text-xs text-muted-foreground" :title="t('editor.jobAttempts', { id: job.id, count: job.attempts })">{{ t('editor.jobAttempts', { id: job.id, count: job.attempts }) }}</p>
-              <p v-if="job.error" class="mt-2 break-words rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{{ job.error }}</p>
-            </div>
-          </div>
-        </UiCard>
       </aside>
     </div>
   </div>

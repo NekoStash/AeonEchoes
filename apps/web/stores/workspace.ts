@@ -7,6 +7,7 @@ import type {
   GraphExpandResponse,
   HealthStatus,
   IndexJob,
+  IndexJobListOptions,
   ModelConfig,
   ProjectSummary,
   ProviderConfig,
@@ -453,14 +454,24 @@ export const useWorkspaceStore = defineStore('workspace', {
         this.setLoading(`graph:${projectId}`, false)
       }
     },
-    async loadIndexJobs(projectId?: string) {
+    async loadIndexJobs(options?: string | IndexJobListOptions) {
       const api = useApi()
-      const key = `index-jobs:${projectId || 'all'}`
+      const normalized = typeof options === 'string' ? { projectId: options } : (options || {})
+      const keyParts = [normalized.projectId || 'all', normalized.status || 'all', normalized.limit ? String(normalized.limit) : 'all']
+      const key = `index-jobs:${keyParts.join(':')}`
       this.setLoading(key, true)
       try {
-        const result = await api.listIndexJobs(projectId)
+        const result = await api.listIndexJobs(normalized)
         this.recordResult('index-jobs', result)
-        this.indexJobs = result.data
+        if (normalized.projectId || normalized.status || normalized.limit) {
+          const updatedIds = new Set(result.data.map((job) => job.id))
+          this.indexJobs = [
+            ...result.data,
+            ...this.indexJobs.filter((job) => !updatedIds.has(job.id))
+          ]
+        } else {
+          this.indexJobs = result.data
+        }
         return result
       } catch (error) {
         this.recordError('index-jobs', error)

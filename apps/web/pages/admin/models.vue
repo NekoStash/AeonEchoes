@@ -2,10 +2,8 @@
 import {
   CheckCircle2,
   DatabaseZap,
-  Info,
   Loader2,
   Pencil,
-  PlugZap,
   Plus,
   RefreshCw,
   Save,
@@ -53,7 +51,7 @@ const usageKeys: ModelUsageKey[] = [
   'embedding'
 ]
 
-const selectedProviderId = ref('')
+const activeTab = ref('providers')
 const modelFilterProviderId = ref('')
 const providerSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const modelSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
@@ -62,7 +60,10 @@ const maintenanceState = ref<'idle' | 'running' | 'saved' | 'failed'>('idle')
 const maintenanceAction = ref<'rebuild' | 'pending' | ''>('')
 const providerMode = ref<'create' | 'edit'>('create')
 const modelMode = ref<'create' | 'edit'>('create')
-const modelFormAnchor = ref<HTMLElement | null>(null)
+const providerDialogOpen = ref(false)
+const modelDialogOpen = ref(false)
+const confirmDialogOpen = ref(false)
+const deleteTarget = ref<{ type: 'provider' | 'model'; id: string; name: string } | null>(null)
 
 const usageSettings = reactive<ModelUsageSettings>({
   writer: '',
@@ -80,6 +81,12 @@ const usageSettings = reactive<ModelUsageSettings>({
 const localProvider = reactive<ProviderConfig>(createProviderDraft())
 const modelForm = reactive(createModelDraft())
 
+const pageTabs = computed(() => [
+  { label: t('models.tabs.providers'), value: 'providers', badge: String(providers.value.length) },
+  { label: t('models.tabs.models'), value: 'models', badge: String(models.value.length) },
+  { label: t('models.tabs.routing'), value: 'routing' },
+  { label: t('models.tabs.indexJobs'), value: 'indexJobs', badge: String(indexJobs.value.length) }
+])
 const providerTypeOptions = computed(() => providerTypeValues.map((value) => ({ label: providerTypeLabel(value), value })))
 const modelKindOptions = computed(() => modelKindValues.map((value) => ({ label: kindLabel(value), value })))
 const providerSelectOptions = computed(() => providers.value.map((provider) => ({ label: providerOptionLabel(provider), value: provider.id })))
@@ -87,14 +94,11 @@ const providerFilterOptions = computed(() => [
   { label: t('models.allProviders'), value: '' },
   ...providerSelectOptions.value
 ])
-
-const selectedProvider = computed(() => providers.value.find((provider) => provider.id === selectedProviderId.value))
 const isProviderDraft = computed(() => providerMode.value === 'create')
 const selectedProviderExampleKey = computed(() => providerExampleKeyByType[localProvider.provider_type || 'openai-responses'])
-const selectedRefreshLoading = computed(() => selectedProviderId.value ? loading.value[`models:${selectedProviderId.value}`] : false)
 const maintenanceLoading = computed(() =>
   maintenanceState.value === 'running'
-  || loading.value['index-jobs:all']
+  || Object.keys(loading.value).some((key) => key.startsWith('index-jobs:'))
   || loading.value['index-run-pending:all']
 )
 const visibleModels = computed(() => {
@@ -112,13 +116,6 @@ const modelSummary = computed(() => ({
   enabled: models.value.filter((model) => model.enabled).length,
   text: models.value.filter((model) => model.kind === 'text').length,
   embedding: models.value.filter((model) => model.kind === 'embedding').length
-}))
-const indexJobSummary = computed(() => ({
-  total: indexJobs.value.length,
-  pending: indexJobs.value.filter((job) => job.status === 'pending').length,
-  running: indexJobs.value.filter((job) => job.status === 'running').length,
-  completed: indexJobs.value.filter((job) => job.status === 'completed').length,
-  failed: indexJobs.value.filter((job) => job.status === 'failed').length
 }))
 const modelSelectionOptions = computed(() => {
   const options = [
@@ -141,18 +138,30 @@ const modelSelectionOptions = computed(() => {
     })
   return options
 })
-
-watch(selectedProvider, (provider) => {
-  if (provider) loadProviderIntoForm(provider)
-})
+const usageGroups = computed(() => [
+  {
+    key: 'writing',
+    title: t('models.routeGroups.writing.title'),
+    description: t('models.routeGroups.writing.description'),
+    keys: ['writer', 'editor', 'plot-architect'] as ModelUsageKey[]
+  },
+  {
+    key: 'canon',
+    title: t('models.routeGroups.canon.title'),
+    description: t('models.routeGroups.canon.description'),
+    keys: ['genesis-optimizer', 'world-builder', 'character-keeper', 'continuity-auditor'] as ModelUsageKey[]
+  },
+  {
+    key: 'knowledge',
+    title: t('models.routeGroups.knowledge.title'),
+    description: t('models.routeGroups.knowledge.description'),
+    keys: ['fact-extractor', 'graph-curator', 'embedding'] as ModelUsageKey[]
+  }
+])
 
 onMounted(async () => {
   await Promise.all([workspace.loadProvidersAndModels(), loadModelUsageSettings(), workspace.loadIndexJobs()])
-  const firstProvider = providers.value[0]
-  if (!selectedProviderId.value && firstProvider) {
-    selectedProviderId.value = firstProvider.id
-  }
-  resetModelForm(selectedProviderId.value || firstProvider?.id || '')
+  resetModelForm(providers.value[0]?.id || '')
 })
 
 function createProviderDraft(): ProviderConfig {
@@ -163,7 +172,6 @@ function createProviderDraft(): ProviderConfig {
     type: 'openai-responses',
     base_url: t('models.placeholders.providers.openaiResponses.baseUrl'),
     api_key: '',
-    api_key_env: '',
     api_key_hint: undefined,
     trace_enabled: undefined,
     trace_retention_days: undefined,
@@ -205,7 +213,6 @@ function loadProviderIntoForm(provider: ProviderConfig) {
     type: provider.provider_type || provider.type,
     provider_type: provider.provider_type || provider.type || 'openai-responses',
     api_key: '',
-    api_key_env: provider.api_key_env || '',
     api_key_hint: provider.api_key_hint,
     default_model_id: provider.default_model_id || ''
   })
@@ -213,26 +220,15 @@ function loadProviderIntoForm(provider: ProviderConfig) {
   providerSaveState.value = 'idle'
 }
 
-function startNewProvider() {
-  selectedProviderId.value = ''
-  providerMode.value = 'create'
-  Object.assign(localProvider, createProviderDraft())
-  providerSaveState.value = 'idle'
-  if (modelMode.value === 'create') resetModelForm('')
-}
-
-function selectProvider(providerId: string) {
-  selectedProviderId.value = providerId
-  modelFilterProviderId.value = providerId
-  if (!providerId) {
-    startNewProvider()
-    selectedProviderId.value = ''
-    modelFilterProviderId.value = ''
-    return
+function openProviderDialog(provider?: ProviderConfig) {
+  if (provider) {
+    loadProviderIntoForm(provider)
+  } else {
+    providerMode.value = 'create'
+    Object.assign(localProvider, createProviderDraft())
+    providerSaveState.value = 'idle'
   }
-  const provider = providers.value.find((item) => item.id === providerId)
-  if (provider) loadProviderIntoForm(provider)
-  if (modelMode.value === 'create') resetModelForm(providerId)
+  providerDialogOpen.value = true
 }
 
 function providerPayloadFromForm(): ProviderConfig {
@@ -247,7 +243,6 @@ function providerPayloadFromForm(): ProviderConfig {
     name,
     base_url: baseUrl,
     api_key: localProvider.api_key?.trim() || undefined,
-    api_key_env: localProvider.api_key_env?.trim() || '',
     default_model_id: localProvider.default_model_id?.trim() || undefined,
     type: localProvider.provider_type,
     created_at: isProviderDraft.value ? undefined : localProvider.created_at
@@ -262,90 +257,73 @@ async function saveProvider() {
     const index = providers.value.findIndex((provider) => provider.id === result.data.id)
     if (index >= 0) providers.value[index] = result.data
     else providers.value.unshift(result.data)
-    selectedProviderId.value = result.data.id
     loadProviderIntoForm(result.data)
     if (modelMode.value === 'create') resetModelForm(result.data.id)
     providerSaveState.value = 'saved'
+    providerDialogOpen.value = false
   } catch (error) {
     workspace.recordError(t('models.resultScopes.providerSave'), error)
     providerSaveState.value = 'failed'
   }
 }
 
-async function deleteProvider(provider: ProviderConfig) {
-  if (import.meta.client && !window.confirm(t('models.confirmDeleteProvider', { name: provider.name }))) return
+function requestDeleteProvider(provider: ProviderConfig) {
+  deleteTarget.value = { type: 'provider', id: provider.id, name: provider.name }
+  confirmDialogOpen.value = true
+}
+
+async function deleteProvider(providerId: string) {
   try {
-    const result = await api.deleteProvider(provider.id)
+    const result = await api.deleteProvider(providerId)
     workspace.recordResult(t('models.resultScopes.providerDelete'), result)
-    providers.value = providers.value.filter((item) => item.id !== provider.id)
-    models.value = models.value.filter((model) => model.provider_id !== provider.id)
+    providers.value = providers.value.filter((item) => item.id !== providerId)
+    models.value = models.value.filter((model) => model.provider_id !== providerId)
     usageKeys.forEach((key) => {
-      if (usageSettings[key].startsWith(`${provider.id}:`)) usageSettings[key] = ''
+      if (usageSettings[key].startsWith(`${providerId}:`)) usageSettings[key] = ''
     })
-    if (selectedProviderId.value === provider.id) startNewProvider()
-    if (modelFilterProviderId.value === provider.id) modelFilterProviderId.value = ''
-    if (modelForm.provider_id === provider.id) resetModelForm(selectedProviderId.value || modelFilterProviderId.value || providers.value[0]?.id || '')
+    if (modelFilterProviderId.value === providerId) modelFilterProviderId.value = ''
+    if (modelForm.provider_id === providerId) resetModelForm(providers.value[0]?.id || '')
   } catch (error) {
     workspace.recordError(t('models.resultScopes.providerDelete'), error)
   }
 }
 
-async function refreshModels() {
-  if (!selectedProviderId.value) return
-  await workspace.refreshModels(selectedProviderId.value)
+async function refreshModels(providerId: string) {
+  await workspace.refreshModels(providerId)
 }
 
-async function focusModelForm() {
-  await nextTick()
-  modelFormAnchor.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  modelFormAnchor.value?.focus({ preventScroll: true })
-}
-
-function resetModelForm(providerId = selectedProviderId.value || modelFilterProviderId.value || providers.value[0]?.id || '') {
+function resetModelForm(providerId = modelFilterProviderId.value || providers.value[0]?.id || '') {
   Object.assign(modelForm, createModelDraft(providerId))
   modelMode.value = 'create'
   modelSaveState.value = 'idle'
 }
 
-async function startNewModel(providerId = selectedProviderId.value || modelFilterProviderId.value || providers.value[0]?.id || '') {
-  resetModelForm(providerId)
-  await focusModelForm()
-}
-
-async function editModel(model: ModelConfig) {
-  Object.assign(modelForm, {
-    id: model.id,
-    provider_id: model.provider_id,
-    name: model.name,
-    display_name: model.display_name || model.name,
-    kind: model.kind || 'text',
-    context_window: String(model.context_window || 0),
-    max_output_tokens: String(model.max_output_tokens || 0),
-    dimension: model.dimension ? String(model.dimension) : '',
-    routing_weight: String(model.routing_weight || 100),
-    default_for_kind: Boolean(model.default_for_kind),
-    enabled: Boolean(model.enabled),
-    supports_tools: Boolean(model.supports_tools),
-    supports_streaming: Boolean(model.supports_streaming),
-    allowed_agent_roles: [...(model.allowed_agent_roles || [])],
-    created_at: model.created_at
-  })
-  selectedProviderId.value = model.provider_id
-  modelFilterProviderId.value = model.provider_id
-  modelMode.value = 'edit'
+function openModelDialog(model?: ModelConfig, providerId = modelFilterProviderId.value || providers.value[0]?.id || '') {
+  if (model) {
+    Object.assign(modelForm, {
+      id: model.id,
+      provider_id: model.provider_id,
+      name: model.name,
+      display_name: model.display_name || model.name,
+      kind: model.kind || 'text',
+      context_window: String(model.context_window || 0),
+      max_output_tokens: String(model.max_output_tokens || 0),
+      dimension: model.dimension ? String(model.dimension) : '',
+      routing_weight: String(model.routing_weight || 100),
+      default_for_kind: Boolean(model.default_for_kind),
+      enabled: Boolean(model.enabled),
+      supports_tools: Boolean(model.supports_tools),
+      supports_streaming: Boolean(model.supports_streaming),
+      allowed_agent_roles: [...(model.allowed_agent_roles || [])],
+      created_at: model.created_at
+    })
+    modelFilterProviderId.value = model.provider_id
+    modelMode.value = 'edit'
+  } else {
+    resetModelForm(providerId)
+  }
   modelSaveState.value = 'idle'
-  await focusModelForm()
-}
-
-function deleteEditingModel() {
-  if (!modelForm.id) return
-  void deleteModel({
-    id: modelForm.id,
-    provider_id: modelForm.provider_id,
-    name: modelForm.name,
-    display_name: modelForm.display_name || modelForm.name,
-    enabled: modelForm.enabled
-  })
+  modelDialogOpen.value = true
 }
 
 function parseModelNumber(value: string, fieldLabel: string) {
@@ -392,24 +370,38 @@ async function saveModel() {
     const index = models.value.findIndex((model) => model.id === result.data.id)
     if (index >= 0) models.value[index] = result.data
     else models.value.unshift(result.data)
-    editModel(result.data)
+    openModelDialog(result.data)
     modelSaveState.value = 'saved'
+    modelDialogOpen.value = false
   } catch (error) {
     workspace.recordError(t('models.resultScopes.modelSave'), error)
     modelSaveState.value = 'failed'
   }
 }
 
-async function deleteModel(model: ModelConfig) {
-  if (import.meta.client && !window.confirm(t('models.confirmDeleteModel', { name: model.display_name || model.name }))) return
+function requestDeleteModel(model: ModelConfig) {
+  deleteTarget.value = { type: 'model', id: model.id, name: model.display_name || model.name }
+  confirmDialogOpen.value = true
+}
+
+async function deleteModel(modelId: string) {
   try {
-    const result = await api.deleteModel(model.id)
+    const result = await api.deleteModel(modelId)
     workspace.recordResult(t('models.resultScopes.modelDelete'), result)
-    models.value = models.value.filter((item) => item.id !== model.id)
-    if (modelForm.id === model.id) resetModelForm(selectedProviderId.value || modelFilterProviderId.value || model.provider_id)
+    models.value = models.value.filter((item) => item.id !== modelId)
+    if (modelForm.id === modelId) resetModelForm(modelFilterProviderId.value || providers.value[0]?.id || '')
   } catch (error) {
     workspace.recordError(t('models.resultScopes.modelDelete'), error)
   }
+}
+
+async function confirmDelete() {
+  const target = deleteTarget.value
+  if (!target) return
+  if (target.type === 'provider') await deleteProvider(target.id)
+  else await deleteModel(target.id)
+  confirmDialogOpen.value = false
+  deleteTarget.value = null
 }
 
 async function loadModelUsageSettings() {
@@ -579,10 +571,6 @@ function providerBaseUrlPlaceholder() {
   return t(`${providerPlaceholderKey()}.baseUrl`)
 }
 
-function providerApiKeyEnvPlaceholder() {
-  return t(`${providerPlaceholderKey()}.apiKeyEnv`)
-}
-
 function modelPlaceholder(field: 'id' | 'upstreamModelId' | 'displayName' | 'contextWindow' | 'maxOutputTokens' | 'dimension') {
   const providerKey = selectedProviderExampleKey.value
   const kindKey = modelForm.kind === 'embedding' ? 'embedding' : 'text'
@@ -595,17 +583,8 @@ function routingWeightPlaceholder() {
   return t('models.placeholders.model.routingWeight')
 }
 
-function apiKeyConfigurationLabel() {
-  const keyHint = localProvider.api_key_hint?.trim()
-  const envName = localProvider.api_key_env?.trim()
-  if (envName && (!keyHint || keyHint === envName)) return t('models.apiKeyEnvConfiguredUnverified', { env: envName })
-  if (keyHint) return t('models.apiKeySavedUnverified', { hint: keyHint })
-  if (envName) return t('models.apiKeyEnvConfiguredUnverified', { env: envName })
-  return t('models.noApiKeyHint')
-}
-
-function isEditingModel(model: ModelConfig) {
-  return modelMode.value === 'edit' && modelForm.id === model.id
+function apiKeyConfigurationLabel(provider: ProviderConfig) {
+  return provider.api_key_hint ? t('models.apiKeySavedConfigured') : t('models.noApiKeyHint')
 }
 
 function modelFeatureSummary(model: ModelConfig) {
@@ -631,10 +610,7 @@ function formatInteger(value?: number) {
 
 <template>
   <div class="space-y-6">
-    <SectionHeader
-      :title="t('models.title')"
-      :description="t('models.description')"
-    >
+    <SectionHeader :title="t('models.title')" :description="t('models.description')">
       <template #actions>
         <UiButton variant="outline" :disabled="loading.providers" class="w-full sm:w-auto" @click="workspace.loadProvidersAndModels()">
           <RefreshCw :class="['h-4 w-4', loading.providers && 'animate-spin']" />
@@ -668,174 +644,77 @@ function formatInteger(value?: number) {
       </UiCard>
     </div>
 
-    <UiCard class="min-w-0 p-4 sm:p-6">
+    <UiTabs v-model="activeTab" :tabs="pageTabs" class="w-full" />
+
+    <section v-if="activeTab === 'providers'" class="space-y-4">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0">
           <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.providerConnectionEyebrow') }}</p>
           <h2 class="mt-2 text-xl font-semibold">{{ t('models.providerConnectionTitle') }}</h2>
-          <p class="mt-2 text-sm text-muted-foreground">{{ t('models.providerConnectionDescription') }}</p>
+          <p class="mt-2 text-sm leading-7 text-muted-foreground">{{ t('models.providerConnectionDescription') }}</p>
         </div>
-        <UiButton variant="outline" class="w-full sm:w-auto" @click="startNewProvider">
+        <UiButton class="w-full sm:w-auto" @click="openProviderDialog()">
           <Plus class="h-4 w-4" />
           {{ t('models.addProvider') }}
         </UiButton>
       </div>
 
-      <div class="mt-6 grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div class="space-y-3">
-          <button
-            type="button"
-            :class="[
-              'w-full rounded-2xl border p-4 text-left transition-all focus-ring',
-              !selectedProviderId
-                ? 'border-primary/35 bg-primary/10'
-                : 'border-border bg-card hover:border-primary/30 hover:bg-muted/60'
-            ]"
-            @click="startNewProvider(); modelFilterProviderId = ''"
-          >
-            <div class="flex min-w-0 items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="truncate font-medium">{{ t('models.newProvider') }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">{{ t('models.providerDraftDescription') }}</p>
-              </div>
-              <UiBadge variant="muted">{{ t('models.addProvider') }}</UiBadge>
+      <div v-if="providers.length === 0" class="rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
+        {{ t('models.emptyProviders') }}
+      </div>
+      <div v-else class="grid gap-4 xl:grid-cols-2">
+        <UiCard v-for="provider in providers" :key="provider.id" class="p-4 sm:p-5">
+          <div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <h3 class="break-words font-semibold" :title="provider.name">{{ provider.name }}</h3>
+              <p class="mt-1 break-words text-sm text-muted-foreground">{{ providerTypeLabel(provider.provider_type) }}</p>
+              <p class="mt-3 break-all font-mono text-xs text-muted-foreground" :title="provider.base_url">{{ provider.base_url }}</p>
             </div>
-          </button>
-
-          <div v-if="providers.length === 0" class="rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
-            {{ t('models.emptyProviders') }}
+            <UiBadge class="shrink-0" :variant="statusVariant(provider.status)">{{ providerStatusLabel(provider.status) }}</UiBadge>
           </div>
-          <div v-else class="space-y-3">
-            <button
-              v-for="provider in providers"
-              :key="provider.id"
-              type="button"
-              :class="[
-                'w-full rounded-2xl border p-4 text-left transition-all focus-ring',
-                selectedProviderId === provider.id
-                  ? 'border-primary/35 bg-primary/10'
-                  : 'border-border bg-card hover:border-primary/30 hover:bg-muted/60'
-              ]"
-              @click="selectProvider(provider.id)"
-            >
-              <div class="flex min-w-0 items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="truncate font-medium" :title="provider.name">{{ provider.name }}</p>
-                  <p class="mt-1 truncate text-xs text-muted-foreground">{{ providerTypeLabel(provider.provider_type) }}</p>
-                </div>
-                <UiBadge class="shrink-0" :variant="statusVariant(provider.status)">{{ providerStatusLabel(provider.status) }}</UiBadge>
-              </div>
-              <p class="mt-3 truncate font-mono text-xs text-muted-foreground" :title="provider.base_url">{{ provider.base_url }}</p>
-              <p class="mt-1 text-xs text-muted-foreground">{{ providerModelDescription(provider.id) }}</p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <UiBadge :variant="provider.streaming ? 'success' : 'muted'">{{ streamingLabel(provider.streaming) }}</UiBadge>
-                <UiBadge :variant="provider.enabled ? 'default' : 'muted'">{{ enabledLabel(provider.enabled) }}</UiBadge>
-                <UiBadge variant="muted">{{ t('models.modelCount', { count: providerModelCount(provider.id) }) }}</UiBadge>
-              </div>
-            </button>
-          </div>
-        </div>
 
-        <div class="space-y-6">
-          <div class="rounded-2xl border border-border bg-muted/25 p-4">
-            <div class="flex items-start gap-3">
-              <Info class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              <div>
-                <p class="text-sm font-medium text-foreground">{{ t('models.providerConnectionNoteTitle') }}</p>
-                <p class="mt-1 text-sm text-muted-foreground">{{ t('models.providerConnectionNoteDescription') }}</p>
-                <p v-if="localProvider.default_model_id" class="mt-2 text-xs text-muted-foreground">
-                  {{ t('models.defaultModelIdStored') }}
-                  <span class="font-mono text-foreground">{{ localProvider.default_model_id }}</span>
-                </p>
-              </div>
+          <div class="mt-4 grid gap-3 sm:grid-cols-2">
+            <div class="rounded-xl border border-border bg-muted/25 p-3">
+              <p class="field-label text-xs">{{ t('models.apiKeyHint') }}<UiInfoTooltip :text="t('tooltips.apiKey')" /></p>
+              <p class="mt-2 text-sm text-foreground">{{ apiKeyConfigurationLabel(provider) }}</p>
+            </div>
+            <div class="rounded-xl border border-border bg-muted/25 p-3">
+              <p class="text-xs text-muted-foreground">{{ t('models.lastCheckedAt') }}</p>
+              <p class="mt-2 text-sm text-foreground">{{ provider.last_checked_at ? formatDateTime(provider.last_checked_at) : t('models.notChecked') }}</p>
             </div>
           </div>
 
-          <div class="flex min-w-0 items-center justify-between gap-4">
-            <div class="min-w-0">
-              <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.configurationEyebrow') }}</p>
-              <h3 class="mt-2 text-lg font-semibold">{{ isProviderDraft ? t('models.newProvider') : t('models.providerConfig') }}</h3>
-            </div>
-            <PlugZap class="h-5 w-5 text-muted-foreground" />
+          <p class="mt-3 text-xs text-muted-foreground">{{ providerModelDescription(provider.id) }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <UiBadge :variant="provider.streaming ? 'success' : 'muted'">{{ streamingLabel(provider.streaming) }}</UiBadge>
+            <UiBadge :variant="provider.enabled ? 'default' : 'muted'">{{ enabledLabel(provider.enabled) }}</UiBadge>
+            <UiBadge variant="muted">{{ t('models.modelCount', { count: providerModelCount(provider.id) }) }}</UiBadge>
           </div>
 
-          <div class="rounded-2xl border border-amber-300/40 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
-            {{ t('models.protocolCompatibilityHint') }}
-          </div>
-
-          <div class="grid gap-4 md:grid-cols-2">
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.providerId') }}</span>
-              <UiInput v-model="localProvider.id" :placeholder="providerIdPlaceholder()" :disabled="providerMode === 'edit'" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.displayName') }}</span>
-              <UiInput v-model="localProvider.name" :placeholder="providerNamePlaceholder()" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.providerType') }}</span>
-              <UiSelect v-model="localProvider.provider_type" :options="providerTypeOptions" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.baseUrl') }}</span>
-              <UiInput v-model="localProvider.base_url" :placeholder="providerBaseUrlPlaceholder()" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.apiKey') }}</span>
-              <UiInput v-model="localProvider.api_key" type="password" :placeholder="t('models.apiKeyPlaceholder')" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.apiKeyEnv') }}</span>
-              <UiInput v-model="localProvider.api_key_env" :placeholder="providerApiKeyEnvPlaceholder()" />
-            </label>
-          </div>
-
-          <div class="grid gap-3 md:grid-cols-3">
-            <UiSwitch v-model="localProvider.enabled" :label="t('models.enableProvider')" />
-            <UiSwitch v-model="localProvider.streaming" :label="t('models.streaming')" />
-            <div class="rounded-2xl border border-border bg-muted/35 px-4 py-3 text-sm text-muted-foreground">
-              {{ t('models.lastCheckedAt') }}
-              <p class="mt-1 text-foreground">{{ localProvider.last_checked_at ? formatDateTime(localProvider.last_checked_at) : t('models.notChecked') }}</p>
-            </div>
-          </div>
-
-          <div class="rounded-2xl border border-border bg-muted/35 px-4 py-3 text-sm text-muted-foreground">
-            {{ t('models.apiKeyHint') }}
-            <p class="mt-1 text-foreground">{{ apiKeyConfigurationLabel() }}</p>
-          </div>
-
-          <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <UiButton class="w-full sm:w-auto" :disabled="providerSaveState === 'saving'" @click="saveProvider">
-              <Save class="h-4 w-4" />
-              {{ providerSaveState === 'saving' ? t('actions.saving') : t('actions.saveConfig') }}
+          <div class="mt-5 flex flex-wrap gap-2">
+            <UiButton size="sm" variant="outline" @click="openProviderDialog(provider)">
+              <Pencil class="h-4 w-4" />
+              {{ t('actions.edit') }}
             </UiButton>
-            <UiButton variant="outline" class="w-full sm:w-auto" :disabled="!selectedProviderId || selectedRefreshLoading" @click="refreshModels">
-              <RefreshCw :class="['h-4 w-4', selectedRefreshLoading && 'animate-spin']" />
+            <UiButton size="sm" variant="outline" :disabled="loading[`models:${provider.id}`]" @click="refreshModels(provider.id)">
+              <RefreshCw :class="['h-4 w-4', loading[`models:${provider.id}`] && 'animate-spin']" />
               {{ t('models.refreshModels') }}
             </UiButton>
-            <UiButton v-if="selectedProvider" variant="destructive" class="w-full sm:w-auto" @click="deleteProvider(selectedProvider)">
+            <UiButton size="sm" variant="destructive" @click="requestDeleteProvider(provider)">
               <Trash2 class="h-4 w-4" />
               {{ t('actions.delete') }}
             </UiButton>
-            <UiBadge v-if="providerSaveState === 'saved'" variant="success">
-              <CheckCircle2 class="h-3 w-3" />
-              {{ t('actions.saved') }}
-            </UiBadge>
-            <UiBadge v-if="providerSaveState === 'failed'" variant="gold">
-              <WifiOff class="h-3 w-3" />
-              {{ t('apiError.saveFailed') }}
-            </UiBadge>
           </div>
-        </div>
+        </UiCard>
       </div>
-    </UiCard>
+    </section>
 
-    <UiCard class="min-w-0 p-4 sm:p-6">
+    <section v-else-if="activeTab === 'models'" class="space-y-4">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0">
           <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.modelCatalogEyebrow') }}</p>
           <h2 class="mt-2 text-xl font-semibold">{{ t('models.modelCatalogTitle') }}</h2>
-          <p class="mt-2 text-sm text-muted-foreground">{{ t('models.modelCatalogDescription') }}</p>
+          <p class="mt-2 text-sm leading-7 text-muted-foreground">{{ t('models.modelCatalogDescription') }}</p>
         </div>
         <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
           <UiSelect
@@ -846,207 +725,84 @@ function formatInteger(value?: number) {
             :empty-text="t('models.search.empty')"
             class="w-full sm:min-w-[240px]"
           />
-          <UiButton variant="outline" class="w-full sm:w-auto" @click="startNewModel()">
+          <UiButton class="w-full sm:w-auto" @click="openModelDialog()">
             <Plus class="h-4 w-4" />
             {{ t('models.newModel') }}
           </UiButton>
         </div>
       </div>
 
-      <div class="mt-6 grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)] 2xl:grid-cols-[400px_minmax(0,1fr)]">
-        <div ref="modelFormAnchor" tabindex="-1" class="space-y-6 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
-          <div class="rounded-2xl border border-border bg-muted/25 p-4">
-            <div class="flex items-start gap-3">
-              <Info class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              <div>
-                <p class="text-sm font-medium text-foreground">{{ t('models.modelCatalogNoteTitle') }}</p>
-                <p class="mt-1 text-sm text-muted-foreground">{{ t('models.modelCatalogNoteDescription') }}</p>
-              </div>
+      <div v-if="visibleModels.length === 0" class="rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
+        {{ t('models.emptyModels') }}
+      </div>
+      <div v-else class="grid gap-4 xl:grid-cols-2">
+        <UiCard v-for="model in visibleModels" :key="model.id" class="p-4 sm:p-5">
+          <div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <h3 class="break-words font-semibold" :title="model.display_name || model.name">{{ model.display_name || model.name }}</h3>
+              <p class="mt-1 break-words text-xs text-muted-foreground">{{ providerName(model.provider_id) }} · {{ modelFeatureSummary(model) }}</p>
+              <p class="mt-1 break-words text-xs text-muted-foreground" :title="model.name">{{ t('models.upstreamModelId') }}: <span class="font-mono text-[11px]">{{ model.name }}</span></p>
+              <p class="mt-1 break-words text-xs text-muted-foreground" :title="modelQualifiedId(model)">{{ t('models.storedValue') }}: <span class="font-mono text-[11px]">{{ modelQualifiedId(model) }}</span></p>
+            </div>
+            <UiBadge :variant="model.enabled ? 'success' : 'muted'">{{ enabledLabel(model.enabled) }}</UiBadge>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-3 text-sm xl:grid-cols-4">
+            <div class="rounded-xl bg-muted/35 p-3">
+              <p class="field-label text-xs">{{ t('models.contextWindow') }}<UiInfoTooltip :text="t('tooltips.contextWindow')" /></p>
+              <p class="mt-1 font-medium">{{ formatInteger(model.context_window) }}</p>
+            </div>
+            <div class="rounded-xl bg-muted/35 p-3">
+              <p class="field-label text-xs">{{ t('models.maxOutputTokens') }}<UiInfoTooltip :text="t('tooltips.maxOutputTokens')" /></p>
+              <p class="mt-1 font-medium">{{ formatInteger(model.max_output_tokens) }}</p>
+            </div>
+            <div class="rounded-xl bg-muted/35 p-3">
+              <p class="field-label text-xs">{{ t('models.dimension') }}<UiInfoTooltip :text="t('tooltips.dimension')" /></p>
+              <p class="mt-1 font-medium">{{ model.kind === 'embedding' ? formatInteger(model.dimension) : t('common.emptyValue') }}</p>
+            </div>
+            <div class="rounded-xl bg-muted/35 p-3">
+              <p class="field-label text-xs">{{ t('models.routingWeight') }}<UiInfoTooltip :text="t('tooltips.routingWeight')" /></p>
+              <p class="mt-1 font-medium">{{ formatInteger(model.routing_weight) }}</p>
             </div>
           </div>
 
-          <div>
-            <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.modelFormEyebrow') }}</p>
-            <h3 class="mt-2 text-lg font-semibold">{{ modelMode === 'edit' ? t('models.editModel') : t('models.addModel') }}</h3>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <UiBadge :variant="model.default_for_kind ? 'gold' : 'muted'">{{ t('models.defaultForKind') }}</UiBadge>
+            <UiBadge :variant="model.supports_streaming ? 'default' : 'muted'">{{ t('models.supportsStreaming') }}</UiBadge>
+            <UiBadge :variant="model.supports_tools ? 'default' : 'muted'">{{ t('models.supportsTools') }}</UiBadge>
+            <UiBadge v-if="!model.allowed_agent_roles?.length" variant="muted">{{ t('models.allRoles') }}</UiBadge>
           </div>
 
-          <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.modelId') }}</span>
-              <UiInput v-model="modelForm.id" :disabled="modelMode === 'edit'" :placeholder="modelPlaceholder('id')" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.modelProvider') }}</span>
-              <UiSelect
-                v-model="modelForm.provider_id"
-                :options="providerSelectOptions"
-                :placeholder="t('models.selectProvider')"
-                searchable
-                :search-placeholder="t('models.search.provider')"
-                :empty-text="t('models.search.empty')"
-              />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.kind') }}</span>
-              <UiSelect v-model="modelForm.kind" :options="modelKindOptions" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.upstreamModelId') }}</span>
-              <UiInput v-model="modelForm.name" :placeholder="modelPlaceholder('upstreamModelId')" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.displayName') }}</span>
-              <UiInput v-model="modelForm.display_name" :placeholder="modelPlaceholder('displayName')" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.contextWindow') }}</span>
-              <UiInput v-model="modelForm.context_window" type="number" :placeholder="modelPlaceholder('contextWindow')" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.maxOutputTokens') }}</span>
-              <UiInput v-model="modelForm.max_output_tokens" type="number" :placeholder="modelPlaceholder('maxOutputTokens')" />
-            </label>
-            <label class="space-y-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.dimension') }}</span>
-              <UiInput v-model="modelForm.dimension" type="number" :placeholder="modelPlaceholder('dimension')" />
-            </label>
-            <label class="space-y-2 md:col-span-2 xl:col-span-1 2xl:col-span-2">
-              <span class="text-sm text-muted-foreground">{{ t('models.routingWeight') }}</span>
-              <UiInput v-model="modelForm.routing_weight" type="number" :placeholder="routingWeightPlaceholder()" />
-            </label>
-          </div>
-
-          <div class="grid gap-3 sm:grid-cols-2">
-            <UiSwitch v-model="modelForm.enabled" :label="t('models.enabled')" />
-            <UiSwitch v-model="modelForm.default_for_kind" :label="t('models.defaultForKind')" />
-            <UiSwitch v-model="modelForm.supports_tools" :label="t('models.supportsTools')" />
-            <UiSwitch v-model="modelForm.supports_streaming" :label="t('models.supportsStreaming')" />
-          </div>
-
-          <div class="rounded-2xl border border-border bg-muted/20 p-4">
-            <p class="text-sm font-medium">{{ t('models.allowedAgentRoles') }}</p>
-            <p class="mt-1 text-xs text-muted-foreground">{{ t('models.allowedAgentRolesDescription') }}</p>
-            <div class="mt-4 grid gap-2 sm:grid-cols-2">
-              <UiSwitch
-                v-for="role in agentRoles"
-                :key="role"
-                :model-value="modelRoleSelected(role)"
-                :label="roleLabel(role)"
-                class="py-2"
-                @update:model-value="setModelRole(role, $event)"
-              />
+          <div v-if="model.allowed_agent_roles?.length" class="mt-4">
+            <p class="field-label text-xs uppercase tracking-[0.18em]">{{ t('models.allowedAgentRoles') }}<UiInfoTooltip :text="t('tooltips.allowedRoles')" /></p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <UiBadge v-for="role in model.allowed_agent_roles" :key="role" variant="muted">{{ roleLabel(role) }}</UiBadge>
             </div>
           </div>
 
-          <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <UiButton class="w-full sm:w-auto" :disabled="modelSaveState === 'saving'" @click="saveModel">
-              <Save class="h-4 w-4" />
-              {{ modelSaveState === 'saving' ? t('actions.saving') : t('models.saveModel') }}
+          <div class="mt-5 flex flex-wrap gap-2">
+            <UiButton size="sm" variant="outline" @click="openModelDialog(model)">
+              <Pencil class="h-4 w-4" />
+              {{ t('actions.edit') }}
             </UiButton>
-            <UiButton variant="outline" class="w-full sm:w-auto" @click="startNewModel()">
-              <Plus class="h-4 w-4" />
-              {{ t('models.newModel') }}
-            </UiButton>
-            <UiButton v-if="modelMode === 'edit'" variant="destructive" class="w-full sm:w-auto" @click="deleteEditingModel">
+            <UiButton size="sm" variant="destructive" @click="requestDeleteModel(model)">
               <Trash2 class="h-4 w-4" />
               {{ t('actions.delete') }}
             </UiButton>
-            <UiBadge v-if="modelSaveState === 'saved'" variant="success">
-              <CheckCircle2 class="h-3 w-3" />
-              {{ t('actions.saved') }}
-            </UiBadge>
-            <UiBadge v-if="modelSaveState === 'failed'" variant="gold">
-              <WifiOff class="h-3 w-3" />
-              {{ t('apiError.saveFailed') }}
-            </UiBadge>
           </div>
-        </div>
-
-        <div class="space-y-4">
-          <p class="text-sm text-muted-foreground">{{ t('models.modelCount', { count: visibleModels.length }) }}</p>
-
-          <div v-if="visibleModels.length === 0" class="rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
-            {{ t('models.emptyModels') }}
-          </div>
-          <div v-else class="grid gap-4 lg:grid-cols-2">
-            <div
-              v-for="model in visibleModels"
-              :key="model.id"
-              :class="[
-                'min-w-0 rounded-2xl border p-4 transition-all sm:p-5',
-                isEditingModel(model)
-                  ? 'border-primary/45 bg-primary/10 shadow-sm shadow-primary/10'
-                  : 'border-border bg-card'
-              ]"
-            >
-              <div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
-                <div class="min-w-0 flex-1">
-                  <h3 class="break-words font-semibold" :title="model.display_name || model.name">{{ model.display_name || model.name }}</h3>
-                  <p class="mt-1 break-words text-xs text-muted-foreground">{{ providerName(model.provider_id) }} · {{ modelFeatureSummary(model) }}</p>
-                  <p class="mt-1 break-words text-xs text-muted-foreground" :title="model.name">{{ t('models.upstreamModelId') }}: <span class="font-mono text-[11px]">{{ model.name }}</span></p>
-                  <p class="mt-1 break-words text-xs text-muted-foreground" :title="modelQualifiedId(model)">{{ t('models.storedValue') }}: <span class="font-mono text-[11px]">{{ modelQualifiedId(model) }}</span></p>
-                </div>
-                <div class="flex shrink-0 flex-wrap justify-end gap-2">
-                  <UiBadge v-if="isEditingModel(model)" variant="violet">{{ t('models.editingBadge') }}</UiBadge>
-                  <UiBadge :variant="model.enabled ? 'success' : 'muted'">{{ enabledLabel(model.enabled) }}</UiBadge>
-                </div>
-              </div>
-
-              <div class="mt-4 grid grid-cols-2 gap-3 text-sm xl:grid-cols-4">
-                <div class="rounded-xl bg-muted/35 p-3">
-                  <p class="text-xs text-muted-foreground">{{ t('models.contextWindow') }}</p>
-                  <p class="mt-1 font-medium">{{ formatInteger(model.context_window) }}</p>
-                </div>
-                <div class="rounded-xl bg-muted/35 p-3">
-                  <p class="text-xs text-muted-foreground">{{ t('models.maxOutputTokens') }}</p>
-                  <p class="mt-1 font-medium">{{ formatInteger(model.max_output_tokens) }}</p>
-                </div>
-                <div class="rounded-xl bg-muted/35 p-3">
-                  <p class="text-xs text-muted-foreground">{{ t('models.dimension') }}</p>
-                  <p class="mt-1 font-medium">{{ model.kind === 'embedding' ? formatInteger(model.dimension) : t('common.emptyValue') }}</p>
-                </div>
-                <div class="rounded-xl bg-muted/35 p-3">
-                  <p class="text-xs text-muted-foreground">{{ t('models.routingWeight') }}</p>
-                  <p class="mt-1 font-medium">{{ formatInteger(model.routing_weight) }}</p>
-                </div>
-              </div>
-
-              <div class="mt-4 flex flex-wrap gap-2">
-                <UiBadge :variant="model.default_for_kind ? 'gold' : 'muted'">{{ t('models.defaultForKind') }}</UiBadge>
-                <UiBadge :variant="model.supports_streaming ? 'default' : 'muted'">{{ t('models.supportsStreaming') }}</UiBadge>
-                <UiBadge :variant="model.supports_tools ? 'default' : 'muted'">{{ t('models.supportsTools') }}</UiBadge>
-              </div>
-
-              <div class="mt-4">
-                <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.allowedAgentRoles') }}</p>
-                <div class="mt-2 flex flex-wrap gap-2">
-                  <UiBadge v-if="!model.allowed_agent_roles?.length" variant="muted">{{ t('models.allRoles') }}</UiBadge>
-                  <UiBadge v-for="role in model.allowed_agent_roles" :key="role" variant="muted">{{ roleLabel(role) }}</UiBadge>
-                </div>
-              </div>
-
-              <div class="mt-5 grid gap-2 sm:flex sm:flex-wrap">
-                <UiButton size="sm" variant="outline" class="w-full sm:w-auto" @click="editModel(model)">
-                  <Pencil class="h-4 w-4" />
-                  {{ t('actions.edit') }}
-                </UiButton>
-                <UiButton size="sm" variant="destructive" class="w-full sm:w-auto" @click="deleteModel(model)">
-                  <Trash2 class="h-4 w-4" />
-                  {{ t('actions.delete') }}
-                </UiButton>
-              </div>
-            </div>
-          </div>
-        </div>
+        </UiCard>
       </div>
-    </UiCard>
+    </section>
 
-    <UiCard class="min-w-0 p-4 sm:p-6">
+    <section v-else-if="activeTab === 'routing'" class="space-y-4">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0">
-          <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.routingEyebrow') }}</p>
+          <div class="field-label text-xs uppercase tracking-[0.18em]">
+            {{ t('models.routingEyebrow') }}
+            <UiInfoTooltip :text="t('tooltips.modelRouting')" />
+          </div>
           <h2 class="mt-2 text-xl font-semibold">{{ t('models.routingTitle') }}</h2>
-          <p class="mt-2 text-sm text-muted-foreground">{{ t('models.routingDescription') }}</p>
+          <p class="mt-2 text-sm leading-7 text-muted-foreground">{{ t('models.routingDescription') }}</p>
         </div>
         <UiButton class="w-full sm:w-auto" :disabled="settingsSaveState === 'saving'" @click="saveModelUsageSettings">
           <Save class="h-4 w-4" />
@@ -1054,35 +810,16 @@ function formatInteger(value?: number) {
         </UiButton>
       </div>
 
-      <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <div class="space-y-6">
-          <div class="rounded-2xl border border-border bg-muted/20 p-4">
-            <div class="flex items-start gap-3">
-              <Info class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              <div>
-                <p class="text-sm font-medium text-foreground">{{ t('models.routingPriorityTitle') }}</p>
-                <p class="mt-1 text-sm text-muted-foreground">{{ t('models.routingPriorityDescription') }}</p>
-              </div>
-            </div>
-            <ol class="mt-4 space-y-3 text-sm text-muted-foreground">
-              <li class="rounded-2xl border border-border bg-background px-4 py-3">
-                <span class="font-medium text-foreground">1.</span>
-                {{ t('models.routingPriorityFirst') }}
-              </li>
-              <li class="rounded-2xl border border-border bg-background px-4 py-3">
-                <span class="font-medium text-foreground">2.</span>
-                {{ t('models.routingPrioritySecond') }}
-              </li>
-              <li class="rounded-2xl border border-border bg-background px-4 py-3">
-                <span class="font-medium text-foreground">3.</span>
-                {{ t('models.routingPriorityThird') }}
-              </li>
-            </ol>
-          </div>
-
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <label v-for="usage in usageKeys" :key="usage" class="min-w-0 space-y-2 rounded-2xl border border-border bg-muted/20 p-3">
-              <span class="break-words text-sm font-medium text-foreground">{{ usageLabel(usage) }}</span>
+      <div class="grid gap-4 xl:grid-cols-3">
+        <UiCard v-for="group in usageGroups" :key="group.key" class="p-4 sm:p-5">
+          <h3 class="font-semibold">{{ group.title }}</h3>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ group.description }}</p>
+          <div class="mt-4 space-y-4">
+            <label v-for="usage in group.keys" :key="usage" class="block min-w-0 space-y-2 rounded-2xl border border-border bg-muted/20 p-3">
+              <span class="field-label">
+                {{ usageLabel(usage) }}
+                <UiInfoTooltip :text="usage === 'embedding' ? t('tooltips.embeddingRoute') : t('tooltips.roleRoute')" />
+              </span>
               <UiSelect
                 v-model="usageSettings[usage]"
                 :options="modelSelectionOptions"
@@ -1095,68 +832,200 @@ function formatInteger(value?: number) {
               </span>
             </label>
           </div>
+        </UiCard>
+      </div>
 
-          <div class="flex flex-wrap items-center gap-3">
-            <UiBadge v-if="settingsSaveState === 'saved'" variant="success">
-              <CheckCircle2 class="h-3 w-3" />
-              {{ t('actions.saved') }}
-            </UiBadge>
-            <UiBadge v-if="settingsSaveState === 'failed'" variant="gold">
-              <WifiOff class="h-3 w-3" />
-              {{ t('apiError.saveFailed') }}
-            </UiBadge>
-          </div>
-        </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <UiBadge v-if="settingsSaveState === 'saved'" variant="success">
+          <CheckCircle2 class="h-3 w-3" />
+          {{ t('actions.saved') }}
+        </UiBadge>
+        <UiBadge v-if="settingsSaveState === 'failed'" variant="gold">
+          <WifiOff class="h-3 w-3" />
+          {{ t('apiError.saveFailed') }}
+        </UiBadge>
+      </div>
+    </section>
 
-        <div class="rounded-2xl border border-border bg-muted/20 p-4">
+    <section v-else class="space-y-4">
+      <div class="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+        <UiCard class="p-4 sm:p-5">
           <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.embeddingMaintenanceEyebrow') }}</p>
-          <h3 class="mt-2 text-lg font-semibold">{{ t('models.embeddingMaintenanceTitle') }}</h3>
-          <p class="mt-2 text-sm text-muted-foreground">{{ t('models.embeddingMaintenanceDescription') }}</p>
+          <h2 class="mt-2 text-xl font-semibold">{{ t('models.embeddingMaintenanceTitle') }}</h2>
+          <p class="mt-2 text-sm leading-7 text-muted-foreground">{{ t('models.embeddingMaintenanceDescription') }}</p>
 
-          <div class="mt-4 rounded-2xl border border-border bg-background p-4">
-            <p class="text-sm font-medium text-foreground">{{ t('models.rebuildVectorsTitle') }}</p>
-            <p class="mt-1 text-sm text-muted-foreground">{{ t('models.rebuildVectorsDescription') }}</p>
-            <UiButton class="mt-4 w-full" :disabled="maintenanceLoading" @click="rebuildVectors">
-              <Loader2 v-if="maintenanceState === 'running' && maintenanceAction === 'rebuild'" class="h-4 w-4 animate-spin" />
-              <DatabaseZap v-else class="h-4 w-4" />
-              {{ maintenanceState === 'running' && maintenanceAction === 'rebuild' ? t('models.maintenance.rebuildRunning') : t('models.rebuildVectorsAction') }}
-            </UiButton>
-            <p v-if="maintenanceAction === 'rebuild' && maintenanceState !== 'idle'" class="mt-3 text-sm text-muted-foreground">
-              {{ t(`models.maintenance.${maintenanceState}`) }}
-            </p>
-          </div>
-
-          <div class="mt-4 rounded-2xl border border-border bg-background p-4">
-            <p class="text-sm font-medium text-foreground">{{ t('models.indexMaintenanceTitle') }}</p>
-            <p class="mt-1 text-sm text-muted-foreground">{{ t('models.indexMaintenanceDescription') }}</p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <UiBadge variant="muted">{{ t('models.indexJobsTotal', { count: indexJobSummary.total }) }}</UiBadge>
-              <UiBadge variant="gold">{{ t('models.indexJobsPending', { count: indexJobSummary.pending }) }}</UiBadge>
-              <UiBadge variant="muted">{{ t('models.indexJobsRunning', { count: indexJobSummary.running }) }}</UiBadge>
-              <UiBadge variant="success">{{ t('models.indexJobsCompleted', { count: indexJobSummary.completed }) }}</UiBadge>
-              <UiBadge variant="rose">{{ t('models.indexJobsFailed', { count: indexJobSummary.failed }) }}</UiBadge>
+          <div class="mt-4 grid gap-4">
+            <div class="rounded-2xl border border-border bg-muted/25 p-4">
+              <p class="text-sm font-medium text-foreground">{{ t('models.rebuildVectorsTitle') }}</p>
+              <p class="mt-1 text-sm leading-6 text-muted-foreground">{{ t('models.rebuildVectorsDescription') }}</p>
+              <UiButton class="mt-4 w-full" :disabled="maintenanceLoading" @click="rebuildVectors">
+                <Loader2 v-if="maintenanceState === 'running' && maintenanceAction === 'rebuild'" class="h-4 w-4 animate-spin" />
+                <DatabaseZap v-else class="h-4 w-4" />
+                {{ maintenanceState === 'running' && maintenanceAction === 'rebuild' ? t('models.maintenance.rebuildRunning') : t('models.rebuildVectorsAction') }}
+              </UiButton>
             </div>
-            <UiButton variant="archive" class="mt-4 w-full" :disabled="maintenanceLoading" @click="runPendingIndexMaintenance">
-              <RefreshCw :class="['h-4 w-4', maintenanceState === 'running' && maintenanceAction === 'pending' && 'animate-spin']" />
-              {{ maintenanceState === 'running' && maintenanceAction === 'pending' ? t('models.maintenance.pendingRunning') : t('models.runPendingIndex') }}
-            </UiButton>
-            <p v-if="maintenanceAction === 'pending' && maintenanceState !== 'idle'" class="mt-3 text-sm text-muted-foreground">
-              {{ t(`models.maintenance.${maintenanceState}`) }}
-            </p>
+            <div class="rounded-2xl border border-border bg-muted/25 p-4">
+              <p class="field-label text-sm text-foreground">{{ t('models.indexMaintenanceTitle') }}<UiInfoTooltip :text="t('tooltips.indexJobs')" /></p>
+              <p class="mt-1 text-sm leading-6 text-muted-foreground">{{ t('models.indexMaintenanceDescription') }}</p>
+              <UiButton variant="archive" class="mt-4 w-full" :disabled="maintenanceLoading" @click="runPendingIndexMaintenance">
+                <RefreshCw :class="['h-4 w-4', maintenanceState === 'running' && maintenanceAction === 'pending' && 'animate-spin']" />
+                {{ maintenanceState === 'running' && maintenanceAction === 'pending' ? t('models.maintenance.pendingRunning') : t('models.runPendingIndex') }}
+              </UiButton>
+            </div>
           </div>
 
           <div class="mt-4 flex flex-wrap items-center gap-3">
-            <UiBadge v-if="maintenanceState === 'saved'" variant="success">
-              <CheckCircle2 class="h-3 w-3" />
-              {{ t('actions.saved') }}
-            </UiBadge>
-            <UiBadge v-if="maintenanceState === 'failed'" variant="gold">
-              <WifiOff class="h-3 w-3" />
-              {{ t('apiError.saveFailed') }}
-            </UiBadge>
+            <UiBadge v-if="maintenanceState === 'saved'" variant="success"><CheckCircle2 class="h-3 w-3" />{{ t('actions.saved') }}</UiBadge>
+            <UiBadge v-if="maintenanceState === 'failed'" variant="gold"><WifiOff class="h-3 w-3" />{{ t('apiError.saveFailed') }}</UiBadge>
+          </div>
+        </UiCard>
+
+        <UiCard class="p-4 sm:p-5">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="field-label text-xs uppercase tracking-[0.18em]">{{ t('models.indexJobsTitle') }}<UiInfoTooltip :text="t('tooltips.indexJobs')" /></p>
+              <h2 class="mt-2 text-xl font-semibold">{{ t('models.tabs.indexJobs') }}</h2>
+            </div>
+            <UiButton variant="outline" size="sm" @click="workspace.loadIndexJobs()">
+              <RefreshCw class="h-4 w-4" />
+              {{ t('actions.refresh') }}
+            </UiButton>
+          </div>
+          <AppTaskBoard class="mt-5" :jobs="indexJobs" />
+        </UiCard>
+      </div>
+    </section>
+
+    <UiDialog v-model:open="providerDialogOpen" size="lg" :title="isProviderDraft ? t('models.newProvider') : t('models.providerConfig')" :description="t('models.providerDialogDescription')">
+      <div class="space-y-5">
+        <div class="rounded-2xl border border-amber-300/40 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-300/20 dark:bg-amber-300/10 dark:text-amber-100">
+          {{ t('models.protocolCompatibilityHint') }}
+        </div>
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.providerId') }}</span>
+            <UiInput v-model="localProvider.id" :placeholder="providerIdPlaceholder()" :disabled="providerMode === 'edit'" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.displayName') }}</span>
+            <UiInput v-model="localProvider.name" :placeholder="providerNamePlaceholder()" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.providerType') }}<UiInfoTooltip :text="t('tooltips.providerType')" /></span>
+            <UiSelect v-model="localProvider.provider_type" :options="providerTypeOptions" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.baseUrl') }}<UiInfoTooltip :text="t('tooltips.baseUrl')" /></span>
+            <UiInput v-model="localProvider.base_url" :placeholder="providerBaseUrlPlaceholder()" />
+          </label>
+          <label class="space-y-2 md:col-span-2">
+            <span class="field-label">{{ t('models.apiKey') }}<UiInfoTooltip :text="t('tooltips.apiKey')" /></span>
+            <UiInput v-model="localProvider.api_key" type="password" :placeholder="t('models.apiKeyPlaceholder')" />
+            <span class="block text-xs leading-5 text-muted-foreground">{{ t('models.apiKeyBlankKeepsExisting') }}</span>
+          </label>
+        </div>
+        <div class="grid gap-3 md:grid-cols-2">
+          <UiSwitch v-model="localProvider.enabled" :label="t('models.enableProvider')" />
+          <UiSwitch v-model="localProvider.streaming" :label="t('models.streaming')" :description="t('tooltips.streaming')" />
+        </div>
+        <div v-if="providerMode === 'edit'" class="rounded-2xl border border-border bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
+          {{ t('models.apiKeyHint') }}
+          <p class="mt-1 text-foreground">{{ localProvider.api_key_hint ? t('models.apiKeySavedConfigured') : t('models.noApiKeyHint') }}</p>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <UiBadge v-if="providerSaveState === 'failed'" variant="gold"><WifiOff class="h-3 w-3" />{{ t('apiError.saveFailed') }}</UiBadge>
+          <UiButton variant="outline" @click="providerDialogOpen = false">{{ t('actions.cancel') }}</UiButton>
+          <UiButton :disabled="providerSaveState === 'saving'" @click="saveProvider">
+            <Save class="h-4 w-4" />
+            {{ providerSaveState === 'saving' ? t('actions.saving') : t('actions.saveConfig') }}
+          </UiButton>
+        </div>
+      </template>
+    </UiDialog>
+
+    <UiDialog v-model:open="modelDialogOpen" size="xl" :title="modelMode === 'edit' ? t('models.editModel') : t('models.addModel')" :description="t('models.modelDialogDescription')">
+      <div class="space-y-5">
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.modelId') }}</span>
+            <UiInput v-model="modelForm.id" :disabled="modelMode === 'edit'" :placeholder="modelPlaceholder('id')" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.modelProvider') }}</span>
+            <UiSelect v-model="modelForm.provider_id" :options="providerSelectOptions" :placeholder="t('models.selectProvider')" searchable :search-placeholder="t('models.search.provider')" :empty-text="t('models.search.empty')" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.kind') }}<UiInfoTooltip :text="t('tooltips.modelKind')" /></span>
+            <UiSelect v-model="modelForm.kind" :options="modelKindOptions" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.upstreamModelId') }}</span>
+            <UiInput v-model="modelForm.name" :placeholder="modelPlaceholder('upstreamModelId')" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.displayName') }}</span>
+            <UiInput v-model="modelForm.display_name" :placeholder="modelPlaceholder('displayName')" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.contextWindow') }}<UiInfoTooltip :text="t('tooltips.contextWindow')" /></span>
+            <UiInput v-model="modelForm.context_window" type="number" :placeholder="modelPlaceholder('contextWindow')" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.maxOutputTokens') }}<UiInfoTooltip :text="t('tooltips.maxOutputTokens')" /></span>
+            <UiInput v-model="modelForm.max_output_tokens" type="number" :placeholder="modelPlaceholder('maxOutputTokens')" />
+          </label>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('models.dimension') }}<UiInfoTooltip :text="t('tooltips.dimension')" /></span>
+            <UiInput v-model="modelForm.dimension" type="number" :placeholder="modelPlaceholder('dimension')" />
+          </label>
+          <label class="space-y-2 md:col-span-2">
+            <span class="field-label">{{ t('models.routingWeight') }}<UiInfoTooltip :text="t('tooltips.routingWeight')" /></span>
+            <UiInput v-model="modelForm.routing_weight" type="number" :placeholder="routingWeightPlaceholder()" />
+          </label>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          <UiSwitch v-model="modelForm.enabled" :label="t('models.enabled')" />
+          <UiSwitch v-model="modelForm.default_for_kind" :label="t('models.defaultForKind')" :description="t('tooltips.defaultForKind')" />
+          <UiSwitch v-model="modelForm.supports_tools" :label="t('models.supportsTools')" :description="t('tooltips.supportsTools')" />
+          <UiSwitch v-model="modelForm.supports_streaming" :label="t('models.supportsStreaming')" :description="t('tooltips.streaming')" />
+        </div>
+
+        <div class="rounded-2xl border border-border bg-muted/20 p-4">
+          <p class="field-label text-sm font-medium text-foreground">{{ t('models.allowedAgentRoles') }}<UiInfoTooltip :text="t('tooltips.allowedRoles')" /></p>
+          <p class="mt-1 text-xs text-muted-foreground">{{ t('models.allowedAgentRolesDescription') }}</p>
+          <div class="mt-4 grid gap-2 sm:grid-cols-2">
+            <UiSwitch v-for="role in agentRoles" :key="role" :model-value="modelRoleSelected(role)" :label="roleLabel(role)" class="py-2" @update:model-value="setModelRole(role, $event)" />
           </div>
         </div>
       </div>
-    </UiCard>
+      <template #footer>
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <UiBadge v-if="modelSaveState === 'failed'" variant="gold"><WifiOff class="h-3 w-3" />{{ t('apiError.saveFailed') }}</UiBadge>
+          <UiButton variant="outline" @click="modelDialogOpen = false">{{ t('actions.cancel') }}</UiButton>
+          <UiButton :disabled="modelSaveState === 'saving'" @click="saveModel">
+            <Save class="h-4 w-4" />
+            {{ modelSaveState === 'saving' ? t('actions.saving') : t('models.saveModel') }}
+          </UiButton>
+        </div>
+      </template>
+    </UiDialog>
+
+    <UiDialog v-model:open="confirmDialogOpen" size="sm" :title="t('models.confirmDeleteTitle')" :description="deleteTarget ? t(deleteTarget.type === 'provider' ? 'models.confirmDeleteProvider' : 'models.confirmDeleteModel', { name: deleteTarget.name }) : ''">
+      <div class="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm leading-6 text-destructive">
+        {{ t('models.confirmDeleteWarning') }}
+      </div>
+      <template #footer>
+        <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <UiButton variant="outline" @click="confirmDialogOpen = false">{{ t('actions.cancel') }}</UiButton>
+          <UiButton variant="destructive" @click="confirmDelete">
+            <Trash2 class="h-4 w-4" />
+            {{ t('actions.delete') }}
+          </UiButton>
+        </div>
+      </template>
+    </UiDialog>
   </div>
 </template>
