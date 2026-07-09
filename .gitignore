@@ -19,7 +19,7 @@ coverage.out
 dist/
 
 # Local runtime data
-data/
+/data/
 apps/server/data/
 
 # Environment and secrets

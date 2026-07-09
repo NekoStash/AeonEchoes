@@ -18,7 +18,7 @@ dist
 coverage.out
 
 # Local runtime data and secrets
-data
+/data
 apps/server/data
 .env
 .env.*
