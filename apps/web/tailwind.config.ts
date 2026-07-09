@@ -19,6 +19,40 @@ export default <Partial<Config>>{
         ring: 'hsl(var(--ring))',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
+        surface: {
+          DEFAULT: 'hsl(var(--surface))',
+          foreground: 'hsl(var(--surface-foreground))',
+          muted: 'hsl(var(--surface-muted))',
+          elevated: 'hsl(var(--surface-elevated))',
+          raised: 'hsl(var(--surface-raised))',
+          sunken: 'hsl(var(--surface-sunken))'
+        },
+        state: {
+          info: {
+            DEFAULT: 'hsl(var(--state-info))',
+            foreground: 'hsl(var(--state-info-foreground))',
+            surface: 'hsl(var(--state-info-surface))',
+            border: 'hsl(var(--state-info-border))'
+          },
+          success: {
+            DEFAULT: 'hsl(var(--state-success))',
+            foreground: 'hsl(var(--state-success-foreground))',
+            surface: 'hsl(var(--state-success-surface))',
+            border: 'hsl(var(--state-success-border))'
+          },
+          warning: {
+            DEFAULT: 'hsl(var(--state-warning))',
+            foreground: 'hsl(var(--state-warning-foreground))',
+            surface: 'hsl(var(--state-warning-surface))',
+            border: 'hsl(var(--state-warning-border))'
+          },
+          danger: {
+            DEFAULT: 'hsl(var(--state-danger))',
+            foreground: 'hsl(var(--state-danger-foreground))',
+            surface: 'hsl(var(--state-danger-surface))',
+            border: 'hsl(var(--state-danger-border))'
+          }
+        },
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))'
@@ -28,8 +62,8 @@ export default <Partial<Config>>{
           foreground: 'hsl(var(--secondary-foreground))'
         },
         destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))'
+          DEFAULT: 'hsl(var(--state-danger))',
+          foreground: 'hsl(var(--state-danger-foreground))'
         },
         muted: {
           DEFAULT: 'hsl(var(--muted))',
@@ -57,6 +91,29 @@ export default <Partial<Config>>{
           gold: '#F8D16C',
           rose: '#FB7185'
         }
+      },
+      spacing: {
+        'density-xs': 'var(--density-xs)',
+        'density-sm': 'var(--density-sm)',
+        'density-md': 'var(--density-md)',
+        'density-lg': 'var(--density-lg)',
+        'density-xl': 'var(--density-xl)',
+        'layout-gutter': 'var(--layout-gutter)'
+      },
+      width: {
+        sidebar: 'var(--layout-width-sidebar)',
+        'sidebar-collapsed': 'var(--layout-width-sidebar-collapsed)'
+      },
+      height: {
+        topbar: 'var(--layout-height-topbar)'
+      },
+      maxWidth: {
+        'layout-page': 'var(--layout-width-page)',
+        'layout-readable': 'var(--layout-width-readable)',
+        'layout-panel': 'var(--layout-width-panel)'
+      },
+      minHeight: {
+        main: 'calc(100dvh - var(--layout-height-topbar))'
       },
       borderRadius: {
         xl: '1rem',

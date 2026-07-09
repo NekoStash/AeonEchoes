@@ -1,5 +1,16 @@
 <script setup lang="ts">
-import { Bot, BrainCircuit, FileClock, Lightbulb, Loader2, Save, Sparkles } from '@lucide/vue'
+import { Bot, BrainCircuit, Lightbulb, Loader2, RefreshCw, Save, Sparkles } from '@lucide/vue'
+import DataCollection from '~/components/data/DataCollection.vue'
+import DataEmptyState from '~/components/data/EmptyState.vue'
+import DataLoadingState from '~/components/data/LoadingState.vue'
+import Panel from '~/components/ds/Panel.vue'
+import PanelHeader from '~/components/ds/PanelHeader.vue'
+import StatusBadge from '~/components/ds/StatusBadge.vue'
+import StatusStack from '~/components/ds/StatusStack.vue'
+import PageHeader from '~/components/layout/PageHeader.vue'
+import PageShell from '~/components/layout/PageShell.vue'
+import SplitPane from '~/components/layout/SplitPane.vue'
+import Toolbar from '~/components/layout/Toolbar.vue'
 import type {
   AgentConfig,
   AgentRunResult,
@@ -28,6 +39,7 @@ type ReferenceSelectionState = {
 }
 
 type StoryCharacter = StoryBible['characters'][number]
+type StatusTone = 'info' | 'success' | 'warning' | 'danger' | 'neutral' | 'muted'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -79,12 +91,12 @@ const referenceSelection = reactive<ReferenceSelectionState>({
 })
 
 const tabs = computed(() => [
-  { label: t('editor.context'), value: 'reference' },
-  { label: t('editor.plan'), value: 'plan' },
-  { label: t('editor.draft'), value: 'draft' },
-  { label: t('editor.review'), value: 'review' },
-  { label: t('editor.versions'), value: 'versions', badge: String(versions.value.length) },
-  { label: t('editor.runLog'), value: 'runs', badge: String(projectIndexJobs.value.length) }
+  { label: t('editor.assistantTabs.context'), value: 'reference' },
+  { label: t('editor.assistantTabs.plan'), value: 'plan' },
+  { label: t('editor.assistantTabs.draft'), value: 'draft' },
+  { label: t('editor.assistantTabs.review'), value: 'review' },
+  { label: t('editor.assistantTabs.versions'), value: 'versions', badge: String(versions.value.length) },
+  { label: t('editor.assistantTabs.runLog'), value: 'runs', badge: String(projectIndexJobs.value.length) }
 ])
 
 const availableChapters = computed(() => workspace.activeChapters)
@@ -98,6 +110,7 @@ const currentChapterIndex = computed(() => availableChapters.value.findIndex((ch
 const hasRealCurrentChapter = computed(() => Boolean(currentChapter.value?.id && currentChapter.value.id === chapterId.value))
 const hasInvalidRouteChapter = computed(() => Boolean(routeChapterId.value && availableChapters.value.length > 0 && !availableChapters.value.some((chapter) => chapter.id === routeChapterId.value)))
 const chapterMetaLabel = computed(() => hasInvalidRouteChapter.value ? t('editor.invalidChapterLabel', { id: routeChapterId.value }) : chapterId.value)
+const currentChapterDisplay = computed(() => currentChapter.value?.title || title.value || chapterMetaLabel.value || t('editor.chapterSelector.placeholder'))
 const previousChapterOptions = computed(() => availableChapters.value.slice(0, Math.max(currentChapterIndex.value, 0)))
 const selectedPreviousChapters = computed(() => {
   const count = Math.max(0, Number(referenceSelection.previous_chapter_count || 0))
@@ -214,6 +227,16 @@ const backgroundIndexState = computed(() => {
   if (jobs.some((item) => item.status === 'completed')) return { variant: 'success' as const, label: t('editor.backgroundIndex.completed') }
   return { variant: 'muted' as const, label: t('editor.backgroundIndex.idle') }
 })
+const isEditorBusy = computed(() => Boolean(loadingAgents.value || loadingVersions.value || planning.value || drafting.value || savingVersion.value || previewLoading.value || indexJobsLoading.value))
+const hasStatusMessages = computed(() => Boolean(
+  workspace.errors.length
+  || localError.value
+  || hasInvalidRouteChapter.value
+  || hasUnsyncedRequestCharacters.value
+  || planStatus.value === 'saved'
+  || draftStatus.value === 'appended'
+  || saveStatus.value === 'saved'
+))
 
 const diagnosticsModelResolution = computed<ModelResolution | null>(() => (
   agentRunResult.value?.model_resolution
@@ -918,6 +941,15 @@ function indexJobStatusVariant(status: string) {
   return 'muted' as const
 }
 
+function variantTone(variant: string): StatusTone {
+  if (variant === 'success') return 'success'
+  if (variant === 'rose') return 'danger'
+  if (variant === 'gold') return 'warning'
+  if (variant === 'muted') return 'muted'
+  if (variant === 'default' || variant === 'violet') return 'info'
+  return 'neutral'
+}
+
 function freshnessStatusLabel(status: string) {
   return translatedStatusOrFallback('status.indexFreshness', status)
 }
@@ -973,43 +1005,84 @@ function versionWordCount(version: ChapterVersion) {
 </script>
 
 <template>
-  <div class="min-w-0 space-y-6">
-    <SectionHeader
-      :title="t('editor.title')"
-      :description="t('editor.description')"
-    >
+  <PageShell density="normal" class="editor-workspace">
+    <PageHeader :eyebrow="t('editor.eyebrow')" :title="t('editor.title')" :description="t('editor.description')">
       <template #actions>
-        <UiButton variant="outline" :to="`/projects/${projectId}`">{{ t('actions.back') }}</UiButton>
-        <UiButton variant="outline" :disabled="planning" @click="requestChapterPlan">
+        <UiButton variant="outline" class="w-full sm:w-auto" :to="`/projects/${projectId}`">{{ t('actions.back') }}</UiButton>
+      </template>
+    </PageHeader>
+
+    <Toolbar density="normal" class="w-full">
+      <template #start>
+        <label class="min-w-[16rem] flex-1 sm:max-w-[28rem]">
+          <span class="sr-only">{{ t('editor.chapterSelector.label') }}</span>
+          <UiSelect
+            :model-value="chapterId"
+            :options="chapterOptions"
+            :placeholder="t('editor.chapterSelector.placeholder')"
+            searchable
+            :empty-text="t('editor.chapterSelector.empty')"
+            @update:model-value="selectChapter"
+          />
+        </label>
+        <StatusBadge :tone="hasInvalidRouteChapter ? 'warning' : 'muted'" class="max-w-[18rem]">
+          {{ chapterMetaLabel || currentChapterDisplay }}
+        </StatusBadge>
+        <StatusBadge :tone="variantTone(backgroundIndexState.variant)" :pulse="indexJobsLoading || backgroundIndexState.variant === 'gold'">
+          {{ backgroundIndexState.label }}
+        </StatusBadge>
+        <StatusBadge :tone="isEditorBusy ? 'info' : 'neutral'" :pulse="isEditorBusy">
+          {{ isEditorBusy ? t('editor.workspace.busy') : t('editor.workspace.ready') }}
+        </StatusBadge>
+      </template>
+      <template #end>
+        <UiButton variant="outline" class="w-full sm:w-auto" :disabled="planning" @click="requestChapterPlan">
           <Loader2 v-if="planning" class="h-4 w-4 animate-spin" />
           <Lightbulb v-else class="h-4 w-4" />
           {{ t('actions.generatePlan') }}
         </UiButton>
-        <UiButton :disabled="drafting" @click="requestDraft">
+        <UiButton class="w-full sm:w-auto" :disabled="drafting" @click="requestDraft">
           <Loader2 v-if="drafting" class="h-4 w-4 animate-spin" />
           <Sparkles v-else class="h-4 w-4" />
           {{ t('actions.continueDraft') }}
         </UiButton>
-        <UiButton variant="archive" :disabled="savingVersion" @click="saveChapterVersion">
+        <UiButton variant="archive" class="w-full sm:w-auto" :disabled="savingVersion" @click="saveChapterVersion">
           <Loader2 v-if="savingVersion" class="h-4 w-4 animate-spin" />
           <Save v-else class="h-4 w-4" />
           {{ t('actions.saveVersion') }}
         </UiButton>
       </template>
-    </SectionHeader>
+    </Toolbar>
 
-    <StatusAlert :errors="workspace.errors" />
-    <div v-if="localError" class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-      {{ localError }}
-    </div>
-    <div class="flex flex-wrap gap-2">
-      <UiBadge v-if="saveStatus === 'saved'" variant="success">{{ t('editor.feedback.versionSaved') }}</UiBadge>
-      <UiBadge v-if="draftStatus === 'appended'" variant="success">{{ t('editor.feedback.draftAppended') }}</UiBadge>
-      <UiBadge v-if="planStatus === 'saved'" variant="success">{{ t('editor.feedback.planReady') }}</UiBadge>
-    </div>
+    <StatusStack v-if="hasStatusMessages">
+      <StatusAlert v-if="workspace.errors.length" :errors="workspace.errors" />
+      <UiAlert v-if="localError" tone="danger" :title="t('ui.states.errorTitle')" :description="localError" />
+      <UiAlert
+        v-if="hasInvalidRouteChapter"
+        tone="warning"
+        :title="t('editor.invalidChapterLabel', { id: routeChapterId })"
+        :description="t('editor.invalidChapterNotice', { id: routeChapterId })"
+      />
+      <UiAlert
+        v-if="hasUnsyncedRequestCharacters"
+        tone="warning"
+        :title="t('editor.unsyncedCharacters.badge')"
+        :description="t('editor.unsyncedCharacters.message', { names: unsyncedRequestCharacterNames.join(t('common.listSeparator')) })"
+      />
+      <UiAlert v-if="planStatus === 'saved'" tone="success" :title="t('editor.feedback.planReady')" />
+      <UiAlert v-if="draftStatus === 'appended'" tone="success" :title="t('editor.feedback.draftAppended')" />
+      <UiAlert v-if="saveStatus === 'saved'" tone="success" :title="t('editor.feedback.versionSaved')" />
+    </StatusStack>
 
-    <div class="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,460px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(420px,520px)]">
-      <UiCard ref="editorMainRef" tabindex="-1" class="min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+    <SplitPane ratio="detail" sticky-aside aside-class="min-w-0" main-class="min-w-0 space-y-6">
+      <template #aside>
+        <Panel
+          ref="editorMainRef"
+          tabindex="-1"
+          tone="elevated"
+          padding="none"
+          class="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
         <div class="rounded-t-2xl border-b border-border bg-muted/35 p-4 sm:p-5">
           <div class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div class="min-w-0 flex-1 space-y-3">
@@ -1076,13 +1149,34 @@ function versionWordCount(version: ChapterVersion) {
             </label>
           </div>
         </div>
-      </UiCard>
+        </Panel>
+      </template>
 
       <aside class="min-w-0 space-y-6">
-        <UiCard ref="sidePanelRef" tabindex="-1" class="p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-5">
-          <UiTabs v-model="activePanel" :tabs="tabs" class="w-full justify-start xl:justify-center" />
+        <Panel
+          ref="sidePanelRef"
+          tabindex="-1"
+          tone="elevated"
+          padding="none"
+          class="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <PanelHeader
+            :eyebrow="t('editor.workspace.inspectorEyebrow')"
+            :title="t('editor.workspace.inspectorTitle')"
+            :description="t('editor.workspace.inspectorDescription')"
+          >
+            <template #actions>
+              <StatusBadge :tone="variantTone(backgroundIndexState.variant)" :pulse="indexJobsLoading">
+                {{ backgroundIndexState.label }}
+              </StatusBadge>
+            </template>
+          </PanelHeader>
+          <div class="border-b border-border px-4 py-3 sm:px-5">
+            <UiTabs v-model="activePanel" :tabs="tabs" class="w-full justify-start" />
+          </div>
 
-          <div v-if="activePanel === 'reference'" class="mt-5 min-w-0 space-y-4">
+          <div class="space-y-5 p-4 sm:p-5 xl:max-h-[calc(100vh-var(--layout-height-topbar)-9rem)] xl:overflow-auto subtle-scrollbar">
+          <div v-if="activePanel === 'reference'" class="min-w-0 space-y-4">
             <div>
               <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('editor.referenceFocusEyebrow') }}</p>
               <h2 class="mt-2 font-semibold">{{ t('editor.referenceFocusTitle') }}</h2>
@@ -1237,15 +1331,24 @@ function versionWordCount(version: ChapterVersion) {
               </div>
 
               <div class="mt-4 space-y-4">
-                <div v-if="previewError" class="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive">
-                  {{ previewError }}
-                </div>
-                <div v-else-if="previewLoading" class="rounded-xl border border-border bg-card/80 px-3 py-3 text-sm text-muted-foreground">
-                  {{ t('editor.preview.loading') }}
-                </div>
-                <div v-else-if="!previewResult" class="rounded-xl border border-border bg-card/80 px-3 py-3 text-sm text-muted-foreground">
-                  {{ t('editor.preview.empty') }}
-                </div>
+                <DataEmptyState
+                  v-if="previewError"
+                  class="min-h-32"
+                  :title="t('editor.preview.unavailableTitle')"
+                  :description="previewError"
+                />
+                <DataLoadingState
+                  v-else-if="previewLoading"
+                  class="min-h-32"
+                  :title="t('editor.preview.loadingTitle')"
+                  :description="t('editor.preview.loading')"
+                />
+                <DataEmptyState
+                  v-else-if="!previewResult"
+                  class="min-h-32"
+                  :title="t('editor.preview.emptyTitle')"
+                  :description="t('editor.preview.empty')"
+                />
                 <div v-else ref="previewResultRef" tabindex="-1" class="space-y-4 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                   <div class="rounded-xl border border-border bg-card/80 p-4">
                     <div class="flex flex-wrap items-center justify-between gap-2">
@@ -1566,7 +1669,7 @@ function versionWordCount(version: ChapterVersion) {
                 <div class="rounded-xl border border-border bg-card/80 p-4">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <p class="text-sm font-medium text-foreground">{{ t('editor.diagnostics.latestIndexJobs') }}</p>
-                    <UiBadge :variant="backgroundIndexState.variant">{{ backgroundIndexState.label }}</UiBadge>
+              <StatusBadge :tone="variantTone(backgroundIndexState.variant)" :pulse="indexJobsLoading">{{ backgroundIndexState.label }}</StatusBadge>
                   </div>
                   <div v-if="latestIndexJobs.length === 0" class="mt-3 text-sm text-muted-foreground">
                     {{ t('editor.diagnostics.emptyIndexJobs') }}
@@ -1600,21 +1703,29 @@ function versionWordCount(version: ChapterVersion) {
             </div>
           </div>
 
-          <div v-else-if="activePanel === 'versions'" class="mt-5 min-w-0 space-y-4">
-            <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
-              <div class="min-w-0 flex-1">
-                <p class="field-label text-xs uppercase tracking-[0.18em]">
-                  {{ t('editor.versionsEyebrow') }}
-                  <UiInfoTooltip :text="t('tooltips.editorVersions')" />
-                </p>
-                <h2 class="mt-2 break-words text-lg font-semibold">{{ t('editor.versions') }}</h2>
-              </div>
-              <FileClock :class="['h-5 w-5 shrink-0 text-muted-foreground', loadingVersions && 'animate-pulse']" />
-            </div>
-            <div v-if="versions.length === 0" class="rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
-              {{ t('editor.emptyVersions') }}
-            </div>
-            <div v-else class="space-y-3">
+          <div v-else-if="activePanel === 'versions'" class="min-w-0">
+            <DataCollection
+              :title="t('editor.versions')"
+              :description="t('editor.states.versionsDescription')"
+              :loading="loadingVersions"
+              :empty="versions.length === 0"
+              :loading-title="t('editor.states.loadingVersionsTitle')"
+              :loading-description="t('editor.states.loadingVersionsDescription')"
+              :empty-title="t('editor.states.emptyVersionsTitle')"
+              :empty-description="t('editor.emptyVersions')"
+            >
+              <template #toolbar>
+                <StatusBadge :tone="loadingVersions ? 'info' : 'muted'" :pulse="loadingVersions">
+                  {{ t('editor.versionsEyebrow') }} · {{ versions.length }}
+                </StatusBadge>
+              </template>
+              <template #loading>
+                <DataLoadingState :title="t('editor.states.loadingVersionsTitle')" :description="t('editor.states.loadingVersionsDescription')" />
+              </template>
+              <template #empty>
+                <DataEmptyState :title="t('editor.states.emptyVersionsTitle')" :description="t('editor.emptyVersions')" />
+              </template>
+              <div class="space-y-3">
               <button
                 v-for="version in versions"
                 :key="version.id"
@@ -1630,24 +1741,25 @@ function versionWordCount(version: ChapterVersion) {
                 <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
                   <p class="min-w-0 flex-1 break-words font-medium" :title="t('editor.versionLabel', { version: version.version, title: version.title })">{{ t('editor.versionLabel', { version: version.version, title: version.title }) }}</p>
                   <div class="flex shrink-0 flex-wrap justify-end gap-2">
-                    <UiBadge v-if="loadedVersionId === version.id" variant="violet">{{ t('editor.feedback.versionLoaded') }}</UiBadge>
-                    <UiBadge :variant="version.author === 'ai' ? 'default' : 'muted'">{{ authorLabel(version.author) }}</UiBadge>
+                    <StatusBadge v-if="loadedVersionId === version.id" tone="info">{{ t('editor.feedback.versionLoaded') }}</StatusBadge>
+                    <StatusBadge :tone="version.author === 'ai' ? 'info' : 'muted'">{{ authorLabel(version.author) }}</StatusBadge>
                   </div>
                 </div>
                 <p class="mt-2 break-words text-xs text-muted-foreground" :title="`${formatDateTime(version.created_at)} · ${version.change_note}`">{{ formatDateTime(version.created_at) }} · {{ version.change_note }}</p>
                 <div class="mt-3 flex flex-wrap gap-2">
-                  <UiBadge variant="muted">{{ t('editor.metrics.words', { count: versionWordCount(version) }) }}</UiBadge>
-                  <UiBadge variant="muted">{{ version.index_status || t('common.emptyValue') }}</UiBadge>
+                  <StatusBadge tone="muted">{{ t('editor.metrics.words', { count: versionWordCount(version) }) }}</StatusBadge>
+                  <StatusBadge tone="muted">{{ version.index_status || t('common.emptyValue') }}</StatusBadge>
                 </div>
               </button>
-            </div>
+              </div>
+            </DataCollection>
           </div>
 
-          <div v-else class="mt-5 min-w-0 space-y-4">
+          <div v-else class="min-w-0 space-y-4">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p class="field-label text-xs uppercase tracking-[0.18em]">
-                  {{ t('editor.runLog') }}
+                  {{ t('editor.assistantTabs.runLog') }}
                   <UiInfoTooltip :text="t('tooltips.runLog')" />
                 </p>
                 <h2 class="mt-2 font-semibold">{{ t('editor.runLogTitle') }}</h2>
@@ -1762,9 +1874,10 @@ function versionWordCount(version: ChapterVersion) {
               </div>
             </div>
           </div>
-        </UiCard>
+          </div>
+        </Panel>
 
       </aside>
-    </div>
-  </div>
+    </SplitPane>
+  </PageShell>
 </template>

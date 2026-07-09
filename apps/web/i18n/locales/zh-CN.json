@@ -6,7 +6,12 @@
   "common": {
     "emptyValue": "—",
     "listSeparator": "，",
-    "pathSeparator": " / "
+    "pathSeparator": " / ",
+    "loading": "加载中",
+    "error": "出错了",
+    "retry": "重试",
+    "search": "搜索",
+    "clear": "清空"
   },
   "nav": {
     "dashboard": "工作台",
@@ -53,6 +58,55 @@
   },
   "language": {
     "label": "语言"
+  },
+  "ui": {
+    "dialog": {
+      "label": "对话框"
+    },
+    "sheet": {
+      "label": "侧边面板"
+    },
+    "select": {
+      "noResults": "没有匹配结果",
+      "search": "搜索选项"
+    },
+    "search": {
+      "label": "搜索",
+      "placeholder": "搜索",
+      "clear": "清空搜索"
+    },
+    "sort": {
+      "placeholder": "排序方式"
+    },
+    "viewMode": {
+      "label": "视图模式",
+      "table": "表格视图",
+      "grid": "卡片视图",
+      "list": "列表视图"
+    },
+    "density": {
+      "label": "显示密度",
+      "compact": "紧凑",
+      "comfortable": "标准",
+      "relaxed": "宽松"
+    },
+    "states": {
+      "emptyTitle": "暂无数据",
+      "emptyDescription": "当前没有可展示的内容。",
+      "loadingTitle": "正在加载",
+      "loadingDescription": "请稍候，内容正在准备。",
+      "errorTitle": "加载失败",
+      "errorDescription": "请求未能完成，请检查网络或稍后重试。",
+      "noResultsTitle": "没有匹配结果",
+      "noResultsDescription": "调整搜索关键词或筛选条件后再试。"
+    },
+    "editableList": {
+      "add": "新增一项",
+      "remove": "移除这一项",
+      "empty": "列表为空，可以新增一项。",
+      "itemPlaceholder": "输入内容",
+      "itemLabel": "列表项 {index}"
+    }
   },
   "status": {
     "online": "在线",
@@ -174,16 +228,100 @@
     }
   },
   "projects": {
+    "eyebrow": "项目库",
     "title": "项目",
-    "description": "集中管理创作项目，查看状态并进入具体工作区。",
+    "description": "集中管理创作项目，按状态、设定和最近打开情况快速定位工作区。",
+    "libraryTitle": "项目库",
+    "libraryDescription": "通过搜索、筛选、排序、视图和密度控制管理所有创作项目。",
     "emptyTitle": "暂无项目",
     "emptyDescription": "创建项目后，可在这里查看设定状态、章节数量并打开项目。",
-    "opened": "已打开",
+    "opened": "最近打开",
     "notOpened": "未打开",
     "noTags": "暂无标签",
     "chapterCount": "章节数",
     "chapterCountValue": "{count} 章",
-    "storyBibleStatus": "Story Bible 状态"
+    "targetChapters": "目标章节",
+    "targetChapterCountValue": "{count} 章",
+    "storyBibleStatus": "Story Bible 状态",
+    "activeStoryBible": "Active Story Bible",
+    "missingActiveStoryBible": "暂无 Active Story Bible",
+    "projectStatus": "项目状态",
+    "projectId": "项目 ID",
+    "slug": "Slug",
+    "createdAt": "创建时间",
+    "updatedAt": "更新时间",
+    "seedProfile": "种子设定",
+    "seedGenre": "类型",
+    "seedTone": "语气",
+    "seedAudience": "受众",
+    "viewModeLabel": "项目库视图",
+    "densityLabel": "项目库密度",
+    "actions": {
+      "overview": "概览",
+      "editor": "编辑器",
+      "graph": "图谱"
+    },
+    "stats": {
+      "total": "项目总数",
+      "activeBible": "Active Bible",
+      "recentlyOpened": "最近打开",
+      "targetChapters": "目标章节",
+      "readyBibleHint": "{count} 个 Story Bible 已就绪",
+      "activeBibleHint": "共 {count} 个项目",
+      "openedHint": "当前显示 {count} 个项目",
+      "targetChaptersHint": "平均 {count} 章"
+    },
+    "search": {
+      "label": "搜索项目库",
+      "placeholder": "搜索 title、id、slug、status、前提、类型、语气、受众、标签或 Active Bible ID",
+      "empty": "没有匹配项目"
+    },
+    "filters": {
+      "allStatuses": "全部项目状态",
+      "allBibleStatuses": "全部 Story Bible 状态",
+      "allActiveBible": "全部 Active Bible",
+      "withActiveBible": "已有 Active Bible",
+      "withoutActiveBible": "无 Active Bible",
+      "allRecent": "全部打开状态",
+      "recentlyOpened": "最近打开",
+      "notRecentlyOpened": "未打开",
+      "resultSummary": "显示 {visible} / {total} 个项目",
+      "activeCount": "{count} 个筛选",
+      "clear": "清空筛选"
+    },
+    "sort": {
+      "updatedDesc": "最近更新优先",
+      "createdDesc": "最近创建优先",
+      "titleAsc": "标题 A → Z",
+      "targetChaptersDesc": "目标章节从多到少"
+    },
+    "table": {
+      "caption": "项目库列表",
+      "project": "项目",
+      "status": "状态",
+      "storyBible": "Story Bible",
+      "targetChapters": "目标章节",
+      "updatedAt": "时间",
+      "actions": "操作"
+    },
+    "states": {
+      "loadingTitle": "正在加载项目库",
+      "loadingDescription": "正在读取项目、设定和最近打开状态。",
+      "emptyTitle": "暂无项目",
+      "emptyDescription": "创建第一个项目后，项目库会显示搜索、筛选和入口操作。",
+      "errorTitle": "项目加载失败",
+      "noResultsTitle": "没有匹配项目",
+      "noResultsDescription": "调整搜索关键词、状态或 Story Bible 筛选后再试。"
+    },
+    "statuses": {
+      "active": "活跃",
+      "draft": "草稿",
+      "planning": "规划中",
+      "paused": "暂停",
+      "archived": "归档",
+      "completed": "已完成",
+      "unknown": "未知状态"
+    }
   },
   "projectNew": {
     "title": "创建项目",
@@ -694,8 +832,66 @@
     "search": {
       "provider": "搜索 模型提供商 名称或类型",
       "model": "搜索模型名称、模型提供商 或 ID",
+      "modelCatalogLabel": "搜索模型目录",
+      "modelCatalog": "搜索名称、ID、Provider、类型或角色",
       "empty": "没有匹配结果"
     },
+    "filters": {
+      "allKinds": "全部类型",
+      "allStatuses": "全部状态",
+      "allCapabilities": "全部能力",
+      "allRoles": "全部角色",
+      "capabilityTools": "支持工具",
+      "capabilityStreaming": "支持流式",
+      "capabilityDefault": "类型默认",
+      "roleIncludesAllRoles": "包含未限制角色的模型",
+      "roleSearch": "搜索角色",
+      "resultSummary": "显示 {visible} / {total} 个模型",
+      "activeCount": "{count} 个筛选",
+      "clear": "清空筛选"
+    },
+    "sort": {
+      "nameAsc": "名称 A → Z",
+      "nameDesc": "名称 Z → A",
+      "providerAsc": "Provider A → Z",
+      "providerDesc": "Provider Z → A",
+      "contextDesc": "上下文从大到小",
+      "contextAsc": "上下文从小到大",
+      "weightDesc": "权重从高到低",
+      "weightAsc": "权重从低到高",
+      "activityDesc": "最近更新优先",
+      "activityAsc": "最早更新优先"
+    },
+    "table": {
+      "caption": "模型目录列表",
+      "model": "模型",
+      "provider": "Provider",
+      "kind": "类型",
+      "status": "状态",
+      "context": "上下文",
+      "outputDimension": "输出/维度",
+      "capabilities": "能力",
+      "roles": "角色",
+      "routingWeight": "路由权重",
+      "actions": "操作"
+    },
+    "states": {
+      "loadingTitle": "正在加载模型目录",
+      "loadingDescription": "正在读取 Provider 与模型配置。",
+      "emptyTitle": "暂无模型",
+      "emptyDescription": "可手动新增模型，或刷新 Provider 后同步上游模型。",
+      "noResultsTitle": "没有匹配模型",
+      "noResultsDescription": "调整搜索关键词或清空筛选后再试。"
+    },
+    "capabilityLabels": {
+      "streaming": "流式",
+      "tools": "工具"
+    },
+    "viewModeLabel": "模型目录视图",
+    "densityLabel": "模型目录密度",
+    "outputShort": "输出",
+    "dimensionShort": "维度",
+    "updatedAt": "更新时间",
     "embeddingMaintenanceEyebrow": "向量维护",
     "embeddingMaintenanceTitle": "Embedding 路由变更后的向量维护",
     "embeddingMaintenanceDescription": "这是显式维护动作，不属于自动路由切换。先触发重建向量集合，再运行待处理索引。",
@@ -760,6 +956,7 @@
     }
   },
   "editor": {
+    "eyebrow": "写作工作台",
     "title": "章节",
     "description": "编辑正文，保存版本，并查看真实上下文命中与执行诊断。",
     "reference": "参考资料",
@@ -884,6 +1081,27 @@
     "versionsEyebrow": "版本",
     "indexJobs": "索引任务",
     "indexJobsEyebrow": "索引任务",
+    "assistantTabs": {
+      "context": "上下文",
+      "plan": "方案",
+      "draft": "生成",
+      "review": "审阅",
+      "versions": "版本",
+      "runLog": "运行记录"
+    },
+    "workspace": {
+      "ready": "工作台就绪",
+      "busy": "处理中",
+      "inspectorEyebrow": "Inspector",
+      "inspectorTitle": "上下文与运行检查",
+      "inspectorDescription": "按上下文、生成、审阅、版本和运行记录组织辅助信息。"
+    },
+    "states": {
+      "versionsDescription": "查看并载入当前章节的历史版本。",
+      "loadingVersionsTitle": "正在加载章节版本",
+      "loadingVersionsDescription": "请稍候，正在读取当前章节的保存记录。",
+      "emptyVersionsTitle": "暂无章节版本"
+    },
     "instruction": "写作指令",
     "style": "风格约束",
     "chapterPlan": "故事想法/章节方案",
@@ -909,14 +1127,18 @@
       "eyebrow": "上下文预览",
       "title": "本次实际命中",
       "description": "预先查看当前 selection 在真实后端下会命中的 ContextPack、索引新鲜度与模型路由结果。",
+      "loadingTitle": "正在准备上下文",
       "loading": "正在生成上下文预览……",
+      "emptyTitle": "暂无上下文预览",
       "empty": "还没有预览结果。先选择重点参考范围，再预览方案或草稿上下文。",
+      "unavailableTitle": "上下文预览暂不可用",
       "actualContext": "本次实际命中",
       "structuredContextTitle": "结构化命中上下文",
       "emptyStructuredContext": "这次预览没有返回可展示的结构化命中内容。",
       "freshnessTitle": "索引 freshness",
       "modelResolutionTitle": "模型解析结果",
       "estimatedToken": "预计 {count} Token",
+      "estimatedTokens": "预计 {count} Token",
       "summaryText": "章节摘要 {chapterSummaryCount} 条，实体 {entityCount} 个，事实 {factCount} 条，情节线 {plotThreadCount} 条，世界规则 {worldRuleCount} 条",
       "targets": {
         "chapter_idea": "方案生成上下文",
@@ -1000,7 +1222,8 @@
       "routeSource": "路由来源",
       "executionTargets": {
         "chapterIdea": "章节方案生成",
-        "draft": "章节草稿生成"
+        "draft": "章节草稿生成",
+        "idle": "尚未运行"
       }
     },
     "freshness": {
@@ -1084,41 +1307,72 @@
       "generateDraftFailed": "AI 草稿生成失败",
       "saveVersionFailed": "章节版本保存失败",
       "previewContextFailed": "上下文预览失败",
-      "previewContextRemoved": "旧上下文预览接口已移除。请在智能体管理中配置智能体、技能和工具后直接运行方案或草稿。",
+      "previewContextRemoved": "上下文预览暂不可用。请直接生成方案或续写；生成完成后，本页会展示实际模型路由、工具调用与索引状态。",
       "loadAgentsFailed": "智能体配置加载失败",
       "noAgentConfigured": "没有可用的启用智能体。请先在智能体管理中创建并启用写作或剧情智能体。"
     }
   },
   "agents": {
-    "eyebrow": "智能体控制台",
-    "title": "智能体、技能与工具",
-    "description": "集中管理智能体配置、内联技能、MCP 服务器和工具目录。章节编辑器会调用已启用的智能体，而不再访问旧工作流接口。",
+    "eyebrow": "资源控制台",
+    "title": "智能体资源",
+    "description": "按资源类型管理 Agents、Skills、MCP Servers 与 Tools，保留保存、删除、启停、扫描、测试和工具刷新等真实后端行为。",
     "enabled": "已启用",
     "disabled": "已停用",
+    "tabs": {
+      "agents": "Agents",
+      "skills": "Skills",
+      "mcp": "MCP Servers",
+      "tools": "Tools"
+    },
     "stats": {
-      "agents": "启用智能体",
-      "skills": "启用技能",
-      "mcp": "启用 MCP",
-      "tools": "可用工具"
+      "agents": "Agents",
+      "skills": "Skills",
+      "mcp": "MCP Servers",
+      "tools": "Tools",
+      "enabledCount": "已启用 {count} 个",
+      "activeTools": "活跃工具 {count} 个"
     },
     "sections": {
-      "agents": "智能体配置",
-      "agentsDescription": "配置角色、系统提示词和运行开关。",
-      "skills": "技能库",
-      "skillsDescription": "创建内联技能，或扫描默认技能目录。",
-      "mcp": "MCP 服务器",
-      "mcpDescription": "配置 stdio / HTTP MCP 服务并刷新工具。",
-      "tools": "工具目录",
-      "toolsDescription": "启停内置、MCP 或技能工具。"
+      "agents": "Agents",
+      "agentsDescription": "维护 Agent 角色、系统提示词和启停状态。",
+      "skills": "Skills",
+      "skillsDescription": "维护内联技能，或扫描默认技能源。",
+      "mcp": "MCP Servers",
+      "mcpDescription": "配置 MCP 连接、测试连通性并刷新工具目录。",
+      "tools": "Tools",
+      "toolsDescription": "检索、筛选并启停内置、MCP 或技能工具。"
     },
     "roles": {
       "default": "默认角色",
       "writer": "写作",
       "editor": "编辑",
+      "genesis_optimizer": "创世优化",
       "plot_architect": "剧情架构",
       "world_builder": "世界构建",
       "character_keeper": "角色维护",
-      "continuity_auditor": "连续性审计"
+      "continuity_auditor": "连续性审计",
+      "fact_extractor": "事实提取",
+      "graph_curator": "图谱维护"
+    },
+    "transports": {
+      "stdio": "stdio",
+      "streamable_http": "streamable HTTP",
+      "sse": "SSE"
+    },
+    "kinds": {
+      "builtin": "内置",
+      "mcp": "MCP",
+      "skill": "技能"
+    },
+    "statuses": {
+      "active": "活跃",
+      "disabled": "已停用",
+      "unavailable": "不可用",
+      "online": "在线",
+      "offline": "离线",
+      "failed": "失败",
+      "unknown": "未知",
+      "enabled": "已启用"
     },
     "placeholders": {
       "agentName": "智能体名称",
@@ -1126,68 +1380,237 @@
       "systemPrompt": "系统提示词",
       "skillName": "技能名称",
       "skillContent": "技能内容",
+      "sourceId": "技能源 ID，例如 default",
       "mcpName": "MCP 服务器名称",
       "command": "启动命令，例如 node",
       "url": "服务 URL",
       "args": "命令参数，用空格分隔"
     },
     "actions": {
+      "newAgent": "新建 Agent",
+      "newSkill": "新建 Skill",
+      "newMCP": "新建 MCP Server",
       "createAgent": "创建智能体",
       "createSkill": "创建内联技能",
       "createMCP": "创建 MCP",
       "scanSkills": "扫描技能",
+      "testMCP": "测试",
       "refreshTools": "刷新工具"
     },
-    "empty": {
-      "agents": "还没有智能体配置。",
-      "skills": "还没有技能。",
-      "mcp": "还没有 MCP 服务器。",
-      "tools": "还没有工具定义。"
+    "filters": {
+      "allRoles": "全部角色",
+      "allStatuses": "全部状态",
+      "allSources": "全部来源",
+      "allTransports": "全部传输",
+      "allKinds": "全部类型",
+      "noSource": "未指定来源",
+      "roleSearch": "搜索角色",
+      "sourceSearch": "搜索来源",
+      "resultSummary": "显示 {visible} / {total} 项",
+      "activeCount": "{count} 个筛选",
+      "clear": "清空筛选"
+    },
+    "sort": {
+      "nameAsc": "名称 A → Z",
+      "nameDesc": "名称 Z → A",
+      "statusAsc": "状态 A → Z",
+      "statusDesc": "状态 Z → A",
+      "updatedDesc": "最近更新优先",
+      "updatedAsc": "最早更新优先",
+      "createdDesc": "最近创建优先",
+      "createdAsc": "最早创建优先"
+    },
+    "search": {
+      "agentsLabel": "搜索 Agents",
+      "agents": "搜索名称、ID、描述、角色、project_id、模型或连接 ID",
+      "skillsLabel": "搜索 Skills",
+      "skills": "搜索名称、ID、描述、source_id、project_id 或路径",
+      "mcpLabel": "搜索 MCP Servers",
+      "mcp": "搜索名称、ID、传输、状态、project_id、命令或 URL",
+      "toolsLabel": "搜索 Tools",
+      "tools": "搜索名称、ID、描述、类型、状态、mcp_server_id 或 source_id",
+      "empty": "没有匹配结果"
+    },
+    "table": {
+      "agentCaption": "Agent 列表",
+      "skillCaption": "Skill 列表",
+      "mcpCaption": "MCP Server 列表",
+      "toolCaption": "Tool 列表",
+      "agent": "Agent",
+      "skill": "Skill",
+      "server": "Server",
+      "tool": "Tool",
+      "role": "角色",
+      "status": "状态",
+      "connections": "连接",
+      "source": "来源",
+      "transport": "传输",
+      "endpoint": "端点",
+      "kind": "类型",
+      "origin": "来源定位",
+      "updatedAt": "更新时间",
+      "actions": "操作",
+      "skills": "Skills",
+      "tools": "Tools",
+      "mcp": "MCP"
+    },
+    "states": {
+      "agents": {
+        "loadingTitle": "正在加载 Agents",
+        "loadingDescription": "正在读取 Agent 配置。",
+        "emptyTitle": "暂无 Agents",
+        "emptyDescription": "新建 Agent 后，章节编辑器才能选择并运行对应角色。",
+        "noResultsTitle": "没有匹配 Agents",
+        "noResultsDescription": "调整搜索关键词、角色或启停状态筛选后再试。"
+      },
+      "skills": {
+        "loadingTitle": "正在加载 Skills",
+        "loadingDescription": "正在读取技能库。",
+        "emptyTitle": "暂无 Skills",
+        "emptyDescription": "可以新建内联技能，或扫描默认技能源。",
+        "noResultsTitle": "没有匹配 Skills",
+        "noResultsDescription": "调整搜索关键词、来源或启停状态筛选后再试。"
+      },
+      "mcp": {
+        "loadingTitle": "正在加载 MCP Servers",
+        "loadingDescription": "正在读取 MCP 连接配置。",
+        "emptyTitle": "暂无 MCP Servers",
+        "emptyDescription": "新建 MCP Server 后可以测试连接并刷新工具。",
+        "noResultsTitle": "没有匹配 MCP Servers",
+        "noResultsDescription": "调整搜索关键词、状态、启停或传输方式筛选后再试。"
+      },
+      "tools": {
+        "loadingTitle": "正在加载 Tools",
+        "loadingDescription": "正在读取工具目录。",
+        "emptyTitle": "暂无 Tools",
+        "emptyDescription": "工具通常来自内置能力、技能或 MCP Server 刷新。",
+        "noResultsTitle": "没有匹配 Tools",
+        "noResultsDescription": "调整搜索关键词、类型或状态筛选后再试。"
+      }
+    },
+    "fields": {
+      "name": "名称",
+      "role": "角色",
+      "description": "描述",
+      "systemPrompt": "系统提示词",
+      "skillContent": "技能内容",
+      "sourceId": "source_id",
+      "skillId": "skill_id",
+      "mcpServerId": "mcp_server_id",
+      "projectId": "project_id",
+      "updatedAt": "更新时间",
+      "transport": "传输方式",
+      "command": "命令",
+      "url": "URL",
+      "args": "参数"
+    },
+    "connectionCounts": {
+      "skills": "Skills {count}",
+      "tools": "Tools {count}",
+      "mcp": "MCP {count}"
+    },
+    "emptyDescriptions": {
+      "agent": "暂无描述。",
+      "skill": "暂无描述。",
+      "tool": "暂无描述。"
+    },
+    "dialogs": {
+      "newAgent": "新建 Agent",
+      "editAgent": "编辑 Agent",
+      "agentDescription": "维护 Agent 的角色、提示词和启停状态。",
+      "newSkill": "新建 Skill",
+      "editSkill": "编辑 Skill",
+      "skillDescription": "维护内联技能内容与来源标识。",
+      "newMCP": "新建 MCP Server",
+      "editMCP": "编辑 MCP Server",
+      "mcpDescription": "维护 MCP 连接配置，保存后可在列表中测试或刷新工具。"
     },
     "messages": {
-      "agentSaved": "智能体已保存。",
-      "skillSaved": "技能已保存。",
-      "mcpSaved": "MCP 服务器已保存。",
+      "agentSaved": "Agent 已保存。",
+      "agentEnabled": "Agent 已启用。",
+      "agentDisabled": "Agent 已停用。",
+      "agentDeleted": "Agent 已删除。",
+      "skillSaved": "Skill 已保存。",
+      "skillEnabled": "Skill 已启用。",
+      "skillDisabled": "Skill 已停用。",
+      "skillDeleted": "Skill 已删除。",
+      "mcpSaved": "MCP Server 已保存。",
+      "mcpEnabled": "MCP Server 已启用。",
+      "mcpDisabled": "MCP Server 已停用。",
+      "mcpDeleted": "MCP Server 已删除。",
+      "mcpTestPassed": "MCP 连接测试通过。",
+      "mcpTestFailed": "MCP 连接测试未通过。",
+      "toolEnabled": "Tool 已启用。",
+      "toolDisabled": "Tool 已停用。",
       "skillScanComplete": "技能扫描完成，新增或更新 {count} 个。",
       "toolsRefreshed": "工具刷新完成，当前 {count} 个可用。"
     },
     "resultScopes": {
-      "load": "智能体数据加载",
-      "agentSave": "智能体保存",
-      "skillSave": "技能保存",
+      "load": "智能体资源加载",
+      "agentSave": "Agent 保存",
+      "agentToggle": "Agent 启停",
+      "agentDelete": "Agent 删除",
+      "skillSave": "Skill 保存",
+      "skillToggle": "Skill 启停",
+      "skillDelete": "Skill 删除",
       "mcpSave": "MCP 保存",
+      "mcpToggle": "MCP 启停",
+      "mcpDelete": "MCP 删除",
       "skillScan": "技能扫描",
-      "toolRefresh": "工具刷新"
+      "mcpTest": "MCP 测试",
+      "toolRefresh": "工具刷新",
+      "toolToggle": "Tool 启停",
+      "delete": "资源删除"
     },
     "errors": {
-      "loadFailed": "智能体数据加载失败",
-      "saveAgentFailed": "智能体保存失败",
-      "saveSkillFailed": "技能保存失败",
-      "saveMCPFailed": "MCP 服务器保存失败",
+      "loadFailed": "智能体资源加载失败",
+      "saveAgentFailed": "Agent 保存失败",
+      "saveSkillFailed": "Skill 保存失败",
+      "saveMCPFailed": "MCP Server 保存失败",
+      "toggleAgentFailed": "Agent 启停失败",
+      "toggleSkillFailed": "Skill 启停失败",
+      "toggleMCPFailed": "MCP Server 启停失败",
+      "toggleToolFailed": "Tool 启停失败",
       "scanSkillsFailed": "技能扫描失败",
-      "refreshToolsFailed": "工具刷新失败"
-    }
+      "testMCPFailed": "MCP 测试失败",
+      "refreshToolsFailed": "工具刷新失败",
+      "deleteFailed": "资源删除失败",
+      "agentNameRequired": "Agent 名称不能为空。",
+      "skillNameRequired": "Skill 名称不能为空。",
+      "mcpNameRequired": "MCP Server 名称不能为空。",
+      "mcpCommandRequired": "stdio MCP Server 必须填写启动命令。",
+      "mcpUrlRequired": "HTTP/SSE MCP Server 必须填写服务 URL。"
+    },
+    "confirmDeleteTitle": "确认删除资源",
+    "confirmDeleteDescription": "确定删除“{name}”吗？",
+    "confirmDeleteWarning": "删除操作不可撤销，请确认该资源不再被当前项目或其他资源引用。",
+    "viewModeLabel": "资源视图",
+    "densityLabel": "资源显示密度"
   },
   "graph": {
+    "eyebrow": "图谱工作台",
     "title": "关系图谱",
-    "description": "查看人物、事件和设定之间的关系。",
+    "description": "集中查看人物、事件、章节与设定之间的关系，并用搜索、筛选和排序快速定位节点。",
     "tabs": {
       "graph": "关系图",
       "nodes": "节点列表",
       "edges": "边列表",
       "metadata": "元数据"
     },
-    "nodeListDescription": "按当前筛选条件列出图中可见节点，点击可回到详情。",
-    "edgeListDescription": "按当前筛选条件列出图中可见边，点击可查看边详情。",
+    "nodeCollectionTitle": "节点集合",
+    "nodeCollectionDescription": "按当前范围、搜索词与状态筛选列出图中节点，点击任意节点可打开详情面板。",
+    "edgeCollectionTitle": "边集合",
+    "edgeCollectionDescription": "按当前可见节点列出关系边，支持搜索端点、关系类型、权重与时间线排序。",
     "metadataDescription": "查看当前选中节点或边的原始元数据。",
-    "emptyNodes": "当前筛选条件下没有可见节点。",
-    "controls": "筛选",
+    "canvasTitle": "图谱画布",
+    "controls": "图谱控制",
+    "controlsDescription": "调整根节点、深度、时间线和类型范围后，重新加载会带着这些参数调用图谱扩展。搜索与状态筛选会即时收窄当前画布。",
     "details": "详情面板",
     "reload": "重新加载",
     "depth": "深度",
     "timeline": "时间线",
     "root": "根节点",
-    "filters": "过滤器",
+    "searchAndFilters": "节点搜索与状态",
     "node": "节点",
     "edge": "边",
     "metadata": "元数据",
@@ -1200,13 +1623,97 @@
     "rootValue": "根节点={value}",
     "timelineLimit": "时间≤{value}",
     "depthLimit": "深度≤{value}",
+    "depthValue": "{value} 层",
     "nodeSummary": "{id} · 深度 {depth} · T+{timeline}",
     "weightValue": "权重 {value}",
-    "emptyDetails": "点击图谱中的节点或边查看详情。若当前环境无法加载 Cytoscape，可使用中间面板的节点列表核对数据。",
+    "selectedNodeSummary": "已选择节点：{label}",
+    "selectedEdgeSummary": "已选择边：{label}",
+    "emptySelectionSummary": "尚未选择节点或边",
+    "emptyDetails": "点击图谱中的节点或边查看详情。若当前环境无法加载 Cytoscape，可使用画布的 fallback 节点列表核对数据。",
     "emptyEdges": "当前筛选条件下没有可见边。",
     "listUnavailableMessage": "图谱渲染暂不可用。你仍然可以通过下方列表查看节点数据。",
+    "timelineControlHint": "降低时间线会隐藏更晚发生的节点和关系；提高后如需更多数据请重新加载。",
+    "depthControlHint": "降低深度会收窄本地可见范围；提高后如需更深扩展请重新加载。",
+    "openDetails": "查看详情",
+    "viewModeLabel": "图谱集合视图",
+    "densityLabel": "图谱集合密度",
     "placeholders": {
       "root": "story_start"
+    },
+    "filterControls": {
+      "allStatuses": "全部状态",
+      "allEdgeTypes": "全部关系类型",
+      "includedTypes": "参与扩展的节点类型",
+      "selectedTypeCount": "已选 {count} 类",
+      "clear": "清除筛选",
+      "activeCount": "{count} 个筛选",
+      "resultSummary": "显示 {visible} / {total}"
+    },
+    "search": {
+      "nodesLabel": "搜索节点",
+      "nodes": "搜索节点名称、ID、类型、状态或元数据",
+      "edgesLabel": "搜索边",
+      "edges": "搜索边名称、端点、类型或证据 ID",
+      "queryBadge": "搜索：{query}"
+    },
+    "sort": {
+      "nodeLabelAsc": "节点名称 A-Z",
+      "nodeLabelDesc": "节点名称 Z-A",
+      "nodeTypeAsc": "节点类型",
+      "nodeStatusAsc": "节点状态",
+      "nodeDepthAsc": "深度从浅到深",
+      "nodeDepthDesc": "深度从深到浅",
+      "nodeTimelineAsc": "时间线从早到晚",
+      "nodeTimelineDesc": "时间线从晚到早",
+      "edgeLabelAsc": "边名称 A-Z",
+      "edgeLabelDesc": "边名称 Z-A",
+      "edgeTypeAsc": "关系类型",
+      "edgeWeightDesc": "权重从高到低",
+      "edgeWeightAsc": "权重从低到高",
+      "edgeTimelineAsc": "时间线从早到晚",
+      "edgeTimelineDesc": "时间线从晚到早"
+    },
+    "table": {
+      "node": "节点",
+      "edge": "边",
+      "type": "类型",
+      "status": "状态",
+      "depth": "深度",
+      "timeline": "时间线",
+      "relation": "关系",
+      "weight": "权重",
+      "actions": "操作",
+      "nodeCaption": "关系图谱节点列表",
+      "edgeCaption": "关系图谱边列表"
+    },
+    "states": {
+      "loadingTitle": "正在加载图谱",
+      "loadErrorTitle": "关系图谱加载失败",
+      "canvasFallbackTitle": "画布已切换为列表 fallback",
+      "canvasLoadingTitle": "正在渲染图谱画布",
+      "canvasLoadingDescription": "正在请求图谱扩展并初始化 Cytoscape。",
+      "canvasEmptyTitle": "暂无图谱数据",
+      "canvasEmptyDescription": "当前项目还没有可渲染节点，或尚未完成图谱扩展。",
+      "canvasNoResultsTitle": "没有匹配节点",
+      "canvasNoResultsDescription": "当前搜索、类型、状态、深度或时间线组合没有命中节点。",
+      "detailsEmptyTitle": "未选择对象",
+      "edgesEmptyTitle": "暂无可见边",
+      "nodes": {
+        "loadingTitle": "正在加载节点",
+        "loadingDescription": "正在读取图谱扩展返回的节点。",
+        "emptyTitle": "暂无节点",
+        "emptyDescription": "当前图谱扩展没有返回节点。",
+        "noResultsTitle": "没有匹配节点",
+        "noResultsDescription": "调整搜索词、状态筛选、类型范围、深度或时间线后重试。"
+      },
+      "edges": {
+        "loadingTitle": "正在加载边",
+        "loadingDescription": "正在读取图谱扩展返回的关系边。",
+        "emptyTitle": "暂无边",
+        "emptyDescription": "当前图谱扩展没有返回关系边。",
+        "noResultsTitle": "没有匹配边",
+        "noResultsDescription": "调整搜索词、关系类型或节点可见范围后重试。"
+      }
     },
     "errors": {
       "loadFailed": "关系图谱加载失败",

@@ -1,27 +1,34 @@
 <script setup lang="ts">
 import { cn } from '~/lib/utils'
 
+type MetricTone = 'info' | 'success' | 'warning' | 'danger' | 'neutral' | 'cyan' | 'violet' | 'gold' | 'rose' | 'emerald'
+
 const props = defineProps<{
   label: string
   value: string | number
   hint?: string
-  tone?: 'cyan' | 'violet' | 'gold' | 'rose' | 'emerald'
+  tone?: MetricTone
 }>()
 
 const toneClass = computed(() => {
-  const tones = {
-    cyan: 'border-sky-200 from-sky-50 to-white text-sky-800 dark:border-cyan-300/20 dark:from-cyan-300/18 dark:to-cyan-300/5 dark:text-cyan-100',
-    violet: 'border-violet-200 from-violet-50 to-white text-violet-800 dark:border-violet-300/20 dark:from-violet-300/18 dark:to-violet-300/5 dark:text-violet-100',
-    gold: 'border-amber-200 from-amber-50 to-white text-amber-900 dark:border-amber-300/20 dark:from-amber-300/18 dark:to-amber-300/5 dark:text-amber-100',
-    rose: 'border-rose-200 from-rose-50 to-white text-rose-800 dark:border-rose-300/20 dark:from-rose-300/18 dark:to-rose-300/5 dark:text-rose-100',
-    emerald: 'border-emerald-200 from-emerald-50 to-white text-emerald-800 dark:border-emerald-300/20 dark:from-emerald-300/18 dark:to-emerald-300/5 dark:text-emerald-100'
+  const tones: Record<MetricTone, string> = {
+    info: 'border-state-info-border bg-state-info-surface text-state-info-foreground',
+    success: 'border-state-success-border bg-state-success-surface text-state-success-foreground',
+    warning: 'border-state-warning-border bg-state-warning-surface text-state-warning-foreground',
+    danger: 'border-state-danger-border bg-state-danger-surface text-state-danger-foreground',
+    neutral: 'border-border bg-surface text-foreground',
+    cyan: 'border-state-info-border bg-state-info-surface text-state-info-foreground',
+    violet: 'border-state-info-border bg-state-info-surface text-state-info-foreground',
+    gold: 'border-state-warning-border bg-state-warning-surface text-state-warning-foreground',
+    rose: 'border-state-danger-border bg-state-danger-surface text-state-danger-foreground',
+    emerald: 'border-state-success-border bg-state-success-surface text-state-success-foreground'
   }
-  return tones[props.tone || 'cyan']
+  return tones[props.tone || 'info']
 })
 </script>
 
 <template>
-  <div :class="cn('rounded-2xl border bg-gradient-to-br p-4 shadow-sm', toneClass)">
+  <div :class="cn('rounded-2xl border p-4 shadow-sm', toneClass)">
     <p class="text-xs uppercase tracking-[0.22em] text-current/65">{{ label }}</p>
     <p class="mt-3 text-2xl font-semibold text-current">{{ value }}</p>
     <p v-if="hint" class="mt-1 text-xs text-current/65">{{ hint }}</p>

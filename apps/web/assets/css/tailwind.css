@@ -6,10 +6,16 @@
   :root {
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --surface: 0 0% 100%;
+    --surface-foreground: 222 47% 11%;
+    --surface-muted: 210 40% 97%;
+    --surface-elevated: 0 0% 100%;
+    --surface-raised: 210 40% 99%;
+    --surface-sunken: 214 32% 95%;
+    --card: var(--surface);
+    --card-foreground: var(--surface-foreground);
+    --popover: var(--surface-elevated);
+    --popover-foreground: var(--surface-foreground);
     --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
     --secondary: 215 20% 96%;
@@ -18,20 +24,54 @@
     --muted-foreground: 215 16% 47%;
     --accent: 221 83% 96%;
     --accent-foreground: 221 83% 35%;
-    --destructive: 0 72% 51%;
+    --state-info: 199 89% 48%;
+    --state-info-foreground: 201 96% 14%;
+    --state-info-surface: 199 95% 94%;
+    --state-info-border: 199 89% 82%;
+    --state-success: 158 64% 40%;
+    --state-success-foreground: 160 84% 12%;
+    --state-success-surface: 152 81% 94%;
+    --state-success-border: 152 76% 80%;
+    --state-warning: 38 92% 50%;
+    --state-warning-foreground: 28 73% 15%;
+    --state-warning-surface: 48 96% 92%;
+    --state-warning-border: 43 96% 76%;
+    --state-danger: 0 72% 51%;
+    --state-danger-foreground: 0 74% 16%;
+    --state-danger-surface: 0 86% 97%;
+    --state-danger-border: 0 91% 84%;
+    --destructive: var(--state-danger);
     --destructive-foreground: 210 40% 98%;
     --border: 214 32% 91%;
     --input: 214 32% 91%;
     --ring: 221 83% 53%;
+    --layout-width-sidebar: 18rem;
+    --layout-width-sidebar-collapsed: 4.5rem;
+    --layout-width-page: 100rem;
+    --layout-width-readable: 48rem;
+    --layout-width-panel: 72rem;
+    --layout-height-topbar: 4rem;
+    --layout-gutter: clamp(1rem, 2vw, 2.5rem);
+    --density-xs: 0.25rem;
+    --density-sm: 0.5rem;
+    --density-md: 0.75rem;
+    --density-lg: 1rem;
+    --density-xl: 1.5rem;
   }
 
   .dark {
     --background: 222 47% 7%;
     --foreground: 210 40% 98%;
-    --card: 222 47% 9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 9%;
-    --popover-foreground: 210 40% 98%;
+    --surface: 222 47% 9%;
+    --surface-foreground: 210 40% 98%;
+    --surface-muted: 217 33% 12%;
+    --surface-elevated: 222 47% 10%;
+    --surface-raised: 219 40% 13%;
+    --surface-sunken: 224 50% 6%;
+    --card: var(--surface);
+    --card-foreground: var(--surface-foreground);
+    --popover: var(--surface-elevated);
+    --popover-foreground: var(--surface-foreground);
     --primary: 217 91% 60%;
     --primary-foreground: 222 47% 7%;
     --secondary: 217 33% 15%;
@@ -40,7 +80,23 @@
     --muted-foreground: 215 20% 65%;
     --accent: 217 33% 16%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 56%;
+    --state-info: 190 95% 70%;
+    --state-info-foreground: 192 95% 88%;
+    --state-info-surface: 190 95% 12%;
+    --state-info-border: 190 95% 34%;
+    --state-success: 152 76% 52%;
+    --state-success-foreground: 152 81% 88%;
+    --state-success-surface: 158 64% 11%;
+    --state-success-border: 152 76% 32%;
+    --state-warning: 43 96% 60%;
+    --state-warning-foreground: 48 96% 88%;
+    --state-warning-surface: 35 92% 12%;
+    --state-warning-border: 38 92% 36%;
+    --state-danger: 0 82% 65%;
+    --state-danger-foreground: 0 86% 92%;
+    --state-danger-surface: 0 63% 13%;
+    --state-danger-border: 0 72% 38%;
+    --destructive: var(--state-danger);
     --destructive-foreground: 210 40% 98%;
     --border: 217 33% 18%;
     --input: 217 33% 18%;
@@ -53,6 +109,11 @@
 
   html {
     @apply bg-background;
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
   }
 
   body {
@@ -68,11 +129,43 @@
 
 @layer components {
   .app-surface {
-    @apply border border-border bg-card shadow-sm;
+    @apply border border-border bg-surface text-surface-foreground shadow-sm;
+  }
+
+  .surface-panel {
+    @apply border border-border bg-surface text-surface-foreground shadow-sm;
+  }
+
+  .surface-muted {
+    @apply border border-border bg-surface-muted text-surface-foreground;
+  }
+
+  .surface-elevated {
+    @apply border border-border bg-surface-elevated text-surface-foreground shadow-lg shadow-black/5 dark:shadow-black/25;
+  }
+
+  .surface-sunken {
+    @apply border border-border bg-surface-sunken text-surface-foreground;
   }
 
   .panel-muted {
-    @apply border border-border bg-muted/40;
+    @apply border border-border bg-surface-muted;
+  }
+
+  .state-info {
+    @apply border-state-info-border bg-state-info-surface text-state-info-foreground;
+  }
+
+  .state-success {
+    @apply border-state-success-border bg-state-success-surface text-state-success-foreground;
+  }
+
+  .state-warning {
+    @apply border-state-warning-border bg-state-warning-surface text-state-warning-foreground;
+  }
+
+  .state-danger {
+    @apply border-state-danger-border bg-state-danger-surface text-state-danger-foreground;
   }
 
   .focus-ring {

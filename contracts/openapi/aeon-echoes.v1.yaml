@@ -1,0 +1,2788 @@
+openapi: 3.1.0
+info:
+  title: Aeon Echoes HTTP API
+  version: 1.0.0
+  description: Versioned v1 API. All successful responses use the {data, meta} envelope; list responses also include page.
+servers:
+  - url: /api/v1
+    description: v1 API root
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [system]
+      responses:
+        '200':
+          description: Service health.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthEnvelope'
+  /system/status:
+    get:
+      operationId: getSystemStatus
+      tags: [system]
+      responses:
+        '200':
+          description: System status summary.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SystemStatus'
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      responses:
+        '200':
+          description: Projects.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Project'
+    post:
+      operationId: createProject
+      tags: [projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectSeed'
+      responses:
+        '201':
+          description: Initialized project, story bible, and workflow.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/InitializeProject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+    get:
+      operationId: getProject
+      tags: [projects]
+      responses:
+        '200':
+          description: Project.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Project'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /project-seed-optimizations:
+    post:
+      operationId: optimizeProjectSeed
+      tags: [projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectSeed'
+      responses:
+        '200':
+          description: Optimized seed.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ProjectSeed'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/story-bibles/current:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+    get:
+      operationId: getCurrentStoryBible
+      tags: [story-bibles]
+      responses:
+        '200':
+          description: Current story bible.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/StoryBible'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /projects/{projectID}/story-bibles/{storyBibleID}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+      - $ref: '#/components/parameters/StoryBibleID'
+    put:
+      operationId: updateStoryBible
+      tags: [story-bibles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryBible'
+      responses:
+        '200':
+          description: Updated story bible.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/StoryBible'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /projects/{projectID}/story-bibles/{storyBibleID}/character-syncs:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+      - $ref: '#/components/parameters/StoryBibleID'
+    post:
+      operationId: syncStoryBibleCharacters
+      tags: [story-bibles]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CharacterSyncRequest'
+      responses:
+        '200':
+          description: Character entities synchronized from story bible profiles.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CharacterSyncResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/chapters:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+    get:
+      operationId: listChapters
+      tags: [chapters]
+      responses:
+        '200':
+          description: Chapters.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Chapter'
+    post:
+      operationId: createChapter
+      tags: [chapters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChapterRequest'
+      responses:
+        '201':
+          description: Created chapter.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Chapter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/chapters/{chapterID}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+      - $ref: '#/components/parameters/ChapterID'
+    get:
+      operationId: getChapter
+      tags: [chapters]
+      responses:
+        '200':
+          description: Chapter.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Chapter'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateChapter
+      tags: [chapters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChapterRequest'
+      responses:
+        '200':
+          description: Updated chapter.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Chapter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    patch:
+      operationId: patchChapter
+      tags: [chapters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChapterRequest'
+      responses:
+        '200':
+          description: Patched chapter.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Chapter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/chapters/{chapterID}/versions:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+      - $ref: '#/components/parameters/ChapterID'
+    get:
+      operationId: listChapterVersions
+      tags: [chapter-versions]
+      responses:
+        '200':
+          description: Chapter versions.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ChapterVersion'
+    post:
+      operationId: createChapterVersion
+      tags: [chapter-versions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChapterVersionRequest'
+      responses:
+        '201':
+          description: Saved chapter version and queued index job.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SaveChapterVersionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/workflows:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+    get:
+      operationId: listProjectWorkflows
+      tags: [workflows]
+      responses:
+        '200':
+          description: Project workflows.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Workflow'
+  /workflows/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getWorkflow
+      tags: [workflows]
+      responses:
+        '200':
+          description: Workflow.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Workflow'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /projects/{projectID}/context-previews:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+    post:
+      operationId: previewContextSelection
+      tags: [generation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextPreviewRequest'
+      responses:
+        '200':
+          description: Context preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/chapters/{chapterID}/ideas:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+      - $ref: '#/components/parameters/ChapterID'
+    post:
+      operationId: generateChapterIdea
+      tags: [generation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChapterIdeaRequest'
+      responses:
+        '201':
+          description: Chapter idea generation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/chapters/{chapterID}/drafts:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+      - $ref: '#/components/parameters/ChapterID'
+    post:
+      operationId: draftChapter
+      tags: [generation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftRequest'
+      responses:
+        '201':
+          description: Draft result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/character-profiles:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+    post:
+      operationId: generateCharacterProfiles
+      tags: [generation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CharacterProfilesRequest'
+      responses:
+        '201':
+          description: Character profile generation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/graph/expansions:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+    post:
+      operationId: expandGraph
+      tags: [graph]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphExpansionRequest'
+      responses:
+        '200':
+          description: Graph expansion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /projects/{projectID}/retrieval/semantic-searches:
+    parameters:
+      - $ref: '#/components/parameters/ProjectID'
+    post:
+      operationId: semanticSearch
+      tags: [retrieval]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SemanticSearchRequest'
+      responses:
+        '200':
+          description: Semantic search results.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /providers:
+    get:
+      operationId: listProviders
+      tags: [providers]
+      responses:
+        '200':
+          description: Providers.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Provider'
+    post:
+      operationId: createProvider
+      tags: [providers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderRequest'
+      responses:
+        '201':
+          description: Created provider.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Provider'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /providers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getProvider
+      tags: [providers]
+      responses:
+        '200':
+          description: Provider.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Provider'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateProvider
+      tags: [providers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderRequest'
+      responses:
+        '200':
+          description: Updated provider.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Provider'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      operationId: deleteProvider
+      tags: [providers]
+      responses:
+        '200':
+          description: Deleted marker.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /providers/{id}/model-refreshes:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: refreshProviderModels
+      tags: [providers, models]
+      responses:
+        '200':
+          description: Refreshed model catalog.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ProviderModelRefresh'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /models:
+    get:
+      operationId: listModels
+      tags: [models]
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Models.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Model'
+    post:
+      operationId: createModel
+      tags: [models]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelRequest'
+      responses:
+        '201':
+          description: Created model.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Model'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /models/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getModel
+      tags: [models]
+      responses:
+        '200':
+          description: Model.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Model'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateModel
+      tags: [models]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelRequest'
+      responses:
+        '200':
+          description: Updated model.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Model'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      operationId: deleteModel
+      tags: [models]
+      responses:
+        '200':
+          description: Deleted marker.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /model-routing:
+    get:
+      operationId: getModelRouting
+      tags: [models]
+      responses:
+        '200':
+          description: Current model routing map.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ModelRouting'
+    put:
+      operationId: putModelRouting
+      tags: [models]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelRouting'
+      responses:
+        '200':
+          description: Updated model routing map.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ModelRouting'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - $ref: '#/components/parameters/EnabledQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: Agent configurations.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Agent'
+    post:
+      operationId: createAgent
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Agent'
+      responses:
+        '201':
+          description: Created agent configuration.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Agent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /agents/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getAgent
+      tags: [agents]
+      responses:
+        '200':
+          description: Agent configuration.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateAgent
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Agent'
+      responses:
+        '200':
+          description: Updated agent configuration.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Agent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      operationId: deleteAgent
+      tags: [agents]
+      responses:
+        '200':
+          description: Deleted marker.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /agents/{id}/runs:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: runAgent
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRunRequest'
+      responses:
+        '201':
+          description: Agent run result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /agent-runs:
+    get:
+      operationId: listAgentRuns
+      tags: [agents]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - name: agent_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: Agent runs.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AgentRun'
+  /agent-runs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getAgentRun
+      tags: [agents]
+      responses:
+        '200':
+          description: Agent run.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AgentRun'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /skill-sources:
+    get:
+      operationId: listSkillSources
+      tags: [skills]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - $ref: '#/components/parameters/EnabledQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: Skill sources.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SkillSource'
+    post:
+      operationId: createSkillSource
+      tags: [skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillSource'
+      responses:
+        '201':
+          description: Created skill source.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SkillSource'
+  /skill-sources/default/scans:
+    post:
+      operationId: scanDefaultSkillSource
+      tags: [skills]
+      responses:
+        '200':
+          description: Default skill source scan result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /skill-sources/{id}/scans:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: scanSkillSource
+      tags: [skills]
+      responses:
+        '200':
+          description: Skill source scan result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /skills:
+    get:
+      operationId: listSkills
+      tags: [skills]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/EnabledQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: Skills.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Skill'
+    post:
+      operationId: createSkill
+      tags: [skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillRequest'
+      responses:
+        '201':
+          description: Created skill.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Skill'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /skills/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getSkill
+      tags: [skills]
+      responses:
+        '200':
+          description: Skill.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Skill'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateSkill
+      tags: [skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Skill'
+      responses:
+        '200':
+          description: Updated skill.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Skill'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    patch:
+      operationId: patchSkill
+      tags: [skills]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnabledPatch'
+      responses:
+        '200':
+          description: Updated skill enabled state.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Skill'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      operationId: deleteSkill
+      tags: [skills]
+      responses:
+        '200':
+          description: Deleted marker.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /mcp-servers:
+    get:
+      operationId: listMCPServers
+      tags: [mcp]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - $ref: '#/components/parameters/EnabledQuery'
+        - name: status
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: MCP servers.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MCPServer'
+    post:
+      operationId: createMCPServer
+      tags: [mcp]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPServerRequest'
+      responses:
+        '201':
+          description: Created MCP server.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MCPServer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /mcp-servers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: getMCPServer
+      tags: [mcp]
+      responses:
+        '200':
+          description: MCP server.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MCPServer'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateMCPServer
+      tags: [mcp]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPServerRequest'
+      responses:
+        '200':
+          description: Updated MCP server.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MCPServer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    patch:
+      operationId: patchMCPServer
+      tags: [mcp]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnabledPatch'
+      responses:
+        '200':
+          description: Updated MCP server enabled state.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MCPServer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      operationId: deleteMCPServer
+      tags: [mcp]
+      responses:
+        '200':
+          description: Deleted marker.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V1Envelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /mcp-servers/{id}/connection-tests:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: testMCPServerConnection
+      tags: [mcp]
+      responses:
+        '200':
+          description: MCP server connection test result.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MCPConnectionTest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /mcp-servers/{id}/tool-refreshes:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: refreshMCPTools
+      tags: [mcp, tools]
+      responses:
+        '200':
+          description: Refreshed MCP tool definitions.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MCPToolRefresh'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /mcp-servers/{id}/tools:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      operationId: listMCPServerTools
+      tags: [mcp, tools]
+      responses:
+        '200':
+          description: Tools provided by an MCP server.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Tool'
+  /tools:
+    get:
+      operationId: listTools
+      tags: [tools]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - name: kind
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: mcp_server_id
+          in: query
+          schema:
+            type: string
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - name: skill_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: Tool catalog.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Tool'
+  /tools/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    patch:
+      operationId: patchTool
+      tags: [tools]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnabledPatch'
+      responses:
+        '200':
+          description: Updated tool enabled state.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Tool'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /tool-invocations:
+    get:
+      operationId: listToolInvocations
+      tags: [tools]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - name: agent_run_id
+          in: query
+          schema:
+            type: string
+        - name: agent_id
+          in: query
+          schema:
+            type: string
+        - name: tool_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: Tool invocations.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ToolInvocation'
+  /index-jobs:
+    get:
+      operationId: listIndexJobs
+      tags: [index]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - name: status
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: Index jobs.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/IndexJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /index-jobs/{id}/runs:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: runIndexJob
+      tags: [index]
+      responses:
+        '200':
+          description: Processed index job.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IndexJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /index-runs:
+    post:
+      operationId: runPendingIndexJobs
+      tags: [index]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIDQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200':
+          description: Pending index run result.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RunPendingIndex'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /vector-index-rebuilds:
+    post:
+      operationId: rebuildVectorIndex
+      tags: [index]
+      responses:
+        '200':
+          description: Vector rebuild result.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RebuildVectors'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /settings:
+    get:
+      operationId: listSettings
+      tags: [settings]
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Settings.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AppSetting'
+  /settings/{scope}/{key}:
+    parameters:
+      - name: scope
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: upsertSetting
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppSetting'
+      responses:
+        '200':
+          description: Upserted setting.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AppSetting'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+components:
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    ProjectID:
+      name: projectID
+      in: path
+      required: true
+      schema:
+        type: string
+    StoryBibleID:
+      name: storyBibleID
+      in: path
+      required: true
+      schema:
+        type: string
+    ChapterID:
+      name: chapterID
+      in: path
+      required: true
+      schema:
+        type: string
+    ProjectIDQuery:
+      name: project_id
+      in: query
+      schema:
+        type: string
+    EnabledQuery:
+      name: enabled
+      in: query
+      schema:
+        type: boolean
+    LimitQuery:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ServerError:
+      description: Server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    V1Envelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          description: Endpoint-specific payload.
+        meta:
+          $ref: '#/components/schemas/Meta'
+    V1ListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/V1Envelope'
+        - type: object
+          required: [page]
+          properties:
+            page:
+              $ref: '#/components/schemas/Page'
+    Meta:
+      type: object
+      required: [request_id]
+      properties:
+        request_id:
+          type: string
+    Page:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+        limit:
+          type: integer
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/APIError'
+    APIError:
+      type: object
+      required: [code, message, status, request_id]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        status:
+          type: integer
+        request_id:
+          type: string
+        details:
+          description: Endpoint-specific error details.
+    HealthEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/V1Envelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Health'
+    Health:
+      type: object
+      required: [status, time, qdrant_configured, postgres_configured]
+      properties:
+        status:
+          type: string
+          example: ok
+        time:
+          type: string
+          format: date-time
+        qdrant_configured:
+          type: boolean
+        postgres_configured:
+          type: boolean
+    SystemStatus:
+      type: object
+      properties:
+        status:
+          type: string
+        postgres_configured:
+          type: boolean
+        qdrant_configured:
+          type: boolean
+        provider_count:
+          type: integer
+        model_count:
+          type: integer
+        pending_jobs_count:
+          type: integer
+        checked_at:
+          type: string
+          format: date-time
+    ProjectSeed:
+      type: object
+      required: [title, premise]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+        premise:
+          type: string
+        genre:
+          type: string
+        tone:
+          type: string
+        audience:
+          type: string
+        language:
+          type: string
+        setting:
+          type: string
+        themes:
+          type: array
+          items:
+            type: string
+        main_characters:
+          type: array
+          items:
+            type: string
+        constraints:
+          type: array
+          items:
+            type: string
+        target_chapters:
+          type: integer
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        seed:
+          $ref: '#/components/schemas/ProjectSeed'
+        active_story_bible_id:
+          type: string
+        default_worldline_id:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    InitializeProject:
+      type: object
+      properties:
+        project:
+          $ref: '#/components/schemas/Project'
+        story_bible:
+          $ref: '#/components/schemas/StoryBible'
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+    StoryBible:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        version:
+          type: integer
+        title:
+          type: string
+        logline:
+          type: string
+        synopsis:
+          type: string
+        genre:
+          type: string
+        tone:
+          type: string
+        audience:
+          type: string
+        language:
+          type: string
+        premise:
+          type: string
+        themes:
+          type: array
+          items:
+            type: string
+        world_rules:
+          type: array
+          items:
+            type: string
+        characters:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryBibleCharacter'
+        foreshadows:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryBibleForeshadow'
+        chapter_plan:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryBibleChapterPlan'
+        source_seed:
+          $ref: '#/components/schemas/ProjectSeed'
+        rules:
+          $ref: '#/components/schemas/StringMap'
+        approved:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    StoryBibleCharacter:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        desire:
+          type: string
+        wound:
+          type: string
+        secret:
+          type: string
+        summary:
+          type: string
+        entity_id:
+          type: string
+        sync_status:
+          type: string
+        synced_at:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+    StoryBibleForeshadow:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        planted_in:
+          type: string
+        payoff_hint:
+          type: string
+        status:
+          type: string
+    StoryBibleChapterPlan:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+    CharacterSyncRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        source:
+          type: string
+        characters:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryBibleCharacter'
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+    CharacterSyncResponse:
+      type: object
+      properties:
+        project_id:
+          type: string
+        story_bible_id:
+          type: string
+        characters:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+        mappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/CharacterProfileMapping'
+    CharacterProfileMapping:
+      type: object
+      properties:
+        name:
+          type: string
+        entity_id:
+          type: string
+        action:
+          type: string
+    Chapter:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        number:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ChapterRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        chapter_id:
+          type: string
+        number:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+    ChapterVersion:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        chapter_id:
+          type: string
+        version:
+          type: integer
+        title:
+          type: string
+        content:
+          type: string
+        summary:
+          type: string
+        author_role:
+          type: string
+        source_workflow_id:
+          type: string
+        index_status:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+    ChapterVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [title, content]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        summary:
+          type: string
+        author_role:
+          type: string
+        source_workflow_id:
+          type: string
+        index_status:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+    SaveChapterVersionResponse:
+      type: object
+      properties:
+        chapter_version:
+          $ref: '#/components/schemas/ChapterVersion'
+        index_job:
+          $ref: '#/components/schemas/IndexJob'
+    Provider:
+      type: object
+      required: [id, name, type, enabled, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        base_url:
+          type: string
+        api_key_hint:
+          type: string
+        enabled:
+          type: boolean
+        streaming:
+          type: boolean
+        trace_enabled:
+          type: boolean
+        trace_retention_days:
+          type: integer
+        default_request_timeout_sec:
+          type: integer
+        default_model_id:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        status:
+          type: string
+        last_checked_at:
+          type: string
+          format: date-time
+        last_model_refresh_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ProviderRequest:
+      type: object
+      additionalProperties: false
+      required: [name, type]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+        enabled:
+          type: boolean
+        streaming:
+          type: boolean
+        trace_enabled:
+          type: boolean
+        trace_retention_days:
+          type: integer
+        default_request_timeout_sec:
+          type: integer
+        default_model_id:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+    ProviderModelRefresh:
+      type: object
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/Model'
+        count:
+          type: integer
+        provider:
+          $ref: '#/components/schemas/Provider'
+    Model:
+      type: object
+      properties:
+        id:
+          type: string
+        provider_id:
+          type: string
+        provider_type:
+          type: string
+        name:
+          type: string
+        display_name:
+          type: string
+        kind:
+          type: string
+        context_window:
+          type: integer
+        max_output_tokens:
+          type: integer
+        dimension:
+          type: integer
+        supports_tools:
+          type: boolean
+        supports_streaming:
+          type: boolean
+        default_for_kind:
+          type: boolean
+        enabled:
+          type: boolean
+        cost_input_per_mtok:
+          type: number
+        cost_output_per_mtok:
+          type: number
+        routing_weight:
+          type: integer
+        allowed_agent_roles:
+          type: array
+          items:
+            type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+    ModelRequest:
+      allOf:
+        - $ref: '#/components/schemas/Model'
+    ModelRouting:
+      type: object
+      additionalProperties: false
+      required: [routes]
+      properties:
+        routes:
+          type: object
+          additionalProperties:
+            type: string
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        role:
+          type: string
+        model_id:
+          type: string
+        enabled:
+          type: boolean
+        system_prompt:
+          type: string
+        skill_ids:
+          type: array
+          items:
+            type: string
+        tool_ids:
+          type: array
+          items:
+            type: string
+        mcp_server_ids:
+          type: array
+          items:
+            type: string
+        memory_policy:
+          $ref: '#/components/schemas/ObjectMap'
+        runtime_options:
+          $ref: '#/components/schemas/ObjectMap'
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AgentRun:
+      type: object
+      properties:
+        id:
+          type: string
+        agent_id:
+          type: string
+        project_id:
+          type: string
+        status:
+          type: string
+        input:
+          $ref: '#/components/schemas/ObjectMap'
+        output:
+          $ref: '#/components/schemas/ObjectMap'
+        error:
+          type: string
+        tool_invocation_ids:
+          type: array
+          items:
+            type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AgentRunRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        project_id:
+          type: string
+        task_type:
+          type: string
+        input:
+          $ref: '#/components/schemas/ObjectMap'
+        context_selection:
+          $ref: '#/components/schemas/ContextSelection'
+        max_output_tokens:
+          type: integer
+    SkillSource:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        path:
+          type: string
+        inline_text:
+          type: string
+        enabled:
+          type: boolean
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Skill:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        source_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        content:
+          type: string
+        path:
+          type: string
+        enabled:
+          type: boolean
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SkillRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        content:
+          type: string
+        enabled:
+          type: boolean
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        source_id:
+          type: string
+        project_id:
+          type: string
+        path:
+          type: string
+    EnabledPatch:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+    MCPServer:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        transport:
+          type: string
+        status:
+          type: string
+        enabled:
+          type: boolean
+        command:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+        url:
+          type: string
+        headers:
+          $ref: '#/components/schemas/StringMap'
+        secret_headers_hint:
+          type: array
+          items:
+            type: string
+        env:
+          $ref: '#/components/schemas/StringMap'
+        secret_env_hint:
+          type: array
+          items:
+            type: string
+        timeout_sec:
+          type: integer
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        last_seen_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    MCPServerRequest:
+      type: object
+      additionalProperties: false
+      required: [name, transport]
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        transport:
+          type: string
+        status:
+          type: string
+        enabled:
+          type: boolean
+        command:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+        url:
+          type: string
+        headers:
+          $ref: '#/components/schemas/StringMap'
+        secret_headers:
+          $ref: '#/components/schemas/StringMap'
+        env:
+          $ref: '#/components/schemas/StringMap'
+        secret_env:
+          $ref: '#/components/schemas/StringMap'
+        timeout_sec:
+          type: integer
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+    MCPConnectionTest:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        server:
+          $ref: '#/components/schemas/MCPServer'
+    MCPToolRefresh:
+      type: object
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tool'
+        count:
+          type: integer
+        unavailable:
+          type: integer
+    Tool:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+        mcp_server_id:
+          type: string
+        source_id:
+          type: string
+        skill_id:
+          type: string
+        input_schema:
+          $ref: '#/components/schemas/ObjectMap'
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ToolInvocation:
+      type: object
+      properties:
+        id:
+          type: string
+        agent_run_id:
+          type: string
+        agent_id:
+          type: string
+        project_id:
+          type: string
+        tool_id:
+          type: string
+        tool_name:
+          type: string
+        status:
+          type: string
+        arguments:
+          $ref: '#/components/schemas/ObjectMap'
+        result:
+          $ref: '#/components/schemas/ObjectMap'
+        error:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    IndexJob:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        chapter_id:
+          type: string
+        chapter_version_id:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+        attempts:
+          type: integer
+        error:
+          type: string
+        payload:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        scheduled_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+    RunPendingIndex:
+      type: object
+      properties:
+        processed:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexJob'
+        count:
+          type: integer
+        error:
+          type: string
+    RebuildVectors:
+      type: object
+      properties:
+        embedding_model_id:
+          type: string
+        embedding_model_name:
+          type: string
+        embedding_dimension:
+          type: integer
+        project_count:
+          type: integer
+        chapter_version_count:
+          type: integer
+        job_count:
+          type: integer
+    AppSetting:
+      type: object
+      properties:
+        scope:
+          type: string
+        key:
+          type: string
+        value:
+          $ref: '#/components/schemas/ObjectMap'
+        updated_at:
+          type: string
+          format: date-time
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        kind:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+        model_id:
+          type: string
+        context_pack_id:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+        input:
+          $ref: '#/components/schemas/StringMap'
+        output:
+          $ref: '#/components/schemas/StringMap'
+        error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WorkflowStep:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+    Entity:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        worldline_id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+        traits:
+          $ref: '#/components/schemas/StringMap'
+        importance:
+          type: integer
+        status:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ContextSelection:
+      type: object
+      additionalProperties: false
+      properties:
+        chapter_ids:
+          type: array
+          items:
+            type: string
+        character_ids:
+          type: array
+          items:
+            type: string
+        character_names:
+          type: array
+          items:
+            type: string
+        include_world_rules:
+          type: boolean
+    ContextPreviewRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        chapter_id:
+          type: string
+        title:
+          type: string
+        brief:
+          type: string
+        prompt:
+          type: string
+        context_node_ids:
+          type: array
+          items:
+            type: string
+        context_selection:
+          $ref: '#/components/schemas/ContextSelection'
+        reference_selection:
+          $ref: '#/components/schemas/ContextSelection'
+        style_constraints:
+          type: array
+          items:
+            type: string
+        role:
+          type: string
+        token_budget:
+          type: integer
+    ChapterIdeaRequest:
+      allOf:
+        - $ref: '#/components/schemas/ContextPreviewRequest'
+        - type: object
+          properties:
+            max_output_tokens:
+              type: integer
+    DraftRequest:
+      allOf:
+        - $ref: '#/components/schemas/ChapterIdeaRequest'
+        - type: object
+          properties:
+            chapter_idea:
+              type: string
+            chapter_idea_workflow_id:
+              type: string
+    CharacterProfilesRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        focus:
+          type: string
+        count:
+          type: integer
+        brief:
+          type: string
+        chapter_id:
+          type: string
+        context_node_ids:
+          type: array
+          items:
+            type: string
+        context_selection:
+          $ref: '#/components/schemas/ContextSelection'
+        max_output_tokens:
+          type: integer
+    GraphExpansionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        entity_ids:
+          type: array
+          items:
+            type: string
+        depth:
+          type: integer
+    SemanticSearchRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+        project_id:
+          type: string
+        limit:
+          type: integer
+        filters:
+          $ref: '#/components/schemas/StringMap'
+    StringMap:
+      type: object
+      additionalProperties:
+        type: string
+    ObjectMap:
+      type: object
+      additionalProperties: true

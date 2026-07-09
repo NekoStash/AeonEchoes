@@ -6,7 +6,12 @@
   "common": {
     "emptyValue": "—",
     "listSeparator": ", ",
-    "pathSeparator": " / "
+    "pathSeparator": " / ",
+    "loading": "Loading",
+    "error": "Error",
+    "retry": "Retry",
+    "search": "Search",
+    "clear": "Clear"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -53,6 +58,55 @@
   },
   "language": {
     "label": "Language"
+  },
+  "ui": {
+    "dialog": {
+      "label": "Dialog"
+    },
+    "sheet": {
+      "label": "Side panel"
+    },
+    "select": {
+      "noResults": "No matching results",
+      "search": "Search options"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Search",
+      "clear": "Clear search"
+    },
+    "sort": {
+      "placeholder": "Sort by"
+    },
+    "viewMode": {
+      "label": "View mode",
+      "table": "Table view",
+      "grid": "Card view",
+      "list": "List view"
+    },
+    "density": {
+      "label": "Display density",
+      "compact": "Compact",
+      "comfortable": "Comfortable",
+      "relaxed": "Relaxed"
+    },
+    "states": {
+      "emptyTitle": "No data yet",
+      "emptyDescription": "There is nothing to display right now.",
+      "loadingTitle": "Loading",
+      "loadingDescription": "Please wait while the content is prepared.",
+      "errorTitle": "Unable to load",
+      "errorDescription": "The request could not be completed. Check the connection or try again later.",
+      "noResultsTitle": "No matching results",
+      "noResultsDescription": "Try changing the search terms or filters."
+    },
+    "editableList": {
+      "add": "Add item",
+      "remove": "Remove item",
+      "empty": "The list is empty. Add an item to continue.",
+      "itemPlaceholder": "Enter content",
+      "itemLabel": "List item {index}"
+    }
   },
   "status": {
     "online": "Online",
@@ -174,16 +228,100 @@
     }
   },
   "projects": {
+    "eyebrow": "Project library",
     "title": "Projects",
-    "description": "Manage writing projects, review status, and enter project workspaces.",
+    "description": "Manage writing projects and quickly find the right workspace by status, setup, or recent activity.",
+    "libraryTitle": "Project library",
+    "libraryDescription": "Manage every writing project with search, filters, sorting, view mode, and density controls.",
     "emptyTitle": "No projects yet",
     "emptyDescription": "After creating a project, you can review story bible status, chapter count, and open it here.",
-    "opened": "Opened",
+    "opened": "Recently opened",
     "notOpened": "Not opened",
     "noTags": "No tags",
     "chapterCount": "Chapters",
     "chapterCountValue": "{count} chapters",
-    "storyBibleStatus": "Story bible status"
+    "targetChapters": "Target chapters",
+    "targetChapterCountValue": "{count} chapters",
+    "storyBibleStatus": "Story bible status",
+    "activeStoryBible": "Active Story Bible",
+    "missingActiveStoryBible": "No Active Story Bible",
+    "projectStatus": "Project status",
+    "projectId": "Project ID",
+    "slug": "Slug",
+    "createdAt": "Created at",
+    "updatedAt": "Updated at",
+    "seedProfile": "Seed profile",
+    "seedGenre": "Genre",
+    "seedTone": "Tone",
+    "seedAudience": "Audience",
+    "viewModeLabel": "Project library view",
+    "densityLabel": "Project library density",
+    "actions": {
+      "overview": "Overview",
+      "editor": "Editor",
+      "graph": "Graph"
+    },
+    "stats": {
+      "total": "Total projects",
+      "activeBible": "Active Bible",
+      "recentlyOpened": "Recently opened",
+      "targetChapters": "Target chapters",
+      "readyBibleHint": "{count} Story Bibles ready",
+      "activeBibleHint": "{count} total projects",
+      "openedHint": "{count} projects currently shown",
+      "targetChaptersHint": "{count} chapters on average"
+    },
+    "search": {
+      "label": "Search project library",
+      "placeholder": "Search title, id, slug, status, premise, genre, tone, audience, tags, or Active Bible ID",
+      "empty": "No matching projects"
+    },
+    "filters": {
+      "allStatuses": "All project statuses",
+      "allBibleStatuses": "All Story Bible statuses",
+      "allActiveBible": "All Active Bible states",
+      "withActiveBible": "Has Active Bible",
+      "withoutActiveBible": "No Active Bible",
+      "allRecent": "All open states",
+      "recentlyOpened": "Recently opened",
+      "notRecentlyOpened": "Not opened",
+      "resultSummary": "Showing {visible} / {total} projects",
+      "activeCount": "{count} filters",
+      "clear": "Clear filters"
+    },
+    "sort": {
+      "updatedDesc": "Recently updated first",
+      "createdDesc": "Recently created first",
+      "titleAsc": "Title A → Z",
+      "targetChaptersDesc": "Most target chapters first"
+    },
+    "table": {
+      "caption": "Project library list",
+      "project": "Project",
+      "status": "Status",
+      "storyBible": "Story Bible",
+      "targetChapters": "Target chapters",
+      "updatedAt": "Dates",
+      "actions": "Actions"
+    },
+    "states": {
+      "loadingTitle": "Loading project library",
+      "loadingDescription": "Reading projects, setup state, and recently opened items.",
+      "emptyTitle": "No projects yet",
+      "emptyDescription": "Create the first project to unlock search, filters, and workspace entry actions.",
+      "errorTitle": "Unable to load projects",
+      "noResultsTitle": "No matching projects",
+      "noResultsDescription": "Change the search term, status, or Story Bible filters and try again."
+    },
+    "statuses": {
+      "active": "Active",
+      "draft": "Draft",
+      "planning": "Planning",
+      "paused": "Paused",
+      "archived": "Archived",
+      "completed": "Completed",
+      "unknown": "Unknown status"
+    }
   },
   "projectNew": {
     "title": "Create project",
@@ -694,8 +832,66 @@
     "search": {
       "provider": "Search provider name or type",
       "model": "Search model name, provider, or ID",
+      "modelCatalogLabel": "Search model catalog",
+      "modelCatalog": "Search name, ID, provider, kind, or role",
       "empty": "No matching results"
     },
+    "filters": {
+      "allKinds": "All kinds",
+      "allStatuses": "All statuses",
+      "allCapabilities": "All capabilities",
+      "allRoles": "All roles",
+      "capabilityTools": "Supports tools",
+      "capabilityStreaming": "Supports streaming",
+      "capabilityDefault": "Default for kind",
+      "roleIncludesAllRoles": "Includes models with unrestricted roles",
+      "roleSearch": "Search roles",
+      "resultSummary": "Showing {visible} / {total} models",
+      "activeCount": "{count} filters",
+      "clear": "Clear filters"
+    },
+    "sort": {
+      "nameAsc": "Name A → Z",
+      "nameDesc": "Name Z → A",
+      "providerAsc": "Provider A → Z",
+      "providerDesc": "Provider Z → A",
+      "contextDesc": "Largest context first",
+      "contextAsc": "Smallest context first",
+      "weightDesc": "Highest weight first",
+      "weightAsc": "Lowest weight first",
+      "activityDesc": "Recently updated first",
+      "activityAsc": "Oldest updated first"
+    },
+    "table": {
+      "caption": "Model catalog list",
+      "model": "Model",
+      "provider": "Provider",
+      "kind": "Kind",
+      "status": "Status",
+      "context": "Context",
+      "outputDimension": "Output / dimension",
+      "capabilities": "Capabilities",
+      "roles": "Roles",
+      "routingWeight": "Routing weight",
+      "actions": "Actions"
+    },
+    "states": {
+      "loadingTitle": "Loading model catalog",
+      "loadingDescription": "Reading providers and model configuration.",
+      "emptyTitle": "No models yet",
+      "emptyDescription": "Add a model manually or refresh a provider to sync upstream models.",
+      "noResultsTitle": "No matching models",
+      "noResultsDescription": "Change the search term or clear filters and try again."
+    },
+    "capabilityLabels": {
+      "streaming": "Streaming",
+      "tools": "Tools"
+    },
+    "viewModeLabel": "Model catalog view",
+    "densityLabel": "Model catalog density",
+    "outputShort": "Output",
+    "dimensionShort": "Dim",
+    "updatedAt": "Updated at",
     "embeddingMaintenanceEyebrow": "Vector maintenance",
     "embeddingMaintenanceTitle": "Vector maintenance after embedding routing changes",
     "embeddingMaintenanceDescription": "These are explicit maintenance actions, not automatic routing changes. Rebuild the vector set first, then run pending indexing.",
@@ -760,6 +956,7 @@
     }
   },
   "editor": {
+    "eyebrow": "Writing workspace",
     "title": "Chapter",
     "description": "Edit content, save versions, and inspect real context hits plus execution diagnostics.",
     "reference": "Reference",
@@ -897,6 +1094,21 @@
       "indexFreshness": "Index freshness",
       "indexJobs": "Index jobs"
     },
+    "workspace": {
+      "ready": "Workspace ready",
+      "busy": "Working",
+      "inspectorEyebrow": "Inspector",
+      "inspectorTitle": "Context and run checks",
+      "inspectorDescription": "Organizes assistant information by context, generation, review, versions, and run log."
+    },
+    "states": {
+      "versionsDescription": "Review and load saved versions for the current chapter.",
+      "loadingVersionsTitle": "Loading chapter versions",
+      "loadingVersionsDescription": "Reading saved versions for the current chapter.",
+      "emptyVersionsTitle": "No chapter versions yet"
+    },
+    "runLogTitle": "Model, tokens, tool calls, and indexing",
+    "runLogDescription": "Review the model provider, routing, token-related context, tool trace, and index freshness used by the latest generation.",
     "instruction": "Instruction",
     "style": "Style constraints",
     "chapterPlan": "Story idea / chapter plan",
@@ -922,8 +1134,11 @@
       "eyebrow": "Context preview",
       "title": "Actual context hit",
       "description": "Preview the real ContextPack, index freshness, and model routing result that the backend will use for the current selection.",
+      "loadingTitle": "Preparing context",
       "loading": "Generating context preview…",
+      "emptyTitle": "No context preview yet",
       "empty": "No preview result yet. Pick a focused scope, then preview plan or draft context.",
+      "unavailableTitle": "Context preview unavailable",
       "actualContext": "Actual context hit",
       "structuredContextTitle": "Structured retrieved context",
       "emptyStructuredContext": "This preview returned no structured retrieval content to display.",
@@ -1013,7 +1228,8 @@
       "routeSource": "Route source",
       "executionTargets": {
         "chapterIdea": "Chapter plan generation",
-        "draft": "Chapter draft generation"
+        "draft": "Chapter draft generation",
+        "idle": "Not run yet"
       }
     },
     "freshness": {
@@ -1097,41 +1313,72 @@
       "generateDraftFailed": "Failed to generate AI draft",
       "saveVersionFailed": "Failed to save chapter version",
       "previewContextFailed": "Failed to preview context",
-      "previewContextRemoved": "The legacy context preview endpoint has been removed. Configure agents, skills, and tools in Agent Management, then run a plan or draft directly.",
+      "previewContextRemoved": "Context preview is temporarily unavailable. Generate a plan or continue prose directly; this page will show the actual model route, tool trace, and index state after generation.",
       "loadAgentsFailed": "Failed to load agent configs",
       "noAgentConfigured": "No enabled agent is available. Create and enable a writing or plot agent in Agent Management first."
     }
   },
   "agents": {
-    "eyebrow": "Agent console",
-    "title": "Agents, skills, and tools",
-    "description": "Manage agent configs, inline skills, MCP servers, and the tool catalog. The chapter editor now runs enabled agents instead of calling legacy workflow endpoints.",
+    "eyebrow": "Resource console",
+    "title": "Agent resources",
+    "description": "Manage Agents, Skills, MCP Servers, and Tools by resource type while preserving real backend save, delete, enable, scan, test, and tool refresh actions.",
     "enabled": "Enabled",
     "disabled": "Disabled",
+    "tabs": {
+      "agents": "Agents",
+      "skills": "Skills",
+      "mcp": "MCP Servers",
+      "tools": "Tools"
+    },
     "stats": {
-      "agents": "Enabled agents",
-      "skills": "Enabled skills",
-      "mcp": "Enabled MCP",
-      "tools": "Active tools"
+      "agents": "Agents",
+      "skills": "Skills",
+      "mcp": "MCP Servers",
+      "tools": "Tools",
+      "enabledCount": "{count} enabled",
+      "activeTools": "{count} active tools"
     },
     "sections": {
-      "agents": "Agent configs",
-      "agentsDescription": "Configure roles, system prompts, and runtime switches.",
-      "skills": "Skill library",
-      "skillsDescription": "Create inline skills or scan the default skill directory.",
-      "mcp": "MCP servers",
-      "mcpDescription": "Configure stdio / HTTP MCP services and refresh tools.",
-      "tools": "Tool catalog",
-      "toolsDescription": "Enable or disable builtin, MCP, and skill tools."
+      "agents": "Agents",
+      "agentsDescription": "Maintain Agent roles, system prompts, and enabled state.",
+      "skills": "Skills",
+      "skillsDescription": "Maintain inline skills or scan the default skill source.",
+      "mcp": "MCP Servers",
+      "mcpDescription": "Configure MCP connections, test connectivity, and refresh tool catalogs.",
+      "tools": "Tools",
+      "toolsDescription": "Search, filter, enable, or disable builtin, MCP, and skill tools."
     },
     "roles": {
       "default": "Default role",
       "writer": "Writer",
       "editor": "Editor",
+      "genesis_optimizer": "Genesis optimizer",
       "plot_architect": "Plot architect",
       "world_builder": "World builder",
       "character_keeper": "Character keeper",
-      "continuity_auditor": "Continuity auditor"
+      "continuity_auditor": "Continuity auditor",
+      "fact_extractor": "Fact extractor",
+      "graph_curator": "Graph curator"
+    },
+    "transports": {
+      "stdio": "stdio",
+      "streamable_http": "streamable HTTP",
+      "sse": "SSE"
+    },
+    "kinds": {
+      "builtin": "Builtin",
+      "mcp": "MCP",
+      "skill": "Skill"
+    },
+    "statuses": {
+      "active": "Active",
+      "disabled": "Disabled",
+      "unavailable": "Unavailable",
+      "online": "Online",
+      "offline": "Offline",
+      "failed": "Failed",
+      "unknown": "Unknown",
+      "enabled": "Enabled"
     },
     "placeholders": {
       "agentName": "Agent name",
@@ -1139,64 +1386,237 @@
       "systemPrompt": "System prompt",
       "skillName": "Skill name",
       "skillContent": "Skill content",
+      "sourceId": "Skill source ID, e.g. default",
       "mcpName": "MCP server name",
       "command": "Command, e.g. node",
       "url": "Service URL",
       "args": "Arguments separated by spaces"
     },
     "actions": {
+      "newAgent": "New Agent",
+      "newSkill": "New Skill",
+      "newMCP": "New MCP Server",
       "createAgent": "Create agent",
       "createSkill": "Create inline skill",
       "createMCP": "Create MCP",
       "scanSkills": "Scan skills",
+      "testMCP": "Test",
       "refreshTools": "Refresh tools"
     },
-    "empty": {
-      "agents": "No agent configs yet.",
-      "skills": "No skills yet.",
-      "mcp": "No MCP servers yet.",
-      "tools": "No tool definitions yet."
+    "filters": {
+      "allRoles": "All roles",
+      "allStatuses": "All statuses",
+      "allSources": "All sources",
+      "allTransports": "All transports",
+      "allKinds": "All kinds",
+      "noSource": "No source",
+      "roleSearch": "Search roles",
+      "sourceSearch": "Search sources",
+      "resultSummary": "Showing {visible} / {total}",
+      "activeCount": "{count} filters",
+      "clear": "Clear filters"
+    },
+    "sort": {
+      "nameAsc": "Name A → Z",
+      "nameDesc": "Name Z → A",
+      "statusAsc": "Status A → Z",
+      "statusDesc": "Status Z → A",
+      "updatedDesc": "Recently updated first",
+      "updatedAsc": "Oldest updated first",
+      "createdDesc": "Recently created first",
+      "createdAsc": "Oldest created first"
+    },
+    "search": {
+      "agentsLabel": "Search Agents",
+      "agents": "Search name, ID, description, role, project_id, model, or linked IDs",
+      "skillsLabel": "Search Skills",
+      "skills": "Search name, ID, description, source_id, project_id, or path",
+      "mcpLabel": "Search MCP Servers",
+      "mcp": "Search name, ID, transport, status, project_id, command, or URL",
+      "toolsLabel": "Search Tools",
+      "tools": "Search name, ID, description, kind, status, mcp_server_id, or source_id",
+      "empty": "No matching results"
+    },
+    "table": {
+      "agentCaption": "Agent list",
+      "skillCaption": "Skill list",
+      "mcpCaption": "MCP Server list",
+      "toolCaption": "Tool list",
+      "agent": "Agent",
+      "skill": "Skill",
+      "server": "Server",
+      "tool": "Tool",
+      "role": "Role",
+      "status": "Status",
+      "connections": "Connections",
+      "source": "Source",
+      "transport": "Transport",
+      "endpoint": "Endpoint",
+      "kind": "Kind",
+      "origin": "Origin",
+      "updatedAt": "Updated at",
+      "actions": "Actions",
+      "skills": "Skills",
+      "tools": "Tools",
+      "mcp": "MCP"
+    },
+    "states": {
+      "agents": {
+        "loadingTitle": "Loading Agents",
+        "loadingDescription": "Reading Agent configuration.",
+        "emptyTitle": "No Agents yet",
+        "emptyDescription": "Create an Agent so the chapter editor can select and run that role.",
+        "noResultsTitle": "No matching Agents",
+        "noResultsDescription": "Change the search term, role, or enabled filter and try again."
+      },
+      "skills": {
+        "loadingTitle": "Loading Skills",
+        "loadingDescription": "Reading the skill library.",
+        "emptyTitle": "No Skills yet",
+        "emptyDescription": "Create an inline skill or scan the default skill source.",
+        "noResultsTitle": "No matching Skills",
+        "noResultsDescription": "Change the search term, source, or enabled filter and try again."
+      },
+      "mcp": {
+        "loadingTitle": "Loading MCP Servers",
+        "loadingDescription": "Reading MCP connection configuration.",
+        "emptyTitle": "No MCP Servers yet",
+        "emptyDescription": "Create an MCP Server, then test the connection and refresh tools.",
+        "noResultsTitle": "No matching MCP Servers",
+        "noResultsDescription": "Change the search term, status, enabled filter, or transport and try again."
+      },
+      "tools": {
+        "loadingTitle": "Loading Tools",
+        "loadingDescription": "Reading the tool catalog.",
+        "emptyTitle": "No Tools yet",
+        "emptyDescription": "Tools usually come from builtin abilities, skills, or MCP Server refreshes.",
+        "noResultsTitle": "No matching Tools",
+        "noResultsDescription": "Change the search term, kind, or status filter and try again."
+      }
+    },
+    "fields": {
+      "name": "Name",
+      "role": "Role",
+      "description": "Description",
+      "systemPrompt": "System prompt",
+      "skillContent": "Skill content",
+      "sourceId": "source_id",
+      "skillId": "skill_id",
+      "mcpServerId": "mcp_server_id",
+      "projectId": "project_id",
+      "updatedAt": "Updated at",
+      "transport": "Transport",
+      "command": "Command",
+      "url": "URL",
+      "args": "Arguments"
+    },
+    "connectionCounts": {
+      "skills": "Skills {count}",
+      "tools": "Tools {count}",
+      "mcp": "MCP {count}"
+    },
+    "emptyDescriptions": {
+      "agent": "No description.",
+      "skill": "No description.",
+      "tool": "No description."
+    },
+    "dialogs": {
+      "newAgent": "New Agent",
+      "editAgent": "Edit Agent",
+      "agentDescription": "Maintain the Agent role, prompt, and enabled state.",
+      "newSkill": "New Skill",
+      "editSkill": "Edit Skill",
+      "skillDescription": "Maintain inline skill content and source identity.",
+      "newMCP": "New MCP Server",
+      "editMCP": "Edit MCP Server",
+      "mcpDescription": "Maintain MCP connection configuration. Test or refresh tools from the list after saving."
     },
     "messages": {
       "agentSaved": "Agent saved.",
+      "agentEnabled": "Agent enabled.",
+      "agentDisabled": "Agent disabled.",
+      "agentDeleted": "Agent deleted.",
       "skillSaved": "Skill saved.",
-      "mcpSaved": "MCP server saved.",
+      "skillEnabled": "Skill enabled.",
+      "skillDisabled": "Skill disabled.",
+      "skillDeleted": "Skill deleted.",
+      "mcpSaved": "MCP Server saved.",
+      "mcpEnabled": "MCP Server enabled.",
+      "mcpDisabled": "MCP Server disabled.",
+      "mcpDeleted": "MCP Server deleted.",
+      "mcpTestPassed": "MCP connection test passed.",
+      "mcpTestFailed": "MCP connection test did not pass.",
+      "toolEnabled": "Tool enabled.",
+      "toolDisabled": "Tool disabled.",
       "skillScanComplete": "Skill scan complete. {count} created or updated.",
       "toolsRefreshed": "Tool refresh complete. {count} tools are available."
     },
     "resultScopes": {
-      "load": "Agent data load",
+      "load": "Agent resource load",
       "agentSave": "Agent save",
+      "agentToggle": "Agent enable toggle",
+      "agentDelete": "Agent delete",
       "skillSave": "Skill save",
+      "skillToggle": "Skill enable toggle",
+      "skillDelete": "Skill delete",
       "mcpSave": "MCP save",
+      "mcpToggle": "MCP enable toggle",
+      "mcpDelete": "MCP delete",
       "skillScan": "Skill scan",
-      "toolRefresh": "Tool refresh"
+      "mcpTest": "MCP test",
+      "toolRefresh": "Tool refresh",
+      "toolToggle": "Tool enable toggle",
+      "delete": "Resource delete"
     },
     "errors": {
-      "loadFailed": "Failed to load agent data",
-      "saveAgentFailed": "Failed to save agent",
-      "saveSkillFailed": "Failed to save skill",
-      "saveMCPFailed": "Failed to save MCP server",
+      "loadFailed": "Failed to load agent resources",
+      "saveAgentFailed": "Failed to save Agent",
+      "saveSkillFailed": "Failed to save Skill",
+      "saveMCPFailed": "Failed to save MCP Server",
+      "toggleAgentFailed": "Failed to toggle Agent",
+      "toggleSkillFailed": "Failed to toggle Skill",
+      "toggleMCPFailed": "Failed to toggle MCP Server",
+      "toggleToolFailed": "Failed to toggle Tool",
       "scanSkillsFailed": "Failed to scan skills",
-      "refreshToolsFailed": "Failed to refresh tools"
-    }
+      "testMCPFailed": "Failed to test MCP",
+      "refreshToolsFailed": "Failed to refresh tools",
+      "deleteFailed": "Failed to delete resource",
+      "agentNameRequired": "Agent name is required.",
+      "skillNameRequired": "Skill name is required.",
+      "mcpNameRequired": "MCP Server name is required.",
+      "mcpCommandRequired": "stdio MCP Server requires a command.",
+      "mcpUrlRequired": "HTTP/SSE MCP Server requires a service URL."
+    },
+    "confirmDeleteTitle": "Confirm resource deletion",
+    "confirmDeleteDescription": "Delete “{name}”?",
+    "confirmDeleteWarning": "This action cannot be undone. Make sure this resource is no longer referenced by projects or other resources.",
+    "viewModeLabel": "Resource view",
+    "densityLabel": "Resource display density"
   },
   "graph": {
+    "eyebrow": "Graph workspace",
     "title": "Story graph",
-    "description": "Explore relationships between characters, events, and story facts.",
+    "description": "Explore characters, events, chapters, and canon rules in one dense graph workspace with search, filters, and sortable collections.",
     "tabs": {
       "graph": "Graph",
       "nodes": "Nodes",
       "edges": "Edges",
       "metadata": "Metadata"
     },
-    "controls": "Filters",
+    "nodeCollectionTitle": "Node collection",
+    "nodeCollectionDescription": "List graph nodes by the current scope, search query, and status filter. Select any node to open the details panel.",
+    "edgeCollectionTitle": "Edge collection",
+    "edgeCollectionDescription": "List relationship edges for the currently visible nodes, with endpoint search, type filters, weight, and timeline sorting.",
+    "metadataDescription": "Inspect raw metadata for the currently selected node or edge.",
+    "canvasTitle": "Graph canvas",
+    "controls": "Graph controls",
+    "controlsDescription": "Adjust root, depth, timeline, and included types, then reload to send those parameters to graph expansion. Search and status filters narrow the current canvas instantly.",
     "details": "Details panel",
     "reload": "Reload",
     "depth": "Depth",
     "timeline": "Timeline",
     "root": "Root node",
-    "filters": "Filters",
+    "searchAndFilters": "Node search and status",
     "node": "Node",
     "edge": "Edge",
     "metadata": "Metadata",
@@ -1209,13 +1629,97 @@
     "rootValue": "root={value}",
     "timelineLimit": "timeline≤{value}",
     "depthLimit": "depth≤{value}",
+    "depthValue": "{value} levels",
     "nodeSummary": "{id} · depth {depth} · T+{timeline}",
     "weightValue": "weight {value}",
-    "emptyDetails": "Select a node or edge in the graph to view details. If Cytoscape cannot load in this environment, use the node list in the center panel to verify data.",
+    "selectedNodeSummary": "Selected node: {label}",
+    "selectedEdgeSummary": "Selected edge: {label}",
+    "emptySelectionSummary": "No node or edge selected",
+    "emptyDetails": "Select a node or edge in the graph to view details. If Cytoscape cannot load in this environment, use the canvas fallback node list to verify data.",
     "emptyEdges": "No visible edges for the current filters.",
     "listUnavailableMessage": "Graph rendering is temporarily unavailable. You can still inspect node data in the list below.",
+    "timelineControlHint": "Lowering the timeline hides later nodes and relationships; reload after increasing it if you need more data.",
+    "depthControlHint": "Lowering depth narrows the local scope; reload after increasing it if you need deeper expansion.",
+    "openDetails": "View details",
+    "viewModeLabel": "Graph collection view",
+    "densityLabel": "Graph collection density",
     "placeholders": {
       "root": "story_start"
+    },
+    "filterControls": {
+      "allStatuses": "All statuses",
+      "allEdgeTypes": "All relationship types",
+      "includedTypes": "Node types included in expansion",
+      "selectedTypeCount": "{count} selected",
+      "clear": "Clear filters",
+      "activeCount": "{count} filters",
+      "resultSummary": "Showing {visible} / {total}"
+    },
+    "search": {
+      "nodesLabel": "Search nodes",
+      "nodes": "Search node name, ID, type, status, or metadata",
+      "edgesLabel": "Search edges",
+      "edges": "Search edge name, endpoints, type, or evidence ID",
+      "queryBadge": "Search: {query}"
+    },
+    "sort": {
+      "nodeLabelAsc": "Node name A-Z",
+      "nodeLabelDesc": "Node name Z-A",
+      "nodeTypeAsc": "Node type",
+      "nodeStatusAsc": "Node status",
+      "nodeDepthAsc": "Depth shallow first",
+      "nodeDepthDesc": "Depth deep first",
+      "nodeTimelineAsc": "Timeline oldest first",
+      "nodeTimelineDesc": "Timeline newest first",
+      "edgeLabelAsc": "Edge name A-Z",
+      "edgeLabelDesc": "Edge name Z-A",
+      "edgeTypeAsc": "Relationship type",
+      "edgeWeightDesc": "Weight high to low",
+      "edgeWeightAsc": "Weight low to high",
+      "edgeTimelineAsc": "Timeline oldest first",
+      "edgeTimelineDesc": "Timeline newest first"
+    },
+    "table": {
+      "node": "Node",
+      "edge": "Edge",
+      "type": "Type",
+      "status": "Status",
+      "depth": "Depth",
+      "timeline": "Timeline",
+      "relation": "Relation",
+      "weight": "Weight",
+      "actions": "Actions",
+      "nodeCaption": "Story graph node list",
+      "edgeCaption": "Story graph edge list"
+    },
+    "states": {
+      "loadingTitle": "Loading graph",
+      "loadErrorTitle": "Failed to load story graph",
+      "canvasFallbackTitle": "Canvas switched to list fallback",
+      "canvasLoadingTitle": "Rendering graph canvas",
+      "canvasLoadingDescription": "Requesting graph expansion and initializing Cytoscape.",
+      "canvasEmptyTitle": "No graph data",
+      "canvasEmptyDescription": "This project has no renderable nodes yet, or graph expansion has not completed.",
+      "canvasNoResultsTitle": "No matching nodes",
+      "canvasNoResultsDescription": "The current search, type, status, depth, or timeline combination did not match any nodes.",
+      "detailsEmptyTitle": "Nothing selected",
+      "edgesEmptyTitle": "No visible edges",
+      "nodes": {
+        "loadingTitle": "Loading nodes",
+        "loadingDescription": "Reading nodes returned by graph expansion.",
+        "emptyTitle": "No nodes",
+        "emptyDescription": "The current graph expansion did not return any nodes.",
+        "noResultsTitle": "No matching nodes",
+        "noResultsDescription": "Adjust the search query, status filter, type scope, depth, or timeline and try again."
+      },
+      "edges": {
+        "loadingTitle": "Loading edges",
+        "loadingDescription": "Reading relationship edges returned by graph expansion.",
+        "emptyTitle": "No edges",
+        "emptyDescription": "The current graph expansion did not return any relationship edges.",
+        "noResultsTitle": "No matching edges",
+        "noResultsDescription": "Adjust the search query, relationship type, or node visibility scope and try again."
+      }
     },
     "errors": {
       "loadFailed": "Failed to load story graph",

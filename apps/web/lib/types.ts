@@ -41,6 +41,16 @@ export interface HealthStatus {
   time?: string
 }
 
+export interface SystemStatus {
+  status: string
+  postgres_configured: boolean
+  qdrant_configured: boolean
+  provider_count: number
+  model_count: number
+  pending_jobs_count: number
+  checked_at: string
+}
+
 export interface ProviderConfig {
   id: string
   name: string
@@ -196,16 +206,23 @@ export interface StoryBible {
     status: 'planted' | 'active' | 'paid_off'
   }>
   chapters: StoryBibleChapter[]
+  chapter_plan?: StoryBibleChapter[]
 }
 
 export interface ProjectSummary {
   id: string
   title: string
+  slug?: string
+  status?: string
   logline: string
   tags: string[]
+  seed?: ProjectSeed
+  active_story_bible_id?: string
+  created_at?: string
   updated_at: string
   bible_status: 'missing' | 'draft' | 'ready'
   chapter_count: number
+  target_chapters?: number
 }
 
 export interface Entity {
@@ -307,6 +324,24 @@ export interface GraphExpandResponse {
   edges: GraphEdge[]
   facts?: Fact[]
   generated_at: string
+}
+
+export interface SemanticSearchRequest {
+  query: string
+  limit?: number
+  filters?: Record<string, string>
+}
+
+export interface SemanticSearchItem {
+  source_id: string
+  score: number
+  payload?: Record<string, unknown>
+}
+
+export interface SemanticSearchResponse {
+  query: string
+  project_id: string
+  items: SemanticSearchItem[]
 }
 
 export interface ChapterVersion {

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aeonechoes/server/internal/domain"
+	"aeonechoes/server/internal/infra/http/v1/mappers"
 	"aeonechoes/server/internal/provider"
 )
 
@@ -42,7 +43,7 @@ func TestMergeDiscoveredModelPreservesManualValuesWhenDiscoveryOmitsFields(t *te
 		SupportsStreaming: false,
 		LastSeenAt:        &seenAt,
 	}
-	merged := mergeDiscoveredModel(existing, discovered, provider.ModelInfo{})
+	merged := mappers.MergeDiscoveredModel(existing, discovered, provider.ModelInfo{})
 
 	if merged.ContextWindow != 128000 || merged.MaxOutputTokens != 8192 || merged.Dimension != 3072 {
 		t.Fatalf("manual numeric values were not preserved: %+v", merged)
@@ -85,7 +86,7 @@ func TestMergeDiscoveredModelOverwritesFieldsWhenDiscoveryHasKnownValues(t *test
 		SupportsTools:     false,
 		SupportsStreaming: false,
 	}
-	merged := mergeDiscoveredModel(existing, discovered, provider.ModelInfo{SupportsToolsKnown: true, SupportsStreamKnown: true})
+	merged := mappers.MergeDiscoveredModel(existing, discovered, provider.ModelInfo{SupportsToolsKnown: true, SupportsStreamKnown: true})
 
 	if merged.ContextWindow != 64000 || merged.MaxOutputTokens != 2048 || merged.Dimension != 3072 {
 		t.Fatalf("known discovered numeric values were not applied: %+v", merged)
@@ -101,7 +102,7 @@ func TestMergeDiscoveredModelOverwritesFieldsWhenDiscoveryHasKnownValues(t *test
 func TestDiscoveredModelConfigKeepsInferredCapabilitiesForNewModels(t *testing.T) {
 	seenAt := time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC)
 	cfg := domain.ProviderConfig{ID: "provider_a", Type: domain.ProviderGemini}
-	model := discoveredModelConfig(cfg, provider.ModelInfo{ID: "gemini-2.5", Name: "models/gemini-2.5", DisplayName: "Gemini 2.5", Kind: domain.ModelKindText, SupportsTools: true, SupportsStream: true}, seenAt)
+	model := mappers.DiscoveredModelConfig(cfg, provider.ModelInfo{ID: "gemini-2.5", Name: "models/gemini-2.5", DisplayName: "Gemini 2.5", Kind: domain.ModelKindText, SupportsTools: true, SupportsStream: true}, seenAt)
 
 	if model.ID != "provider_a:gemini-2.5" || model.ProviderID != "provider_a" || model.Name != "gemini-2.5" {
 		t.Fatalf("unexpected discovered model identity: %+v", model)

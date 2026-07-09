@@ -74,12 +74,12 @@ function closeOpenedProject(projectId: string) {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background text-foreground">
-    <div class="flex min-h-screen">
-      <aside class="hidden w-72 shrink-0 border-r border-border bg-card lg:flex lg:flex-col">
-        <div class="flex h-16 items-center gap-3 border-b border-border px-5">
+  <LayoutAppShell>
+    <template #sidebar>
+      <LayoutAppSidebar :label="t('nav.openMenu')">
+        <div class="flex h-topbar items-center gap-3 border-b border-border px-5">
           <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <BookOpen class="h-4 w-4 shrink-0" />
+            <BookOpen class="h-4 w-4 shrink-0" aria-hidden="true" />
           </div>
           <div class="min-w-0">
             <p class="truncate text-sm font-semibold">{{ t('product.name') }}</p>
@@ -88,17 +88,18 @@ function closeOpenedProject(projectId: string) {
         </div>
 
         <div class="flex min-h-0 flex-1 flex-col px-3 py-4">
-          <nav class="space-y-1">
+          <nav class="space-y-1" :aria-label="t('nav.openMenu')">
             <NuxtLink
               v-for="item in navigation"
               :key="item.to"
               :to="item.to"
+              :aria-current="item.active ? 'page' : undefined"
               :class="[
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors focus-ring',
                 item.active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               ]"
             >
-              <component :is="item.icon" class="h-4 w-4 shrink-0" />
+              <component :is="item.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
               <span class="truncate">{{ item.label }}</span>
             </NuxtLink>
           </nav>
@@ -124,6 +125,7 @@ function closeOpenedProject(projectId: string) {
                 <div class="flex items-center gap-1">
                   <NuxtLink
                     :to="`/projects/${project.id}`"
+                    :aria-current="isProjectActive(project.id) ? 'page' : undefined"
                     :class="[
                       'min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm font-medium transition-colors focus-ring',
                       isProjectActive(project.id) ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
@@ -137,28 +139,30 @@ function closeOpenedProject(projectId: string) {
                     :aria-label="t('nav.closeProject', { title: project.title })"
                     @click.prevent.stop="closeOpenedProject(project.id)"
                   >
-                    <X class="h-3.5 w-3.5 shrink-0" />
+                    <X class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   </button>
                 </div>
                 <div class="ml-2 flex items-center gap-1 pb-1 pl-2 text-xs">
                   <NuxtLink
                     :to="`/projects/${project.id}/editor`"
+                    :aria-current="isEditorActive(project.id) ? 'page' : undefined"
                     :class="[
                       'rounded-md px-2 py-1 transition-colors focus-ring',
                       isEditorActive(project.id) ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'
                     ]"
                   >
-                    <FileText class="mr-1 inline h-3 w-3 shrink-0 align-[-2px]" />
+                    <FileText class="mr-1 inline h-3 w-3 shrink-0 align-[-2px]" aria-hidden="true" />
                     {{ t('nav.editor') }}
                   </NuxtLink>
                   <NuxtLink
                     :to="`/projects/${project.id}/graph`"
+                    :aria-current="isGraphActive(project.id) ? 'page' : undefined"
                     :class="[
                       'rounded-md px-2 py-1 transition-colors focus-ring',
                       isGraphActive(project.id) ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'
                     ]"
                   >
-                    <GitFork class="mr-1 inline h-3 w-3 shrink-0 align-[-2px]" />
+                    <GitFork class="mr-1 inline h-3 w-3 shrink-0 align-[-2px]" aria-hidden="true" />
                     {{ t('nav.graph') }}
                   </NuxtLink>
                 </div>
@@ -166,133 +170,141 @@ function closeOpenedProject(projectId: string) {
             </div>
           </div>
         </div>
-      </aside>
+      </LayoutAppSidebar>
+    </template>
 
-      <div class="min-w-0 flex-1">
-        <header class="sticky top-0 z-30 flex min-h-16 items-center justify-between gap-3 border-b border-border bg-background/90 px-3 py-2 backdrop-blur sm:px-4 lg:h-16 lg:px-6 lg:py-0">
-          <div class="flex min-w-0 flex-1 items-center gap-2 lg:hidden">
-            <button
-              type="button"
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground focus-ring"
-              :aria-label="t('nav.openMenu')"
-              @click="mobileMenuOpen = true"
-            >
-              <Menu class="h-5 w-5 shrink-0" />
-            </button>
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <BookOpen class="h-4 w-4 shrink-0" />
-            </div>
-            <div class="min-w-0">
-              <span class="block truncate text-sm font-semibold leading-5">{{ t('product.name') }}</span>
-              <span class="block truncate text-[11px] leading-4 text-muted-foreground sm:hidden">{{ t('product.tagline') }}</span>
-            </div>
-          </div>
-          <div class="hidden text-sm text-muted-foreground lg:block">{{ t('product.tagline') }}</div>
-          <div class="flex shrink-0 items-center gap-2">
-            <AppLanguageSwitcher class="hidden sm:block" />
-            <AppLanguageSwitcher compact class="sm:hidden" />
-            <AppThemeToggle class="hidden sm:inline-flex" />
-            <AppThemeToggle compact class="sm:hidden" />
-          </div>
-        </header>
-
-        <main class="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-8 2xl:px-10">
-          <slot />
-        </main>
-      </div>
-    </div>
-
-    <UiSheet v-model:open="mobileMenuOpen" title="" description="" side="left" class="w-[min(94vw,360px)] p-0 lg:hidden">
-      <div class="space-y-5 px-1 pb-4">
-        <div class="rounded-2xl border border-border bg-muted/35 p-3">
-          <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <BookOpen class="h-4 w-4 shrink-0" />
-            </div>
-            <div class="min-w-0">
-              <p class="truncate text-sm font-semibold">{{ t('product.name') }}</p>
-              <p class="truncate text-xs text-muted-foreground">{{ t('product.tagline') }}</p>
-            </div>
-          </div>
-        </div>
-        <nav class="space-y-1">
-          <NuxtLink
-            v-for="item in navigation"
-            :key="item.to"
-            :to="item.to"
-            :class="[
-              'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors focus-ring',
-              item.active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-            ]"
+    <template #topbar>
+      <LayoutAppTopbar start-class="flex min-w-0 items-center gap-2 lg:hidden">
+        <template #start>
+          <button
+            type="button"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground focus-ring"
+            :aria-label="t('nav.openMenu')"
+            @click="mobileMenuOpen = true"
           >
-            <component :is="item.icon" class="h-4 w-4 shrink-0" />
-            <span class="truncate">{{ item.label }}</span>
-          </NuxtLink>
-        </nav>
-
-        <div class="border-t border-border pt-4">
-          <div class="px-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            {{ t('nav.openedProjects') }}
+            <Menu class="h-5 w-5 shrink-0" aria-hidden="true" />
+          </button>
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <BookOpen class="h-4 w-4 shrink-0" aria-hidden="true" />
           </div>
-
-          <div v-if="openedProjects.length === 0" class="mt-3 rounded-lg border border-dashed border-border px-3 py-3 text-xs leading-5 text-muted-foreground">
-            {{ t('nav.emptyOpenedProjects') }}
+          <div class="min-w-0">
+            <span class="block truncate text-sm font-semibold leading-5">{{ t('product.name') }}</span>
+            <span class="block truncate text-[11px] leading-4 text-muted-foreground sm:hidden">{{ t('product.tagline') }}</span>
           </div>
+        </template>
 
-          <div v-else class="mt-3 space-y-1.5">
-            <div
-              v-for="project in openedProjects"
-              :key="project.id"
+        {{ t('product.tagline') }}
+
+        <template #end>
+          <AppLanguageSwitcher class="hidden sm:block" />
+          <AppLanguageSwitcher compact class="sm:hidden" />
+          <AppThemeToggle class="hidden sm:inline-flex" />
+          <AppThemeToggle compact class="sm:hidden" />
+        </template>
+      </LayoutAppTopbar>
+    </template>
+
+    <LayoutAppMainContainer>
+      <slot />
+    </LayoutAppMainContainer>
+
+    <template #mobile>
+      <LayoutMobileNavSheet v-model:open="mobileMenuOpen" title="" description="" side="left" :aria-label="t('nav.openMenu')">
+        <div class="space-y-5 px-1 pb-4">
+          <div class="rounded-2xl border border-border bg-muted/35 p-3">
+            <div class="flex items-center gap-3">
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <BookOpen class="h-4 w-4 shrink-0" aria-hidden="true" />
+              </div>
+              <div class="min-w-0">
+                <p class="truncate text-sm font-semibold">{{ t('product.name') }}</p>
+                <p class="truncate text-xs text-muted-foreground">{{ t('product.tagline') }}</p>
+              </div>
+            </div>
+          </div>
+          <nav class="space-y-1" :aria-label="t('nav.openMenu')">
+            <NuxtLink
+              v-for="item in navigation"
+              :key="item.to"
+              :to="item.to"
+              :aria-current="item.active ? 'page' : undefined"
               :class="[
-                'rounded-lg border border-transparent p-1.5 transition-colors',
-                isProjectSectionActive(project.id) ? 'border-border bg-muted/70' : 'hover:bg-muted/45'
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors focus-ring',
+                item.active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               ]"
             >
-              <div class="flex items-center gap-1">
-                <NuxtLink
-                  :to="`/projects/${project.id}`"
-                  :class="[
-                    'min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm font-medium transition-colors focus-ring',
-                    isProjectActive(project.id) ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-                  ]"
-                >
-                  {{ project.title }}
-                </NuxtLink>
-                <button
-                  type="button"
-                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-ring"
-                  :aria-label="t('nav.closeProject', { title: project.title })"
-                  @click.prevent.stop="closeOpenedProject(project.id)"
-                >
-                  <X class="h-3.5 w-3.5 shrink-0" />
-                </button>
-              </div>
-              <div class="ml-2 flex flex-wrap items-center gap-1 pb-1 pl-2 text-xs">
-                <NuxtLink
-                  :to="`/projects/${project.id}/editor`"
-                  :class="[
-                    'rounded-md px-2 py-1.5 transition-colors focus-ring',
-                    isEditorActive(project.id) ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'
-                  ]"
-                >
-                  <FileText class="mr-1 inline h-3 w-3 shrink-0 align-[-2px]" />
-                  {{ t('nav.editor') }}
-                </NuxtLink>
-                <NuxtLink
-                  :to="`/projects/${project.id}/graph`"
-                  :class="[
-                    'rounded-md px-2 py-1.5 transition-colors focus-ring',
-                    isGraphActive(project.id) ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'
-                  ]"
-                >
-                  <GitFork class="mr-1 inline h-3 w-3 shrink-0 align-[-2px]" />
-                  {{ t('nav.graph') }}
-                </NuxtLink>
+              <component :is="item.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span class="truncate">{{ item.label }}</span>
+            </NuxtLink>
+          </nav>
+
+          <div class="border-t border-border pt-4">
+            <div class="px-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              {{ t('nav.openedProjects') }}
+            </div>
+
+            <div v-if="openedProjects.length === 0" class="mt-3 rounded-lg border border-dashed border-border px-3 py-3 text-xs leading-5 text-muted-foreground">
+              {{ t('nav.emptyOpenedProjects') }}
+            </div>
+
+            <div v-else class="mt-3 space-y-1.5">
+              <div
+                v-for="project in openedProjects"
+                :key="project.id"
+                :class="[
+                  'rounded-lg border border-transparent p-1.5 transition-colors',
+                  isProjectSectionActive(project.id) ? 'border-border bg-muted/70' : 'hover:bg-muted/45'
+                ]"
+              >
+                <div class="flex items-center gap-1">
+                  <NuxtLink
+                    :to="`/projects/${project.id}`"
+                    :aria-current="isProjectActive(project.id) ? 'page' : undefined"
+                    :class="[
+                      'min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm font-medium transition-colors focus-ring',
+                      isProjectActive(project.id) ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                    ]"
+                  >
+                    {{ project.title }}
+                  </NuxtLink>
+                  <button
+                    type="button"
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-ring"
+                    :aria-label="t('nav.closeProject', { title: project.title })"
+                    @click.prevent.stop="closeOpenedProject(project.id)"
+                  >
+                    <X class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  </button>
+                </div>
+                <div class="ml-2 flex flex-wrap items-center gap-1 pb-1 pl-2 text-xs">
+                  <NuxtLink
+                    :to="`/projects/${project.id}/editor`"
+                    :aria-current="isEditorActive(project.id) ? 'page' : undefined"
+                    :class="[
+                      'rounded-md px-2 py-1.5 transition-colors focus-ring',
+                      isEditorActive(project.id) ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'
+                    ]"
+                  >
+                    <FileText class="mr-1 inline h-3 w-3 shrink-0 align-[-2px]" aria-hidden="true" />
+                    {{ t('nav.editor') }}
+                  </NuxtLink>
+                  <NuxtLink
+                    :to="`/projects/${project.id}/graph`"
+                    :aria-current="isGraphActive(project.id) ? 'page' : undefined"
+                    :class="[
+                      'rounded-md px-2 py-1.5 transition-colors focus-ring',
+                      isGraphActive(project.id) ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'
+                    ]"
+                  >
+                    <GitFork class="mr-1 inline h-3 w-3 shrink-0 align-[-2px]" aria-hidden="true" />
+                    {{ t('nav.graph') }}
+                  </NuxtLink>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </UiSheet>
-  </div>
+      </LayoutMobileNavSheet>
+    </template>
+  </LayoutAppShell>
 </template>

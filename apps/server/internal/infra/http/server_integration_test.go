@@ -78,17 +78,22 @@ func (n *integrationWakeNotifier) Notify() {
 func TestHandlerProjectSmokePaths(t *testing.T) {
 	handler := newSmokeTestHandler(t)
 
-	healthResponse := sendJSON(t, handler, http.MethodGet, "/api/health", nil)
+	healthResponse := sendJSON(t, handler, http.MethodGet, "/api/v1/health", nil)
 	assertStatus(t, healthResponse, http.StatusOK)
 	var health struct {
-		Status string `json:"status"`
+		Data struct {
+			Status string `json:"status"`
+		} `json:"data"`
+		Meta struct {
+			RequestID string `json:"request_id"`
+		} `json:"meta"`
 	}
-	decodeJSON(t, healthResponse, &health)
-	if health.Status != "ok" {
-		t.Fatalf("GET /api/health status = %q, want ok", health.Status)
+	decodeRawJSON(t, healthResponse, &health)
+	if health.Data.Status != "ok" || health.Meta.RequestID == "" {
+		t.Fatalf("GET /api/v1/health envelope invalid: %+v", health)
 	}
 
-	invalidInitializeResponse := sendJSON(t, handler, http.MethodPost, "/api/projects/initialize", domain.ProjectSeed{Premise: "失落舰队重返群星"})
+	invalidInitializeResponse := sendJSON(t, handler, http.MethodPost, "/api/v1/projects", domain.ProjectSeed{Premise: "失落舰队重返群星"})
 	assertStatus(t, invalidInitializeResponse, http.StatusBadRequest)
 
 	seed := domain.ProjectSeed{
@@ -102,7 +107,7 @@ func TestHandlerProjectSmokePaths(t *testing.T) {
 		Themes:         []string{"记忆", "归途"},
 		MainCharacters: []string{"林烬"},
 	}
-	initializeResponse := sendJSON(t, handler, http.MethodPost, "/api/projects/initialize", seed)
+	initializeResponse := sendJSON(t, handler, http.MethodPost, "/api/v1/projects", seed)
 	assertStatus(t, initializeResponse, http.StatusCreated)
 	var initialized struct {
 		Project    domain.Project    `json:"project"`
@@ -111,29 +116,84 @@ func TestHandlerProjectSmokePaths(t *testing.T) {
 	}
 	decodeJSON(t, initializeResponse, &initialized)
 	if initialized.Project.ID == "" {
-		t.Fatalf("POST /api/projects/initialize project.id is empty")
+		t.Fatalf("POST /api/v1/projects project.id is empty")
 	}
 	if initialized.StoryBible.ID == "" {
-		t.Fatalf("POST /api/projects/initialize story_bible.id is empty")
+		t.Fatalf("POST /api/v1/projects story_bible.id is empty")
 	}
 	if initialized.Workflow.Output["mode"] != "rule_based_genesis" {
-		t.Fatalf("POST /api/projects/initialize workflow.output.mode = %q, want rule_based_genesis", initialized.Workflow.Output["mode"])
+		t.Fatalf("POST /api/v1/projects workflow.output.mode = %q, want rule_based_genesis", initialized.Workflow.Output["mode"])
 	}
 
-	projectsResponse := sendJSON(t, handler, http.MethodGet, "/api/projects", nil)
+	projectsResponse := sendJSON(t, handler, http.MethodGet, "/api/v1/projects", nil)
 	assertStatus(t, projectsResponse, http.StatusOK)
 	var projects []domain.Project
 	decodeJSON(t, projectsResponse, &projects)
 	if !containsProject(projects, initialized.Project.ID) {
-		t.Fatalf("GET /api/projects did not include initialized project %q: %#v", initialized.Project.ID, projects)
+		t.Fatalf("GET /api/v1/projects did not include initialized project %q: %#v", initialized.Project.ID, projects)
 	}
 
-	bibleResponse := sendJSON(t, handler, http.MethodGet, "/api/projects/"+initialized.Project.ID+"/story-bible", nil)
+	bibleResponse := sendJSON(t, handler, http.MethodGet, "/api/v1/projects/"+initialized.Project.ID+"/story-bibles/current", nil)
 	assertStatus(t, bibleResponse, http.StatusOK)
 	var bible domain.StoryBible
 	decodeJSON(t, bibleResponse, &bible)
 	if bible.ProjectID != initialized.Project.ID {
-		t.Fatalf("GET /api/projects/{id}/story-bible project_id = %q, want %q", bible.ProjectID, initialized.Project.ID)
+		t.Fatalf("GET /api/v1/projects/{id}/story-bibles/current project_id = %q, want %q", bible.ProjectID, initialized.Project.ID)
+	}
+}
+
+func TestHandlerV1ChapterSummaryAndUnknownFieldContracts(t *testing.T) {
+	store := memory.NewStore()
+	project, _, err := store.CreateProject(domain.Project{Title: "章节契约", Slug: "chapter-contract", Status: "active"}, domain.StoryBible{Title: "章节契约", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	const summary = "主角第一次听见灰塔钟声。"
+	chapterResponse := sendJSON(t, server.Handler(), http.MethodPut, "/api/v1/projects/"+project.ID+"/chapters/chapter_contract", map[string]any{
+		"number":  1,
+		"title":   "钟声",
+		"status":  "planned",
+		"summary": summary,
+	})
+	assertStatus(t, chapterResponse, http.StatusOK)
+	var chapterEnvelope struct {
+		Data struct {
+			Summary string `json:"summary"`
+			Chapter struct {
+				Summary string `json:"summary"`
+			} `json:"chapter"`
+		} `json:"data"`
+	}
+	decodeRawJSON(t, chapterResponse, &chapterEnvelope)
+	gotSummary := chapterEnvelope.Data.Summary
+	if gotSummary == "" {
+		gotSummary = chapterEnvelope.Data.Chapter.Summary
+	}
+	if gotSummary != summary {
+		t.Fatalf("chapter summary = %q, want %q; envelope: %+v", gotSummary, summary, chapterEnvelope)
+	}
+
+	unknownFieldResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/providers", map[string]any{
+		"id":          "provider_unknown_field",
+		"name":        "Unknown Field",
+		"type":        "openai",
+		"base_url":    "https://example.invalid/v1",
+		"api_key_env": "AEON_TEST_KEY",
+	})
+	assertStatus(t, unknownFieldResponse, http.StatusBadRequest)
+	var errorEnvelope struct {
+		Error struct {
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+			Status    int    `json:"status"`
+			RequestID string `json:"request_id"`
+		} `json:"error"`
+	}
+	decodeRawJSON(t, unknownFieldResponse, &errorEnvelope)
+	if errorEnvelope.Error.Code == "" || errorEnvelope.Error.Message == "" || errorEnvelope.Error.Status != http.StatusBadRequest || errorEnvelope.Error.RequestID == "" {
+		t.Fatalf("unknown field error envelope invalid: %+v", errorEnvelope)
 	}
 }
 
@@ -159,7 +219,7 @@ func TestHandlerRebuildVectorsEndpoint(t *testing.T) {
 	indexingService := indexing.NewService(store, agent.NewModelRouter(store, agent.NewAgentRoleRegistry()), integrationFakeProviderFactory{client: &integrationFakeEmbeddingClient{vectors: [][]float64{{0.1, 0.2, 0.3}}}}, vectors)
 	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, indexingService, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/index/rebuild-vectors", map[string]any{})
+	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/vector-index-rebuilds", map[string]any{})
 	assertStatus(t, response, http.StatusOK)
 	var body struct {
 		EmbeddingModelID    string `json:"embedding_model_id"`
@@ -193,9 +253,8 @@ func TestHandlerCharacterSyncUpsertsStoryBibleProfiles(t *testing.T) {
 	}
 	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/projects/"+project.ID+"/characters/sync", map[string]any{
-		"story_bible_id": bible.ID,
-		"source":         "story_bible_editor",
+	response := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/story-bibles/"+bible.ID+"/character-syncs", map[string]any{
+		"source": "story_bible_editor",
 		"characters": []map[string]any{
 			{"name": "林烬", "role": "主角", "desire": "找回失落舰队真相", "wound": "曾在撤离中放弃同伴", "summary": "背负旧债的远航者。"},
 			{"name": "苏九", "role": "主要配角", "desire": "破解灰塔钟声", "wound": "家族因灰塔蒙冤", "secret": "她能听懂钟声里的坐标"},
@@ -257,6 +316,25 @@ func TestHandlerLegacyAIEndpointsAreRemoved(t *testing.T) {
 	}
 }
 
+func TestHandlerLegacyProductEndpointsAreRemoved(t *testing.T) {
+	handler := newSmokeTestHandler(t)
+	cases := []struct {
+		method string
+		path   string
+		body   any
+	}{
+		{method: http.MethodGet, path: "/api/health"},
+		{method: http.MethodGet, path: "/api/projects"},
+		{method: http.MethodPost, path: "/api/projects/project_removed/chapters/ensure", body: map[string]any{"chapter_id": "chapter_removed"}},
+		{method: http.MethodPut, path: "/api/v1/skills/skill_removed/enabled", body: map[string]any{"enabled": true}},
+		{method: http.MethodPost, path: "/api/v1/mcp-servers/server_removed/tests"},
+	}
+	for _, tc := range cases {
+		response := sendJSON(t, handler, tc.method, tc.path, tc.body)
+		assertNon2xx(t, response)
+	}
+}
+
 func TestHandlerAgentCRUDAndRunListing(t *testing.T) {
 	handler, store := newAgentTestHandler(t)
 	project, _, err := store.CreateProject(domain.Project{Title: "智能体项目", Slug: "agents"}, domain.StoryBible{Title: "智能体项目", Logline: "测试智能体"})
@@ -264,7 +342,7 @@ func TestHandlerAgentCRUDAndRunListing(t *testing.T) {
 		t.Fatalf("CreateProject() error: %v", err)
 	}
 
-	createResponse := sendJSON(t, handler, http.MethodPost, "/api/agents", map[string]any{
+	createResponse := sendJSON(t, handler, http.MethodPost, "/api/v1/agents", map[string]any{
 		"project_id":    project.ID,
 		"name":          "主写作代理",
 		"description":   "用于验证智能体配置",
@@ -280,7 +358,7 @@ func TestHandlerAgentCRUDAndRunListing(t *testing.T) {
 		t.Fatalf("created agent config invalid: %+v", created)
 	}
 
-	updateResponse := sendJSON(t, handler, http.MethodPut, "/api/agents/"+created.ID, map[string]any{
+	updateResponse := sendJSON(t, handler, http.MethodPut, "/api/v1/agents/"+created.ID, map[string]any{
 		"project_id":    project.ID,
 		"name":          "主写作代理（暂停）",
 		"description":   created.Description,
@@ -295,7 +373,7 @@ func TestHandlerAgentCRUDAndRunListing(t *testing.T) {
 		t.Fatalf("updated agent config invalid: %+v", updated)
 	}
 
-	listResponse := sendJSON(t, handler, http.MethodGet, "/api/agents?project_id="+project.ID+"&enabled=false", nil)
+	listResponse := sendJSON(t, handler, http.MethodGet, "/api/v1/agents?project_id="+project.ID+"&enabled=false", nil)
 	assertStatus(t, listResponse, http.StatusOK)
 	var agents []domain.AgentConfig
 	decodeJSON(t, listResponse, &agents)
@@ -307,7 +385,7 @@ func TestHandlerAgentCRUDAndRunListing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAgentRun() error: %v", err)
 	}
-	runsResponse := sendJSON(t, handler, http.MethodGet, "/api/agent-runs?agent_id="+created.ID+"&status=completed", nil)
+	runsResponse := sendJSON(t, handler, http.MethodGet, "/api/v1/agent-runs?agent_id="+created.ID+"&status=completed", nil)
 	assertStatus(t, runsResponse, http.StatusOK)
 	var runs []domain.AgentRun
 	decodeJSON(t, runsResponse, &runs)
@@ -319,7 +397,7 @@ func TestHandlerAgentCRUDAndRunListing(t *testing.T) {
 func TestHandlerAgentSkillsAndToolToggles(t *testing.T) {
 	handler, store := newAgentTestHandler(t)
 	disabled := false
-	createResponse := sendJSON(t, handler, http.MethodPost, "/api/skills", map[string]any{
+	createResponse := sendJSON(t, handler, http.MethodPost, "/api/v1/skills", map[string]any{
 		"name":        "Style Guard",
 		"description": "限制叙事风格",
 		"content":     "保持第三人称有限视角。",
@@ -333,7 +411,7 @@ func TestHandlerAgentSkillsAndToolToggles(t *testing.T) {
 		t.Fatalf("created inline skill invalid: %+v", skill)
 	}
 
-	enableResponse := sendJSON(t, handler, http.MethodPut, "/api/skills/"+skill.ID+"/enabled", map[string]any{"enabled": true})
+	enableResponse := sendJSON(t, handler, http.MethodPatch, "/api/v1/skills/"+skill.ID, map[string]any{"enabled": true})
 	assertStatus(t, enableResponse, http.StatusOK)
 	var enabledSkill domain.Skill
 	decodeJSON(t, enableResponse, &enabledSkill)
@@ -345,7 +423,7 @@ func TestHandlerAgentSkillsAndToolToggles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertToolDefinition() error: %v", err)
 	}
-	disableToolResponse := sendJSON(t, handler, http.MethodPut, "/api/tools/catalog/"+tool.ID+"/enabled", map[string]any{"enabled": false})
+	disableToolResponse := sendJSON(t, handler, http.MethodPatch, "/api/v1/tools/"+tool.ID, map[string]any{"enabled": false})
 	assertStatus(t, disableToolResponse, http.StatusOK)
 	var disabledTool domain.ToolDefinition
 	decodeJSON(t, disableToolResponse, &disabledTool)
@@ -353,7 +431,7 @@ func TestHandlerAgentSkillsAndToolToggles(t *testing.T) {
 		t.Fatalf("disabled tool status = %q, want disabled", disabledTool.Status)
 	}
 
-	catalogResponse := sendJSON(t, handler, http.MethodGet, "/api/tools/catalog?kind=skill&status=disabled", nil)
+	catalogResponse := sendJSON(t, handler, http.MethodGet, "/api/v1/tools?kind=skill&status=disabled", nil)
 	assertStatus(t, catalogResponse, http.StatusOK)
 	var catalog []domain.ToolDefinition
 	decodeJSON(t, catalogResponse, &catalog)
@@ -364,7 +442,7 @@ func TestHandlerAgentSkillsAndToolToggles(t *testing.T) {
 
 func TestHandlerAgentMCPServerSecretsAreHiddenAndToggleStatus(t *testing.T) {
 	handler, _ := newAgentTestHandler(t)
-	createResponse := sendJSON(t, handler, http.MethodPost, "/api/mcp/servers", map[string]any{
+	createResponse := sendJSON(t, handler, http.MethodPost, "/api/v1/mcp-servers", map[string]any{
 		"name":           "Local MCP",
 		"transport":      domain.MCPTransportStdio,
 		"enabled":        true,
@@ -384,7 +462,7 @@ func TestHandlerAgentMCPServerSecretsAreHiddenAndToggleStatus(t *testing.T) {
 		t.Fatalf("mcp server response missing secret hints: %+v", created)
 	}
 
-	disableResponse := sendJSON(t, handler, http.MethodPut, "/api/mcp/servers/"+id+"/enabled", map[string]any{"enabled": false})
+	disableResponse := sendJSON(t, handler, http.MethodPatch, "/api/v1/mcp-servers/"+id, map[string]any{"enabled": false})
 	assertStatus(t, disableResponse, http.StatusOK)
 	var disabledMCP map[string]any
 	decodeJSON(t, disableResponse, &disabledMCP)
@@ -415,15 +493,15 @@ func TestHandlerIndexJobsFiltersAndLimit(t *testing.T) {
 	}
 	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	allResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/index/jobs", nil)
+	allResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/v1/index-jobs", nil)
 	assertStatus(t, allResponse, http.StatusOK)
 	var allJobs []domain.IndexJob
 	decodeJSON(t, allResponse, &allJobs)
 	if len(allJobs) != 3 {
-		t.Fatalf("GET /api/index/jobs len = %d, want 3", len(allJobs))
+		t.Fatalf("GET /api/v1/index-jobs len = %d, want 3", len(allJobs))
 	}
 
-	filteredResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/index/jobs?project_id="+projectA.ID+"&status=failed&limit=1", nil)
+	filteredResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/v1/index-jobs?project_id="+projectA.ID+"&status=failed&limit=1", nil)
 	assertStatus(t, filteredResponse, http.StatusOK)
 	var filteredJobs []domain.IndexJob
 	decodeJSON(t, filteredResponse, &filteredJobs)
@@ -431,44 +509,67 @@ func TestHandlerIndexJobsFiltersAndLimit(t *testing.T) {
 		t.Fatalf("filtered index jobs = %+v, want one failed job for project A", filteredJobs)
 	}
 
-	invalidLimitResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/index/jobs?limit=not-a-number", nil)
+	invalidLimitResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/v1/index-jobs?limit=not-a-number", nil)
 	assertStatus(t, invalidLimitResponse, http.StatusBadRequest)
 }
 
-func TestHandlerProviderAPIKeyEnvIsIgnoredAndHidden(t *testing.T) {
+func TestHandlerProviderV1SecretsAreHiddenAndLegacyFieldsRejected(t *testing.T) {
 	store := memory.NewStore()
 	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	createResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/providers", map[string]any{
-		"id":          "provider_env_ignored",
-		"name":        "Env Ignored",
-		"type":        "openai",
-		"base_url":    "https://example.invalid/v1",
-		"api_key_env": "AEON_TEST_KEY",
-		"enabled":     true,
+	createResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/providers", map[string]any{
+		"id":       "provider_secret_hidden",
+		"name":     "Secret Hidden",
+		"type":     "openai",
+		"base_url": "https://example.invalid/v1",
+		"api_key":  "secret-key",
+		"enabled":  true,
 	})
 	assertStatus(t, createResponse, http.StatusCreated)
 	var created map[string]any
 	decodeJSON(t, createResponse, &created)
+	if _, ok := created["api_key"]; ok {
+		t.Fatalf("provider response exposed api_key: %+v", created)
+	}
 	if _, ok := created["api_key_env"]; ok {
 		t.Fatalf("provider response exposed api_key_env: %+v", created)
 	}
-	if created["api_key_hint"] != "" {
-		t.Fatalf("provider api_key_hint = %q, want empty when only api_key_env was submitted", created["api_key_hint"])
+	if _, ok := created["provider_type"]; ok {
+		t.Fatalf("provider response exposed provider_type compatibility field: %+v", created)
 	}
-	createdProvider, err := store.GetProvider("provider_env_ignored")
+	if created["type"] != string(domain.ProviderOpenAI) || created["api_key_hint"] != "configured" {
+		t.Fatalf("provider response type/api_key_hint invalid: %+v", created)
+	}
+	createdProvider, err := store.GetProvider("provider_secret_hidden")
 	if err != nil {
 		t.Fatalf("GetProvider(created) error: %v", err)
 	}
-	if createdProvider.APIKeyEnv != "" {
-		t.Fatalf("created provider APIKeyEnv = %q, want empty", createdProvider.APIKeyEnv)
+	if createdProvider.APIKeyEnv != "" || createdProvider.APIKey != "secret-key" {
+		t.Fatalf("created provider credentials = api_key_env:%q api_key:%q, want only api_key saved", createdProvider.APIKeyEnv, createdProvider.APIKey)
 	}
+
+	apiKeyEnvResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/providers", map[string]any{
+		"id":          "provider_env_rejected",
+		"name":        "Env Rejected",
+		"type":        "openai",
+		"base_url":    "https://example.invalid/v1",
+		"api_key_env": "AEON_TEST_KEY",
+	})
+	assertStatus(t, apiKeyEnvResponse, http.StatusBadRequest)
+	providerTypeResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/providers", map[string]any{
+		"id":            "provider_type_rejected",
+		"name":          "Provider Type Rejected",
+		"type":          "openai",
+		"provider_type": "openai",
+		"base_url":      "https://example.invalid/v1",
+	})
+	assertStatus(t, providerTypeResponse, http.StatusBadRequest)
 
 	legacyProvider, err := store.CreateProvider(domain.ProviderConfig{ID: "legacy_env", Name: "Legacy Env", Type: domain.ProviderOpenAI, BaseURL: "https://example.invalid/v1", APIKeyEnv: "OLD_ENV", Enabled: true})
 	if err != nil {
 		t.Fatalf("CreateProvider(legacy) error: %v", err)
 	}
-	updateResponse := sendJSON(t, server.Handler(), http.MethodPut, "/api/providers/"+legacyProvider.ID, map[string]any{
+	updateResponse := sendJSON(t, server.Handler(), http.MethodPut, "/api/v1/providers/"+legacyProvider.ID, map[string]any{
 		"name":     legacyProvider.Name,
 		"type":     legacyProvider.Type,
 		"base_url": legacyProvider.BaseURL,
@@ -478,8 +579,14 @@ func TestHandlerProviderAPIKeyEnvIsIgnoredAndHidden(t *testing.T) {
 	assertStatus(t, updateResponse, http.StatusOK)
 	var updated map[string]any
 	decodeJSON(t, updateResponse, &updated)
+	if _, ok := updated["api_key"]; ok {
+		t.Fatalf("updated provider response exposed api_key: %+v", updated)
+	}
 	if _, ok := updated["api_key_env"]; ok {
 		t.Fatalf("updated provider response exposed api_key_env: %+v", updated)
+	}
+	if _, ok := updated["provider_type"]; ok {
+		t.Fatalf("updated provider response exposed provider_type compatibility field: %+v", updated)
 	}
 	if updated["api_key_hint"] != "configured" {
 		t.Fatalf("updated provider api_key_hint = %q, want configured", updated["api_key_hint"])
@@ -691,10 +798,37 @@ func assertStatus(t *testing.T, response *httptest.ResponseRecorder, want int) {
 	}
 }
 
+func assertNon2xx(t *testing.T, response *httptest.ResponseRecorder) {
+	t.Helper()
+	if response.Code >= http.StatusOK && response.Code < http.StatusMultipleChoices {
+		t.Fatalf("HTTP status = %d, want non-2xx; body: %s", response.Code, response.Body.String())
+	}
+}
+
 func decodeJSON(t *testing.T, response *httptest.ResponseRecorder, out any) {
 	t.Helper()
-	if err := json.NewDecoder(response.Body).Decode(out); err != nil {
+	payload := bytes.TrimSpace(response.Body.Bytes())
+	if len(payload) == 0 {
+		t.Fatalf("decode empty response body")
+	}
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
 		t.Fatalf("decode response body %q: %v", response.Body.String(), err)
+	}
+	if len(envelope.Data) > 0 && !bytes.Equal(bytes.TrimSpace(envelope.Data), []byte("null")) {
+		payload = bytes.TrimSpace(envelope.Data)
+	}
+	if err := json.Unmarshal(payload, out); err != nil {
+		t.Fatalf("decode response body %q: %v", response.Body.String(), err)
+	}
+}
+
+func decodeRawJSON(t *testing.T, response *httptest.ResponseRecorder, out any) {
+	t.Helper()
+	if err := json.Unmarshal(response.Body.Bytes(), out); err != nil {
+		t.Fatalf("decode raw response body %q: %v", response.Body.String(), err)
 	}
 }
 

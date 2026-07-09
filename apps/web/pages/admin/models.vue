@@ -11,6 +11,23 @@ import {
   WifiOff
 } from '@lucide/vue'
 import { storeToRefs } from 'pinia'
+import DataCardGrid from '~/components/data/DataCardGrid.vue'
+import DataCollection from '~/components/data/DataCollection.vue'
+import DataEmptyState from '~/components/data/EmptyState.vue'
+import DataFilterBar from '~/components/data/FilterBar.vue'
+import DataNoResultsState from '~/components/data/NoResultsState.vue'
+import DataTable from '~/components/data/DataTable.vue'
+import DensityToggle from '~/components/data/DensityToggle.vue'
+import SearchInput from '~/components/data/SearchInput.vue'
+import SortSelect from '~/components/data/SortSelect.vue'
+import ViewModeToggle from '~/components/data/ViewModeToggle.vue'
+import Panel from '~/components/ds/Panel.vue'
+import StatCard from '~/components/ds/StatCard.vue'
+import StatGrid from '~/components/ds/StatGrid.vue'
+import StatusStack from '~/components/ds/StatusStack.vue'
+import PageHeader from '~/components/layout/PageHeader.vue'
+import PageShell from '~/components/layout/PageShell.vue'
+import Toolbar from '~/components/layout/Toolbar.vue'
 import type { AgentRole, ModelConfig, ModelKind, ModelUsageKey, ModelUsageSettings, ProviderConfig, ProviderType } from '~/lib/types'
 import { formatDateTime } from '~/lib/utils'
 
@@ -51,8 +68,22 @@ const usageKeys: ModelUsageKey[] = [
   'embedding'
 ]
 
+type ModelViewMode = 'table' | 'grid' | 'list'
+type ModelDensity = 'compact' | 'comfortable' | 'relaxed'
+type ModelStatusFilter = '' | 'enabled' | 'disabled'
+type ModelCapabilityFilter = '' | 'tools' | 'streaming' | 'default'
+type ModelSortKey = 'name:asc' | 'name:desc' | 'provider:asc' | 'provider:desc' | 'context_window:desc' | 'context_window:asc' | 'routing_weight:desc' | 'routing_weight:asc' | 'activity:desc' | 'activity:asc'
+
 const activeTab = ref('providers')
+const modelSearchQuery = ref('')
 const modelFilterProviderId = ref('')
+const modelFilterKind = ref<ModelKind | ''>('')
+const modelFilterEnabled = ref<ModelStatusFilter>('')
+const modelFilterCapability = ref<ModelCapabilityFilter>('')
+const modelFilterRole = ref<AgentRole | ''>('')
+const modelSortKey = ref<ModelSortKey>('name:asc')
+const modelViewMode = ref<ModelViewMode>('table')
+const modelDensity = ref<ModelDensity>('comfortable')
 const providerSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const modelSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
 const settingsSaveState = ref<'idle' | 'saving' | 'saved' | 'failed'>('idle')
@@ -87,12 +118,56 @@ const pageTabs = computed(() => [
   { label: t('models.tabs.routing'), value: 'routing' },
   { label: t('models.tabs.indexJobs'), value: 'indexJobs', badge: String(indexJobs.value.length) }
 ])
+const providerById = computed(() => new Map(providers.value.map((provider) => [provider.id, provider])))
 const providerTypeOptions = computed(() => providerTypeValues.map((value) => ({ label: providerTypeLabel(value), value })))
 const modelKindOptions = computed(() => modelKindValues.map((value) => ({ label: kindLabel(value), value })))
 const providerSelectOptions = computed(() => providers.value.map((provider) => ({ label: providerOptionLabel(provider), value: provider.id })))
 const providerFilterOptions = computed(() => [
   { label: t('models.allProviders'), value: '' },
   ...providerSelectOptions.value
+])
+const modelKindFilterOptions = computed(() => [
+  { label: t('models.filters.allKinds'), value: '' },
+  ...modelKindOptions.value
+])
+const modelEnabledFilterOptions = computed(() => [
+  { label: t('models.filters.allStatuses'), value: '' },
+  { label: t('status.enabled'), value: 'enabled' },
+  { label: t('status.disabled'), value: 'disabled' }
+])
+const modelCapabilityFilterOptions = computed(() => [
+  { label: t('models.filters.allCapabilities'), value: '' },
+  { label: t('models.filters.capabilityTools'), value: 'tools', description: t('tooltips.supportsTools') },
+  { label: t('models.filters.capabilityStreaming'), value: 'streaming', description: t('tooltips.streaming') },
+  { label: t('models.filters.capabilityDefault'), value: 'default', description: t('tooltips.defaultForKind') }
+])
+const modelRoleFilterOptions = computed(() => [
+  { label: t('models.filters.allRoles'), value: '' },
+  ...agentRoles.map((role) => ({ label: roleLabel(role), value: role, description: t('models.filters.roleIncludesAllRoles') }))
+])
+const modelSortOptions = computed(() => [
+  { label: t('models.sort.nameAsc'), value: 'name:asc' },
+  { label: t('models.sort.nameDesc'), value: 'name:desc' },
+  { label: t('models.sort.providerAsc'), value: 'provider:asc' },
+  { label: t('models.sort.providerDesc'), value: 'provider:desc' },
+  { label: t('models.sort.contextDesc'), value: 'context_window:desc' },
+  { label: t('models.sort.contextAsc'), value: 'context_window:asc' },
+  { label: t('models.sort.weightDesc'), value: 'routing_weight:desc' },
+  { label: t('models.sort.weightAsc'), value: 'routing_weight:asc' },
+  { label: t('models.sort.activityDesc'), value: 'activity:desc' },
+  { label: t('models.sort.activityAsc'), value: 'activity:asc' }
+])
+const modelTableColumns = computed(() => [
+  { key: 'model', label: t('models.table.model'), class: 'min-w-[260px]', headerClass: 'min-w-[260px]' },
+  { key: 'provider', label: t('models.table.provider'), class: 'min-w-[180px]', headerClass: 'min-w-[180px]' },
+  { key: 'kind', label: t('models.table.kind'), class: 'min-w-[120px]' },
+  { key: 'status', label: t('models.table.status'), class: 'min-w-[120px]' },
+  { key: 'context', label: t('models.table.context'), align: 'right' as const, class: 'min-w-[120px] tabular-nums' },
+  { key: 'output', label: t('models.table.outputDimension'), class: 'min-w-[150px]' },
+  { key: 'capabilities', label: t('models.table.capabilities'), class: 'min-w-[190px]' },
+  { key: 'roles', label: t('models.table.roles'), class: 'min-w-[180px]' },
+  { key: 'weight', label: t('models.table.routingWeight'), align: 'right' as const, class: 'min-w-[120px] tabular-nums' },
+  { key: 'actions', label: t('models.table.actions'), align: 'right' as const, class: 'min-w-[150px]' }
 ])
 const isProviderDraft = computed(() => providerMode.value === 'create')
 const selectedProviderExampleKey = computed(() => providerExampleKeyByType[localProvider.provider_type || 'openai-responses'])
@@ -101,12 +176,30 @@ const maintenanceLoading = computed(() =>
   || Object.keys(loading.value).some((key) => key.startsWith('index-jobs:'))
   || loading.value['index-run-pending:all']
 )
+const activeModelFilterCount = computed(() => [
+  modelSearchQuery.value.trim(),
+  modelFilterProviderId.value,
+  modelFilterKind.value,
+  modelFilterEnabled.value,
+  modelFilterCapability.value,
+  modelFilterRole.value
+].filter(Boolean).length)
+const hasActiveModelFilters = computed(() => activeModelFilterCount.value > 0)
 const visibleModels = computed(() => {
-  const source = !modelFilterProviderId.value
-    ? models.value
-    : models.value.filter((model) => model.provider_id === modelFilterProviderId.value)
-  return [...source].sort((left, right) => (left.display_name || left.name).localeCompare(right.display_name || right.name))
+  const filtered = models.value.filter((model) => modelMatchesCatalogFilters(model))
+  return filtered.sort(compareModelsForCatalog)
 })
+const modelTableRows = computed<Array<Record<string, unknown>>>(() => visibleModels.value.map((model) => model as unknown as Record<string, unknown>))
+const modelCatalogLoading = computed(() => Boolean(loading.value.providers) && models.value.length === 0)
+const modelCatalogError = computed(() => {
+  if (modelCatalogLoading.value || models.value.length > 0) return ''
+  return errors.value.find((error) => /models|providers/i.test(error.endpoint))?.message || ''
+})
+const modelCatalogEmpty = computed(() => !modelCatalogLoading.value && !modelCatalogError.value && models.value.length === 0)
+const modelCatalogNoResults = computed(() => !modelCatalogLoading.value && !modelCatalogError.value && models.value.length > 0 && visibleModels.value.length === 0)
+const modelResultSummary = computed(() => t('models.filters.resultSummary', { visible: visibleModels.value.length, total: models.value.length }))
+const modelPanelPadding = computed<'sm' | 'md'>(() => modelDensity.value === 'compact' ? 'sm' : 'md')
+const modelCollectionDensity = computed<'compact' | 'comfortable'>(() => modelDensity.value === 'compact' ? 'compact' : 'comfortable')
 const providerSummary = computed(() => ({
   total: providers.value.length,
   enabled: providers.value.filter((provider) => provider.enabled).length
@@ -469,6 +562,143 @@ function modelRoleSelected(role: AgentRole) {
   return modelForm.allowed_agent_roles.includes(role)
 }
 
+function clearModelCatalogFilters() {
+  modelSearchQuery.value = ''
+  modelFilterProviderId.value = ''
+  modelFilterKind.value = ''
+  modelFilterEnabled.value = ''
+  modelFilterCapability.value = ''
+  modelFilterRole.value = ''
+}
+
+function normalizeSearch(value: unknown) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function modelFromRow(row: unknown) {
+  return row as ModelConfig
+}
+
+function modelMatchesCatalogFilters(model: ModelConfig) {
+  const query = normalizeSearch(modelSearchQuery.value)
+  if (query && !modelSearchFields(model).some((field) => normalizeSearch(field).includes(query))) return false
+  if (modelFilterProviderId.value && model.provider_id !== modelFilterProviderId.value) return false
+  if (modelFilterKind.value && model.kind !== modelFilterKind.value) return false
+  if (modelFilterEnabled.value === 'enabled' && !model.enabled) return false
+  if (modelFilterEnabled.value === 'disabled' && model.enabled) return false
+  if (!modelMatchesCapabilityFilter(model)) return false
+  if (!modelMatchesRoleFilter(model)) return false
+  return true
+}
+
+function modelSearchFields(model: ModelConfig) {
+  const provider = providerById.value.get(model.provider_id)
+  const roles = model.allowed_agent_roles || []
+  return [
+    model.display_name,
+    model.name,
+    model.id,
+    model.provider_id,
+    provider?.name,
+    model.kind,
+    kindLabel(model.kind),
+    ...roles,
+    ...roles.map(roleLabel)
+  ].filter(Boolean)
+}
+
+function modelMatchesCapabilityFilter(model: ModelConfig) {
+  if (modelFilterCapability.value === 'tools') return Boolean(model.supports_tools)
+  if (modelFilterCapability.value === 'streaming') return Boolean(model.supports_streaming)
+  if (modelFilterCapability.value === 'default') return Boolean(model.default_for_kind)
+  return true
+}
+
+function modelMatchesRoleFilter(model: ModelConfig) {
+  if (!modelFilterRole.value) return true
+  const roles = model.allowed_agent_roles || []
+  return roles.length === 0 || roles.includes(modelFilterRole.value)
+}
+
+function compareModelsForCatalog(left: ModelConfig, right: ModelConfig) {
+  const [field, direction] = modelSortKey.value.split(':') as [ModelSortKey extends `${infer Field}:${string}` ? Field : string, 'asc' | 'desc']
+  const multiplier = direction === 'asc' ? 1 : -1
+  if (field === 'provider') {
+    return compareText(modelProviderName(left), modelProviderName(right)) * multiplier || compareText(modelDisplayTitle(left), modelDisplayTitle(right))
+  }
+  if (field === 'context_window') {
+    return (numericSortValue(left.context_window) - numericSortValue(right.context_window)) * multiplier || compareText(modelDisplayTitle(left), modelDisplayTitle(right))
+  }
+  if (field === 'routing_weight') {
+    return (numericSortValue(left.routing_weight) - numericSortValue(right.routing_weight)) * multiplier || compareText(modelDisplayTitle(left), modelDisplayTitle(right))
+  }
+  if (field === 'activity') {
+    return (modelActivityTimestamp(left) - modelActivityTimestamp(right)) * multiplier || compareText(modelDisplayTitle(left), modelDisplayTitle(right))
+  }
+  return compareText(modelDisplayTitle(left), modelDisplayTitle(right)) * multiplier || compareText(left.id, right.id)
+}
+
+function compareText(left: string, right: string) {
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function numericSortValue(value?: number) {
+  return Number.isFinite(value) ? Number(value) : 0
+}
+
+function modelActivityTimestamp(model: ModelConfig) {
+  const timestamp = Date.parse(model.updated_at || model.last_seen_at || model.created_at || '')
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function modelDisplayTitle(model: ModelConfig) {
+  return model.display_name || model.name || model.id
+}
+
+function modelProviderName(model: ModelConfig) {
+  return providerById.value.get(model.provider_id)?.name || model.provider_id
+}
+
+function modelProviderTypeLabel(model: ModelConfig) {
+  const providerType = providerById.value.get(model.provider_id)?.provider_type || model.provider_type
+  return providerTypeLabel(providerType)
+}
+
+function modelOutputMetrics(model: ModelConfig) {
+  const metrics = [
+    { key: 'output', label: t('models.outputShort'), value: formatInteger(model.max_output_tokens) }
+  ]
+  if (model.kind === 'embedding' || model.dimension) {
+    metrics.push({ key: 'dimension', label: t('models.dimensionShort'), value: formatInteger(model.dimension) })
+  }
+  return metrics
+}
+
+function modelCapabilityItems(model: ModelConfig) {
+  return [
+    { key: 'default', label: t('models.defaultForKind'), active: Boolean(model.default_for_kind), variant: model.default_for_kind ? 'gold' as const : 'muted' as const },
+    { key: 'streaming', label: t('models.capabilityLabels.streaming'), active: Boolean(model.supports_streaming), variant: model.supports_streaming ? 'default' as const : 'muted' as const },
+    { key: 'tools', label: t('models.capabilityLabels.tools'), active: Boolean(model.supports_tools), variant: model.supports_tools ? 'default' as const : 'muted' as const }
+  ]
+}
+
+function modelAllowedRoles(model: ModelConfig) {
+  return model.allowed_agent_roles || []
+}
+
+function modelVisibleRoles(model: ModelConfig) {
+  return modelAllowedRoles(model).slice(0, modelDensity.value === 'compact' ? 2 : 4)
+}
+
+function modelHiddenRoleCount(model: ModelConfig) {
+  return Math.max(0, modelAllowedRoles(model).length - modelVisibleRoles(model).length)
+}
+
+function modelUpdatedLabel(model: ModelConfig) {
+  const value = model.updated_at || model.last_seen_at || model.created_at
+  return value ? formatDateTime(value) : t('common.emptyValue')
+}
+
 function statusVariant(status: ProviderConfig['status']) {
   if (status === 'online') return 'success'
   if (status === 'degraded') return 'gold'
@@ -609,40 +839,26 @@ function formatInteger(value?: number) {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <SectionHeader :title="t('models.title')" :description="t('models.description')">
+  <PageShell density="normal">
+    <PageHeader :title="t('models.title')" :description="t('models.description')">
       <template #actions>
         <UiButton variant="outline" :disabled="loading.providers" class="w-full sm:w-auto" @click="workspace.loadProvidersAndModels()">
           <RefreshCw :class="['h-4 w-4', loading.providers && 'animate-spin']" />
           {{ t('actions.reload') }}
         </UiButton>
       </template>
-    </SectionHeader>
+    </PageHeader>
 
-    <StatusAlert :errors="errors" />
+    <StatusStack v-if="errors.length">
+      <StatusAlert :errors="errors" />
+    </StatusStack>
 
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <UiCard class="p-4">
-        <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.summary.providers') }}</p>
-        <p class="mt-3 text-2xl font-semibold">{{ providerSummary.total }}</p>
-        <p class="mt-1 text-xs text-muted-foreground">{{ t('models.summary.enabledProviders', { count: providerSummary.enabled }) }}</p>
-      </UiCard>
-      <UiCard class="p-4">
-        <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.summary.models') }}</p>
-        <p class="mt-3 text-2xl font-semibold">{{ modelSummary.total }}</p>
-        <p class="mt-1 text-xs text-muted-foreground">{{ t('models.summary.enabledModels', { count: modelSummary.enabled }) }}</p>
-      </UiCard>
-      <UiCard class="p-4">
-        <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.summary.textModels') }}</p>
-        <p class="mt-3 text-2xl font-semibold">{{ modelSummary.text }}</p>
-        <p class="mt-1 text-xs text-muted-foreground">{{ t('models.kinds.text') }}</p>
-      </UiCard>
-      <UiCard class="p-4">
-        <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.summary.embeddingModels') }}</p>
-        <p class="mt-3 text-2xl font-semibold">{{ modelSummary.embedding }}</p>
-        <p class="mt-1 text-xs text-muted-foreground">{{ t('models.kinds.embedding') }}</p>
-      </UiCard>
-    </div>
+    <StatGrid columns="four">
+      <StatCard :label="t('models.summary.providers')" :value="providerSummary.total" :hint="t('models.summary.enabledProviders', { count: providerSummary.enabled })" />
+      <StatCard :label="t('models.summary.models')" :value="modelSummary.total" :hint="t('models.summary.enabledModels', { count: modelSummary.enabled })" tone="info" />
+      <StatCard :label="t('models.summary.textModels')" :value="modelSummary.text" :hint="t('models.kinds.text')" tone="success" />
+      <StatCard :label="t('models.summary.embeddingModels')" :value="modelSummary.embedding" :hint="t('models.kinds.embedding')" tone="warning" />
+    </StatGrid>
 
     <UiTabs v-model="activeTab" :tabs="pageTabs" class="w-full" />
 
@@ -710,88 +926,208 @@ function formatInteger(value?: number) {
     </section>
 
     <section v-else-if="activeTab === 'models'" class="space-y-4">
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div class="min-w-0">
-          <p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{{ t('models.modelCatalogEyebrow') }}</p>
-          <h2 class="mt-2 text-xl font-semibold">{{ t('models.modelCatalogTitle') }}</h2>
-          <p class="mt-2 text-sm leading-7 text-muted-foreground">{{ t('models.modelCatalogDescription') }}</p>
-        </div>
-        <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-          <UiSelect
-            v-model="modelFilterProviderId"
-            :options="providerFilterOptions"
-            searchable
-            :search-placeholder="t('models.search.provider')"
-            :empty-text="t('models.search.empty')"
-            class="w-full sm:min-w-[240px]"
-          />
-          <UiButton class="w-full sm:w-auto" @click="openModelDialog()">
-            <Plus class="h-4 w-4" />
-            {{ t('models.newModel') }}
-          </UiButton>
-        </div>
-      </div>
+      <DataCollection
+        :title="t('models.modelCatalogTitle')"
+        :description="t('models.modelCatalogDescription')"
+        :loading="modelCatalogLoading"
+        :error="modelCatalogError"
+        :empty="modelCatalogEmpty"
+        :no-results="modelCatalogNoResults"
+        :loading-title="t('models.states.loadingTitle')"
+        :loading-description="t('models.states.loadingDescription')"
+        :empty-title="t('models.states.emptyTitle')"
+        :empty-description="t('models.states.emptyDescription')"
+        :no-results-title="t('models.states.noResultsTitle')"
+        :no-results-description="t('models.states.noResultsDescription')"
+      >
+        <template #toolbar>
+          <Toolbar density="compact" class="w-full lg:w-auto">
+            <template #start>
+              <span class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{{ modelResultSummary }}</span>
+              <UiBadge v-if="hasActiveModelFilters" variant="muted">{{ t('models.filters.activeCount', { count: activeModelFilterCount }) }}</UiBadge>
+            </template>
+            <template #end>
+              <ViewModeToggle v-model="modelViewMode" :modes="['table', 'grid']" :label="t('models.viewModeLabel')" />
+              <DensityToggle v-model="modelDensity" :densities="['compact', 'comfortable']" :label="t('models.densityLabel')" />
+              <UiButton class="w-full sm:w-auto" @click="openModelDialog()">
+                <Plus class="h-4 w-4" />
+                {{ t('models.newModel') }}
+              </UiButton>
+            </template>
+          </Toolbar>
+        </template>
 
-      <div v-if="visibleModels.length === 0" class="rounded-2xl border border-border bg-muted/35 p-4 text-sm text-muted-foreground">
-        {{ t('models.emptyModels') }}
-      </div>
-      <div v-else class="grid gap-4 xl:grid-cols-2">
-        <UiCard v-for="model in visibleModels" :key="model.id" class="p-4 sm:p-5">
-          <div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 flex-1">
-              <h3 class="break-words font-semibold" :title="model.display_name || model.name">{{ model.display_name || model.name }}</h3>
-              <p class="mt-1 break-words text-xs text-muted-foreground">{{ providerName(model.provider_id) }} · {{ modelFeatureSummary(model) }}</p>
-              <p class="mt-1 break-words text-xs text-muted-foreground" :title="model.name">{{ t('models.upstreamModelId') }}: <span class="font-mono text-[11px]">{{ model.name }}</span></p>
-              <p class="mt-1 break-words text-xs text-muted-foreground" :title="modelQualifiedId(model)">{{ t('models.storedValue') }}: <span class="font-mono text-[11px]">{{ modelQualifiedId(model) }}</span></p>
-            </div>
-            <UiBadge :variant="model.enabled ? 'success' : 'muted'">{{ enabledLabel(model.enabled) }}</UiBadge>
-          </div>
+        <template #filters>
+          <DataFilterBar density="compact">
+            <template #search>
+              <SearchInput
+                v-model="modelSearchQuery"
+                :label="t('models.search.modelCatalogLabel')"
+                :placeholder="t('models.search.modelCatalog')"
+              />
+            </template>
+            <UiSelect
+              v-model="modelFilterProviderId"
+              :options="providerFilterOptions"
+              searchable
+              :search-placeholder="t('models.search.provider')"
+              :empty-text="t('models.search.empty')"
+              class="min-w-[180px] flex-1 sm:max-w-[260px]"
+            />
+            <UiSelect v-model="modelFilterKind" :options="modelKindFilterOptions" class="min-w-[150px] flex-1 sm:max-w-[190px]" />
+            <UiSelect v-model="modelFilterEnabled" :options="modelEnabledFilterOptions" class="min-w-[150px] flex-1 sm:max-w-[190px]" />
+            <UiSelect v-model="modelFilterCapability" :options="modelCapabilityFilterOptions" class="min-w-[170px] flex-1 sm:max-w-[220px]" />
+            <UiSelect
+              v-model="modelFilterRole"
+              :options="modelRoleFilterOptions"
+              searchable
+              :search-placeholder="t('models.filters.roleSearch')"
+              :empty-text="t('models.search.empty')"
+              class="min-w-[170px] flex-1 sm:max-w-[220px]"
+            />
+            <template #actions>
+              <SortSelect v-model="modelSortKey" :options="modelSortOptions" class="min-w-[190px]" />
+              <UiButton v-if="hasActiveModelFilters" variant="outline" @click="clearModelCatalogFilters">
+                {{ t('models.filters.clear') }}
+              </UiButton>
+            </template>
+          </DataFilterBar>
+        </template>
 
-          <div class="mt-4 grid grid-cols-2 gap-3 text-sm xl:grid-cols-4">
-            <div class="rounded-xl bg-muted/35 p-3">
-              <p class="field-label text-xs">{{ t('models.contextWindow') }}<UiInfoTooltip :text="t('tooltips.contextWindow')" /></p>
-              <p class="mt-1 font-medium">{{ formatInteger(model.context_window) }}</p>
-            </div>
-            <div class="rounded-xl bg-muted/35 p-3">
-              <p class="field-label text-xs">{{ t('models.maxOutputTokens') }}<UiInfoTooltip :text="t('tooltips.maxOutputTokens')" /></p>
-              <p class="mt-1 font-medium">{{ formatInteger(model.max_output_tokens) }}</p>
-            </div>
-            <div class="rounded-xl bg-muted/35 p-3">
-              <p class="field-label text-xs">{{ t('models.dimension') }}<UiInfoTooltip :text="t('tooltips.dimension')" /></p>
-              <p class="mt-1 font-medium">{{ model.kind === 'embedding' ? formatInteger(model.dimension) : t('common.emptyValue') }}</p>
-            </div>
-            <div class="rounded-xl bg-muted/35 p-3">
-              <p class="field-label text-xs">{{ t('models.routingWeight') }}<UiInfoTooltip :text="t('tooltips.routingWeight')" /></p>
-              <p class="mt-1 font-medium">{{ formatInteger(model.routing_weight) }}</p>
-            </div>
-          </div>
+        <template #empty>
+          <DataEmptyState :title="t('models.states.emptyTitle')" :description="t('models.states.emptyDescription')">
+            <template #actions>
+              <UiButton @click="openModelDialog()">
+                <Plus class="h-4 w-4" />
+                {{ t('models.newModel') }}
+              </UiButton>
+              <UiButton variant="outline" :disabled="loading.providers" @click="workspace.loadProvidersAndModels()">
+                <RefreshCw :class="['h-4 w-4', loading.providers && 'animate-spin']" />
+                {{ t('actions.reload') }}
+              </UiButton>
+            </template>
+          </DataEmptyState>
+        </template>
 
-          <div class="mt-4 flex flex-wrap gap-2">
-            <UiBadge :variant="model.default_for_kind ? 'gold' : 'muted'">{{ t('models.defaultForKind') }}</UiBadge>
-            <UiBadge :variant="model.supports_streaming ? 'default' : 'muted'">{{ t('models.supportsStreaming') }}</UiBadge>
-            <UiBadge :variant="model.supports_tools ? 'default' : 'muted'">{{ t('models.supportsTools') }}</UiBadge>
-            <UiBadge v-if="!model.allowed_agent_roles?.length" variant="muted">{{ t('models.allRoles') }}</UiBadge>
-          </div>
+        <template #no-results>
+          <DataNoResultsState :title="t('models.states.noResultsTitle')" :description="t('models.states.noResultsDescription')">
+            <template #actions>
+              <UiButton variant="outline" @click="clearModelCatalogFilters">{{ t('models.filters.clear') }}</UiButton>
+            </template>
+          </DataNoResultsState>
+        </template>
 
-          <div v-if="model.allowed_agent_roles?.length" class="mt-4">
-            <p class="field-label text-xs uppercase tracking-[0.18em]">{{ t('models.allowedAgentRoles') }}<UiInfoTooltip :text="t('tooltips.allowedRoles')" /></p>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <UiBadge v-for="role in model.allowed_agent_roles" :key="role" variant="muted">{{ roleLabel(role) }}</UiBadge>
+        <DataTable
+          v-if="modelViewMode === 'table'"
+          :columns="modelTableColumns"
+          :rows="modelTableRows"
+          row-key="id"
+          :density="modelCollectionDensity"
+          :caption="t('models.table.caption')"
+          class="hidden lg:block"
+        >
+          <template #cell="{ row, column }">
+            <div v-if="column.key === 'model'" class="min-w-0 space-y-1">
+              <p class="break-words font-medium text-foreground" :title="modelDisplayTitle(modelFromRow(row))">{{ modelDisplayTitle(modelFromRow(row)) }}</p>
+              <p class="break-all font-mono text-[11px] text-muted-foreground" :title="modelFromRow(row).name">{{ modelFromRow(row).name }}</p>
+              <p class="break-all font-mono text-[11px] text-muted-foreground" :title="modelQualifiedId(modelFromRow(row))">{{ modelQualifiedId(modelFromRow(row)) }}</p>
             </div>
-          </div>
+            <div v-else-if="column.key === 'provider'" class="min-w-0 space-y-1">
+              <p class="truncate font-medium" :title="modelProviderName(modelFromRow(row))">{{ modelProviderName(modelFromRow(row)) }}</p>
+              <p class="truncate text-xs text-muted-foreground">{{ modelProviderTypeLabel(modelFromRow(row)) }}</p>
+              <p class="truncate text-xs text-muted-foreground" :title="modelFromRow(row).provider_id">{{ modelFromRow(row).provider_id }}</p>
+            </div>
+            <UiBadge v-else-if="column.key === 'kind'" variant="muted">{{ kindLabel(modelFromRow(row).kind) }}</UiBadge>
+            <UiBadge v-else-if="column.key === 'status'" :variant="modelFromRow(row).enabled ? 'success' : 'muted'">{{ enabledLabel(modelFromRow(row).enabled) }}</UiBadge>
+            <span v-else-if="column.key === 'context'" class="font-mono text-sm">{{ formatInteger(modelFromRow(row).context_window) }}</span>
+            <div v-else-if="column.key === 'output'" class="space-y-1 text-xs text-muted-foreground">
+              <p v-for="metric in modelOutputMetrics(modelFromRow(row))" :key="metric.key"><span class="font-medium text-foreground">{{ metric.label }}:</span> {{ metric.value }}</p>
+            </div>
+            <div v-else-if="column.key === 'capabilities'" class="flex flex-wrap gap-1.5">
+              <UiBadge v-for="capability in modelCapabilityItems(modelFromRow(row))" :key="capability.key" :variant="capability.variant">{{ capability.label }}</UiBadge>
+            </div>
+            <div v-else-if="column.key === 'roles'" class="flex max-w-[220px] flex-wrap gap-1.5">
+              <UiBadge v-if="modelAllowedRoles(modelFromRow(row)).length === 0" variant="muted">{{ t('models.allRoles') }}</UiBadge>
+              <template v-else>
+                <UiBadge v-for="role in modelVisibleRoles(modelFromRow(row))" :key="role" variant="muted">{{ roleLabel(role) }}</UiBadge>
+              </template>
+              <UiBadge v-if="modelHiddenRoleCount(modelFromRow(row)) > 0" variant="muted">+{{ modelHiddenRoleCount(modelFromRow(row)) }}</UiBadge>
+            </div>
+            <span v-else-if="column.key === 'weight'" class="font-mono text-sm">{{ formatInteger(modelFromRow(row).routing_weight) }}</span>
+            <div v-else-if="column.key === 'actions'" class="flex justify-end gap-2">
+              <UiButton size="sm" variant="outline" @click.stop="openModelDialog(modelFromRow(row))">
+                <Pencil class="h-4 w-4" />
+                {{ t('actions.edit') }}
+              </UiButton>
+              <UiButton size="sm" variant="destructive" @click.stop="requestDeleteModel(modelFromRow(row))">
+                <Trash2 class="h-4 w-4" />
+                {{ t('actions.delete') }}
+              </UiButton>
+            </div>
+          </template>
+        </DataTable>
 
-          <div class="mt-5 flex flex-wrap gap-2">
-            <UiButton size="sm" variant="outline" @click="openModelDialog(model)">
-              <Pencil class="h-4 w-4" />
-              {{ t('actions.edit') }}
-            </UiButton>
-            <UiButton size="sm" variant="destructive" @click="requestDeleteModel(model)">
-              <Trash2 class="h-4 w-4" />
-              {{ t('actions.delete') }}
-            </UiButton>
-          </div>
-        </UiCard>
-      </div>
+        <DataCardGrid :items="modelTableRows" :density="modelCollectionDensity" columns="two" :class="modelViewMode === 'table' ? 'lg:hidden' : ''">
+          <template #default="{ item }">
+            <Panel as="article" :padding="modelPanelPadding" interactive>
+              <div class="flex min-w-0 flex-wrap items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <h3 class="break-words font-semibold" :title="modelDisplayTitle(modelFromRow(item))">{{ modelDisplayTitle(modelFromRow(item)) }}</h3>
+                  <p class="mt-1 break-words text-xs text-muted-foreground">{{ modelProviderName(modelFromRow(item)) }} · {{ modelFeatureSummary(modelFromRow(item)) }}</p>
+                  <p class="mt-1 break-all font-mono text-[11px] text-muted-foreground" :title="modelFromRow(item).name">{{ t('models.upstreamModelId') }}: {{ modelFromRow(item).name }}</p>
+                  <p class="mt-1 break-all font-mono text-[11px] text-muted-foreground" :title="modelQualifiedId(modelFromRow(item))">{{ t('models.storedValue') }}: {{ modelQualifiedId(modelFromRow(item)) }}</p>
+                </div>
+                <UiBadge :variant="modelFromRow(item).enabled ? 'success' : 'muted'">{{ enabledLabel(modelFromRow(item).enabled) }}</UiBadge>
+              </div>
+
+              <div class="mt-4 grid grid-cols-2 gap-3 text-sm xl:grid-cols-4">
+                <div class="rounded-xl bg-muted/35 p-3">
+                  <p class="field-label text-xs">{{ t('models.contextWindow') }}<UiInfoTooltip :text="t('tooltips.contextWindow')" /></p>
+                  <p class="mt-1 font-medium">{{ formatInteger(modelFromRow(item).context_window) }}</p>
+                </div>
+                <div class="rounded-xl bg-muted/35 p-3">
+                  <p class="field-label text-xs">{{ t('models.maxOutputTokens') }}<UiInfoTooltip :text="t('tooltips.maxOutputTokens')" /></p>
+                  <p class="mt-1 font-medium">{{ formatInteger(modelFromRow(item).max_output_tokens) }}</p>
+                </div>
+                <div class="rounded-xl bg-muted/35 p-3">
+                  <p class="field-label text-xs">{{ t('models.dimension') }}<UiInfoTooltip :text="t('tooltips.dimension')" /></p>
+                  <p class="mt-1 font-medium">{{ modelFromRow(item).kind === 'embedding' ? formatInteger(modelFromRow(item).dimension) : t('common.emptyValue') }}</p>
+                </div>
+                <div class="rounded-xl bg-muted/35 p-3">
+                  <p class="field-label text-xs">{{ t('models.routingWeight') }}<UiInfoTooltip :text="t('tooltips.routingWeight')" /></p>
+                  <p class="mt-1 font-medium">{{ formatInteger(modelFromRow(item).routing_weight) }}</p>
+                </div>
+              </div>
+
+              <div class="mt-4 flex flex-wrap gap-2">
+                <UiBadge v-for="capability in modelCapabilityItems(modelFromRow(item))" :key="capability.key" :variant="capability.variant">{{ capability.label }}</UiBadge>
+                <UiBadge v-if="modelAllowedRoles(modelFromRow(item)).length === 0" variant="muted">{{ t('models.allRoles') }}</UiBadge>
+              </div>
+
+              <div v-if="modelAllowedRoles(modelFromRow(item)).length" class="mt-4">
+                <p class="field-label text-xs uppercase tracking-[0.18em]">{{ t('models.allowedAgentRoles') }}<UiInfoTooltip :text="t('tooltips.allowedRoles')" /></p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <UiBadge v-for="role in modelVisibleRoles(modelFromRow(item))" :key="role" variant="muted">{{ roleLabel(role) }}</UiBadge>
+                  <UiBadge v-if="modelHiddenRoleCount(modelFromRow(item)) > 0" variant="muted">+{{ modelHiddenRoleCount(modelFromRow(item)) }}</UiBadge>
+                </div>
+              </div>
+
+              <p class="mt-4 text-xs text-muted-foreground">{{ t('models.updatedAt') }}: {{ modelUpdatedLabel(modelFromRow(item)) }}</p>
+
+              <div class="mt-5 flex flex-wrap gap-2">
+                <UiButton size="sm" variant="outline" @click="openModelDialog(modelFromRow(item))">
+                  <Pencil class="h-4 w-4" />
+                  {{ t('actions.edit') }}
+                </UiButton>
+                <UiButton size="sm" variant="destructive" @click="requestDeleteModel(modelFromRow(item))">
+                  <Trash2 class="h-4 w-4" />
+                  {{ t('actions.delete') }}
+                </UiButton>
+              </div>
+            </Panel>
+          </template>
+        </DataCardGrid>
+      </DataCollection>
     </section>
 
     <section v-else-if="activeTab === 'routing'" class="space-y-4">
@@ -1027,5 +1363,5 @@ function formatInteger(value?: number) {
         </div>
       </template>
     </UiDialog>
-  </div>
+  </PageShell>
 </template>

@@ -33,10 +33,13 @@ import type {
   RebuildVectorsResponse,
   RunPendingIndexResponse,
   SaveChapterVersionResponse,
+  SemanticSearchRequest,
+  SemanticSearchResponse,
   Skill,
   SkillScanResult,
   SkillSource,
   StoryBible,
+  SystemStatus,
   ToolDefinition,
   ToolInvocation
 } from './types'
@@ -59,7 +62,7 @@ export interface ApiResult<T> {
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
-  query?: Record<string, string | number | boolean | undefined>
+  query?: Record<string, string | number | boolean | undefined | null>
 }
 
 type LocaleCode = 'zh-CN' | 'en-US'
@@ -104,8 +107,38 @@ type RefreshModelsResponse = {
   provider?: ProviderConfig
 }
 
-const MODEL_ROUTING_SCOPE = 'model_routing'
-const MODEL_ROUTING_VALUE_KEY = 'model'
+type ModelRoutingResponse = {
+  routes: Partial<ModelUsageSettings>
+}
+
+type V1Envelope<T> = {
+  data?: T
+  meta?: {
+    request_id?: string
+  }
+  page?: {
+    count: number
+    limit?: number
+  }
+  error?: V1ErrorPayload
+}
+
+type V1ErrorPayload = {
+  code?: string
+  message?: string
+  status?: number
+  request_id?: string
+  details?: unknown
+}
+
+type BackendContextSelection = {
+  chapter_ids?: string[]
+  character_ids?: string[]
+  character_names?: string[]
+  include_world_rules?: boolean
+}
+
+export const DEFAULT_API_BASE = 'http://localhost:8080/api/v1'
 
 const modelUsageKeys: Array<keyof ModelUsageSettings> = [
   'writer',
@@ -140,7 +173,6 @@ export type ProviderDeleteResponse = {
 type ModelSaveRequest = {
   id?: string
   provider_id: string
-  provider_type?: ModelConfig['provider_type']
   name: string
   display_name: string
   kind: ModelConfig['kind']
@@ -182,7 +214,7 @@ type BackendStoryBibleRequest = {
   tone: string
   audience: string
   language: string
-  themes?: string[]
+  themes: string[]
   rules?: Record<string, string>
   worldline_ids?: string[]
   entity_ids?: string[]
@@ -190,6 +222,11 @@ type BackendStoryBibleRequest = {
   source_seed: BackendProjectSeedRequest
   genesis_workflow_id?: string
   approved: boolean
+  premise: string
+  world_rules: string[]
+  characters: StoryBible['characters']
+  foreshadows: StoryBible['foreshadows']
+  chapter_plan: StoryBible['chapters']
 }
 
 type BackendCharacterSyncRequest = {
@@ -204,8 +241,38 @@ type BackendCharacterSyncRequest = {
   }>
 }
 
+type SkillSaveRequest = {
+  id?: string
+  project_id?: string
+  source_id?: string
+  name: string
+  description?: string
+  content?: string
+  path?: string
+  enabled: boolean
+  metadata?: Record<string, string>
+}
+
+type MCPServerSaveRequest = {
+  id?: string
+  project_id?: string
+  name: string
+  transport: MCPServerConfig['transport']
+  status?: MCPServerConfig['status']
+  enabled: boolean
+  command?: string
+  args?: string[]
+  url?: string
+  headers?: Record<string, string>
+  secret_headers?: Record<string, string>
+  env?: Record<string, string>
+  secret_env?: Record<string, string>
+  timeout_sec?: number
+  metadata?: Record<string, string>
+}
+
 type BackendChapterVersionRequest = {
-  chapter_id: string
+  id?: string
   title: string
   content: string
   summary?: string
@@ -269,6 +336,7 @@ export type ToolInvocationListOptions = {
 
 export interface ApiClient {
   health(): Promise<ApiResult<HealthStatus>>
+  systemStatus(): Promise<ApiResult<SystemStatus>>
   listProviders(): Promise<ApiResult<ProviderConfig[]>>
   saveProvider(provider: ProviderConfig, mode?: 'create' | 'edit'): Promise<ApiResult<ProviderConfig>>
   deleteProvider(id: string): Promise<ApiResult<ProviderDeleteResponse>>
@@ -287,6 +355,7 @@ export interface ApiClient {
   updateStoryBible(projectId: string, bible: StoryBible): Promise<ApiResult<StoryBible>>
   syncCharacters(projectId: string, bible: StoryBible): Promise<ApiResult<CharacterSyncResponse>>
   expandGraph(request: GraphExpandRequest): Promise<ApiResult<GraphExpandResponse>>
+  semanticSearch(projectId: string, request: SemanticSearchRequest): Promise<ApiResult<SemanticSearchResponse>>
   listChapters(projectId: string): Promise<ApiResult<Chapter[]>>
   ensureChapter(projectId: string, request: EnsureChapterRequest): Promise<ApiResult<EnsureChapterResponse>>
   listChapterVersions(projectId: string, chapterId: string): Promise<ApiResult<ChapterVersion[]>>
@@ -386,11 +455,39 @@ function pathSegment(value: string): string {
   return encodeURIComponent(value)
 }
 
+function normalizeApiBase(baseUrl?: string): string {
+  const trimmed = (baseUrl || DEFAULT_API_BASE).trim().replace(/\/+$/, '')
+  if (!trimmed) return DEFAULT_API_BASE
+  if (/\/api$/i.test(trimmed)) return `${trimmed}/v1`
+  if (/\/api\/v1$/i.test(trimmed) || /\/v1$/i.test(trimmed)) return trimmed
+
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.pathname === '' || parsed.pathname === '/') {
+      parsed.pathname = '/api/v1'
+      return parsed.toString().replace(/\/+$/, '')
+    }
+  } catch (error) {
+    if (trimmed === '' || trimmed === '/') return '/api/v1'
+    console.warn('Using custom API base that does not end with /api/v1', { baseUrl: trimmed, error })
+  }
+
+  return trimmed
+}
+
+function requirePathId(value: string | undefined, label: string): string {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    throw new ApiClientError({ endpoint: label, message: `${label} is required` })
+  }
+  return trimmed
+}
+
 function buildQuery(query?: RequestOptions['query']) {
   if (!query) return ''
   const search = new URLSearchParams()
   Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined) search.set(key, String(value))
+    if (value !== undefined && value !== null) search.set(key, String(value))
   })
   const value = search.toString()
   return value ? `?${value}` : ''
@@ -486,6 +583,42 @@ function providerToBackend(provider: ProviderConfig): ProviderSaveRequest {
   return request
 }
 
+function skillToBackend(skill: Skill, includeId: boolean): SkillSaveRequest {
+  const body: SkillSaveRequest = {
+    project_id: skill.project_id || undefined,
+    source_id: skill.source_id || undefined,
+    name: skill.name.trim(),
+    description: skill.description?.trim() || undefined,
+    content: skill.content || undefined,
+    path: skill.path || undefined,
+    enabled: skill.enabled,
+    metadata: skill.metadata
+  }
+  if (includeId && skill.id?.trim()) body.id = skill.id.trim()
+  return body
+}
+
+function mcpServerToBackend(server: MCPServerConfig, includeId: boolean): MCPServerSaveRequest {
+  const body: MCPServerSaveRequest = {
+    project_id: server.project_id || undefined,
+    name: server.name.trim(),
+    transport: server.transport,
+    status: server.status || undefined,
+    enabled: server.enabled,
+    command: server.command?.trim() || undefined,
+    args: server.args?.filter((item) => item.trim()),
+    url: server.url?.trim() || undefined,
+    headers: server.headers,
+    secret_headers: server.secret_headers,
+    env: server.env,
+    secret_env: server.secret_env,
+    timeout_sec: server.timeout_sec,
+    metadata: server.metadata
+  }
+  if (includeId && server.id?.trim()) body.id = server.id.trim()
+  return body
+}
+
 function normalizeModel(model: ModelConfig): ModelConfig {
   return {
     ...model,
@@ -507,7 +640,6 @@ function normalizeModel(model: ModelConfig): ModelConfig {
 function modelToBackend(model: ModelConfig): ModelSaveRequest {
   const request: ModelSaveRequest = {
     provider_id: model.provider_id.trim(),
-    provider_type: model.provider_type,
     name: model.name.trim(),
     display_name: (model.display_name || model.name).trim(),
     kind: model.kind || 'text',
@@ -542,15 +674,12 @@ function emptyModelUsageSettings(): ModelUsageSettings {
   }
 }
 
-function normalizeModelUsageSettings(items: AppSetting[]): ModelUsageSettings {
+function normalizeModelUsageSettings(routes: Partial<ModelUsageSettings> = {}): ModelUsageSettings {
   const settings = emptyModelUsageSettings()
-  items
-    .filter((item) => item.scope === MODEL_ROUTING_SCOPE)
-    .forEach((item) => {
-      if (!modelUsageKeys.includes(item.key as keyof ModelUsageSettings)) return
-      const raw = item.value?.[MODEL_ROUTING_VALUE_KEY]
-      settings[item.key as keyof ModelUsageSettings] = typeof raw === 'string' ? raw.trim() : ''
-    })
+  modelUsageKeys.forEach((key) => {
+    const raw = routes[key]
+    settings[key] = typeof raw === 'string' ? raw.trim() : ''
+  })
   return settings
 }
 
@@ -582,74 +711,87 @@ function normalizeWorkflow(workflow: AIWorkflow): AIWorkflow {
   }
 }
 
+const STORY_BIBLE_METADATA_KEYS = new Set([
+  'story_bible_premise',
+  'story_bible_world_rules',
+  'story_bible_characters',
+  'story_bible_foreshadows',
+  'story_bible_chapter_plan',
+  'story_bible_chapters'
+])
+
+function stripStoryBibleMetadata(metadata?: Record<string, string>): Record<string, string> | undefined {
+  if (!metadata) return undefined
+  const next = Object.entries(metadata).reduce<Record<string, string>>((items, [key, value]) => {
+    if (!STORY_BIBLE_METADATA_KEYS.has(key)) items[key] = value
+    return items
+  }, {})
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
+function sanitizeStoryBibleChapterPlan(bible: StoryBible): StoryBible['chapters'] {
+  const source = bible.chapter_plan?.length ? bible.chapter_plan : bible.chapters
+  return (source || []).map((chapter, index) => ({
+    id: chapter.id?.trim() || `chapter-${index + 1}`,
+    title: chapter.title?.trim() || '',
+    status: chapter.status || 'planned',
+    summary: chapter.summary?.trim() || ''
+  }))
+}
+
 function storyBibleToBackend(bible: StoryBible): BackendStoryBibleRequest {
   const worldRules = (bible.world_rules || []).map((rule) => rule.trim()).filter(Boolean)
-  const characters = (bible.characters || []).map((character) => ({
+  const characters = (bible.characters || []).map((character, index) => ({
     ...character,
-    id: character.id.trim(),
+    id: character.id?.trim() || `character-${index + 1}`,
     name: character.name.trim(),
     role: character.role.trim(),
     desire: character.desire.trim(),
     wound: character.wound.trim(),
     secret: character.secret?.trim(),
-    summary: character.summary?.trim()
+    summary: character.summary?.trim(),
+    metadata: stripStoryBibleMetadata(character.metadata)
   }))
-  const foreshadows = (bible.foreshadows || []).map((item) => ({
+  const foreshadows = (bible.foreshadows || []).map((item, index) => ({
     ...item,
-    id: item.id.trim(),
+    id: item.id?.trim() || `foreshadow-${index + 1}`,
     title: item.title.trim(),
     planted_in: item.planted_in.trim(),
-    payoff_hint: item.payoff_hint.trim()
+    payoff_hint: item.payoff_hint.trim(),
+    status: item.status || 'planted'
   }))
-  const chapters = (bible.chapters || []).map((chapter) => ({
-    ...chapter,
-    id: chapter.id.trim(),
-    title: chapter.title.trim(),
-    summary: chapter.summary.trim()
-  }))
+  const chapterPlan = sanitizeStoryBibleChapterPlan(bible)
   const sourceSeed = bible.source_seed
   const themes = (bible.themes || []).map((theme) => theme.trim()).filter(Boolean)
-  const metadata = {
-    ...(sourceSeed?.metadata || {}),
-    one_sentence_core: sourceSeed?.one_sentence_core || bible.logline || bible.premise,
-    tags: (sourceSeed?.tags || themes).join(','),
-    world_background: worldRules.join('\n') || sourceSeed?.world_background || sourceSeed?.setting || '',
-    protagonist: characters[0]?.name || sourceSeed?.protagonist || sourceSeed?.main_characters?.[0] || '',
-    central_conflict: sourceSeed?.central_conflict || bible.premise,
-    style: sourceSeed?.style || bible.tone || '',
-    taboos: sourceSeed?.taboos || '',
-    story_bible_premise: bible.premise,
-    story_bible_world_rules: JSON.stringify(worldRules),
-    story_bible_characters: JSON.stringify(characters),
-    story_bible_foreshadows: JSON.stringify(foreshadows),
-    story_bible_chapters: JSON.stringify(chapters)
-  }
+  const premise = bible.premise || sourceSeed?.premise || bible.logline || bible.synopsis || ''
+  const sourceMetadata = stripStoryBibleMetadata(sourceSeed?.metadata)
+  const worldBackground = worldRules.join('\n') || sourceSeed?.world_background || sourceSeed?.setting || ''
   const rules = worldRules.reduce<Record<string, string>>((items, rule, index) => {
     items[`rule_${index + 1}`] = rule
     return items
   }, {})
   const sanitizedSourceSeed: BackendProjectSeedRequest = {
     title: sourceSeed?.title || bible.title || '',
-    premise: bible.premise,
+    premise,
     genre: bible.genre || sourceSeed?.genre || '',
     tone: bible.tone || sourceSeed?.tone || '',
     audience: bible.audience || sourceSeed?.audience || '',
     language: bible.language || sourceSeed?.language || 'zh-CN',
-    setting: sourceSeed?.setting || metadata.world_background,
+    setting: sourceSeed?.setting || worldBackground,
     themes,
     main_characters: characters.map((character) => character.name).filter(Boolean),
     constraints: sourceSeed?.constraints?.length ? sourceSeed.constraints.map((item) => item.trim()).filter(Boolean) : worldRules,
-    target_chapters: chapters.length || sourceSeed?.target_chapters || 1,
-    metadata
+    target_chapters: chapterPlan.length || sourceSeed?.target_chapters || 1,
+    metadata: sourceMetadata
   }
 
   return {
-    id: '',
-    version: 0,
+    id: bible.id,
+    version: bible.version || 0,
     project_id: bible.project_id,
     title: bible.title || sanitizedSourceSeed.title,
-    logline: bible.logline || bible.premise,
-    synopsis: bible.synopsis || bible.premise,
+    logline: bible.logline || premise,
+    synopsis: bible.synopsis || premise,
     genre: bible.genre || sanitizedSourceSeed.genre,
     tone: bible.tone || sanitizedSourceSeed.tone,
     audience: bible.audience || sanitizedSourceSeed.audience,
@@ -661,7 +803,12 @@ function storyBibleToBackend(bible: StoryBible): BackendStoryBibleRequest {
     plot_thread_ids: bible.plot_thread_ids || [],
     source_seed: sanitizedSourceSeed,
     genesis_workflow_id: bible.genesis_workflow_id || '',
-    approved: Boolean(bible.approved)
+    approved: Boolean(bible.approved),
+    premise,
+    world_rules: worldRules,
+    characters,
+    foreshadows,
+    chapter_plan: chapterPlan
   }
 }
 
@@ -702,6 +849,11 @@ function normalizeStoryBible(bible: StoryBible, copy: ApiCopy): StoryBible {
     status: 'planted' as const
   }))
   const premise = bible.premise || sourceSeed?.metadata?.story_bible_premise || bible.logline || bible.synopsis || sourceSeed?.premise || copy.storyBiblePendingSummary
+  const chapterPlan = bible.chapter_plan?.length
+    ? bible.chapter_plan
+    : bible.chapters?.length
+      ? bible.chapters
+      : parseStoryBibleMetadata(sourceSeed, 'story_bible_chapter_plan', parseStoryBibleMetadata(sourceSeed, 'story_bible_chapters', generatedChapters))
   return {
     ...bible,
     premise,
@@ -709,19 +861,35 @@ function normalizeStoryBible(bible: StoryBible, copy: ApiCopy): StoryBible {
     world_rules: bible.world_rules || parseStoryBibleMetadata(sourceSeed, 'story_bible_world_rules', fallbackWorldRules),
     characters: bible.characters || parseStoryBibleMetadata(sourceSeed, 'story_bible_characters', fallbackCharacters),
     foreshadows: bible.foreshadows || parseStoryBibleMetadata(sourceSeed, 'story_bible_foreshadows', fallbackForeshadows),
-    chapters: bible.chapters || parseStoryBibleMetadata(sourceSeed, 'story_bible_chapters', generatedChapters)
+    chapter_plan: chapterPlan,
+    chapters: chapterPlan
   }
 }
 
 function normalizeProject(project: Project): ProjectSummary {
+  const targetChapters = project.seed?.target_chapters || 0
+  const seedTags = project.seed?.themes?.length
+    ? project.seed.themes
+    : project.seed?.metadata?.tags
+      ? project.seed.metadata.tags.split(',').map((tag) => tag.trim()).filter(Boolean)
+      : project.seed?.genre
+        ? [project.seed.genre]
+        : []
+
   return {
     id: project.id,
     title: project.title,
-    logline: project.seed?.premise || project.metadata?.logline || project.status,
-    tags: project.seed?.themes || (project.seed?.genre ? [project.seed.genre] : []),
+    slug: project.slug,
+    status: project.status,
+    logline: project.seed?.premise || project.seed?.metadata?.one_sentence_core || project.metadata?.logline || project.status,
+    tags: seedTags,
+    seed: project.seed,
+    active_story_bible_id: project.active_story_bible_id,
+    created_at: project.created_at,
     updated_at: project.updated_at,
     bible_status: project.active_story_bible_id ? 'draft' : 'missing',
-    chapter_count: project.seed?.target_chapters || 0
+    chapter_count: targetChapters,
+    target_chapters: targetChapters
   }
 }
 
@@ -830,6 +998,41 @@ function isSyncableCharacter(character: StoryBible['characters'][number]) {
   )
 }
 
+function chapterRequestToBackend(request: EnsureChapterRequest): EnsureChapterRequest {
+  const metadata = { ...(request.metadata || {}) }
+  delete metadata.summary
+  const body: EnsureChapterRequest = {
+    chapter_id: request.chapter_id,
+    number: request.number,
+    title: request.title,
+    status: request.status,
+    summary: request.summary,
+    metadata: Object.keys(metadata).length > 0 ? metadata : undefined
+  }
+  return body
+}
+
+function contextSelectionToBackend(selection: AgentRunRequest['context_selection']): BackendContextSelection | undefined {
+  if (!selection) return undefined
+  const chapterIds = selection.chapter_ids?.map((item) => item.trim()).filter(Boolean)
+  const characterIds = selection.character_ids?.map((item) => item.trim()).filter(Boolean)
+  const characterNames = selection.character_names?.map((item) => item.trim()).filter(Boolean)
+  const body: BackendContextSelection = {
+    chapter_ids: chapterIds?.length ? chapterIds : undefined,
+    character_ids: characterIds?.length ? characterIds : undefined,
+    character_names: characterNames?.length ? characterNames : undefined,
+    include_world_rules: selection.include_world_rules || undefined
+  }
+  return Object.values(body).some((value) => value !== undefined) ? body : undefined
+}
+
+function agentRunRequestToBackend(request: AgentRunRequest): AgentRunRequest {
+  return {
+    ...request,
+    context_selection: contextSelectionToBackend(request.context_selection)
+  }
+}
+
 function mapHealth(response: HealthResponse, copy: ApiCopy): HealthStatus {
   const warnings = []
   if (!response.qdrant_configured) warnings.push(copy.healthWarnings.qdrant)
@@ -849,6 +1052,34 @@ function mapHealth(response: HealthResponse, copy: ApiCopy): HealthStatus {
   }
 }
 
+function errorMessageFromV1(endpoint: string, status: number, error?: V1ErrorPayload): ApiErrorState {
+  const code = error?.code || 'request_error'
+  const message = error?.message || 'request failed'
+  const responseStatus = error?.status || status
+  const requestId = error?.request_id ? ` request_id=${error.request_id}` : ''
+  return {
+    endpoint,
+    status: responseStatus,
+    message: `${code} (${responseStatus}): ${message}${requestId}`,
+    cause: error?.details
+  }
+}
+
+async function parseV1Payload<T>(response: Response, endpoint: string): Promise<T> {
+  const payload = await response.json() as V1Envelope<T>
+  if (payload?.error) {
+    throw new ApiClientError(errorMessageFromV1(endpoint, response.status, payload.error))
+  }
+  if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
+    throw new ApiClientError({
+      endpoint,
+      status: response.status,
+      message: `invalid_v1_envelope (${response.status}): missing data`
+    })
+  }
+  return payload.data as T
+}
+
 async function requestJson<T>(baseUrl: string, endpoint: string, options: RequestOptions = {}): Promise<T> {
   const url = `${baseUrl.replace(/\/$/, '')}${endpoint}${buildQuery(options.query)}`
   try {
@@ -862,21 +1093,20 @@ async function requestJson<T>(baseUrl: string, endpoint: string, options: Reques
     })
 
     if (!response.ok) {
-      let detail = response.statusText
       try {
-        const payload = await response.json()
-        detail = typeof payload?.message === 'string' ? payload.message : typeof payload?.error === 'string' ? payload.error : JSON.stringify(payload)
-      } catch (error) {
-        console.error('Failed to parse API error response', error)
+        await parseV1Payload<T>(response, endpoint)
+      } catch (cause) {
+        if (cause instanceof ApiClientError) throw cause
+        console.error('Failed to parse v1 API error response', cause)
       }
-      throw new ApiClientError({
-        endpoint,
-        status: response.status,
-        message: `${response.status} ${detail}`
-      })
+      throw new ApiClientError(errorMessageFromV1(endpoint, response.status, {
+        code: 'request_error',
+        message: response.statusText || 'request failed',
+        status: response.status
+      }))
     }
 
-    return (await response.json()) as T
+    return await parseV1Payload<T>(response, endpoint)
   } catch (cause) {
     if (cause instanceof ApiClientError) throw cause
     const error = createErrorState(endpoint, cause)
@@ -902,13 +1132,17 @@ async function requestMapped<TRaw, TData>(
   }
 }
 
-export function createApiClient(baseUrl: string, locale?: string): ApiClient {
+export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient {
+  const baseUrl = normalizeApiBase(rawBaseUrl)
   const normalizedLocale = normalizeLocale(locale)
   const copy = getApiCopy(normalizedLocale)
 
   return {
     health() {
       return requestMapped<HealthResponse, HealthStatus>(baseUrl, '/health', {}, (response) => mapHealth(response, copy))
+    },
+    systemStatus() {
+      return requestResult<SystemStatus>(baseUrl, '/system/status')
     },
     listProviders() {
       return requestMapped<ProviderConfig[], ProviderConfig[]>(baseUrl, '/providers', {}, (items) => items.map(normalizeProvider))
@@ -924,7 +1158,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       return requestResult<ProviderDeleteResponse>(baseUrl, `/providers/${pathSegment(id)}`, { method: 'DELETE' })
     },
     listModels(kind) {
-      return requestMapped<ModelConfig[], ModelConfig[]>(baseUrl, '/models', { query: { kind } }, (items) => items.map(normalizeModel))
+      return requestMapped<ModelConfig[], ModelConfig[]>(baseUrl, '/models', { query: { 'filter[kind]': kind } }, (items) => items.map(normalizeModel))
     },
     saveModel(model) {
       const isExisting = Boolean(model.id && model.created_at)
@@ -938,7 +1172,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     refreshModels(providerId) {
       return requestMapped<RefreshModelsResponse, ModelConfig[]>(
         baseUrl,
-        `/providers/${pathSegment(providerId)}/refresh-models`,
+        `/providers/${pathSegment(providerId)}/model-refreshes`,
         { method: 'POST' },
         (response) => response.models.map(normalizeModel)
       )
@@ -953,22 +1187,24 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       })
     },
     async getModelUsageSettings() {
-      const result = await requestResult<AppSetting[]>(baseUrl, '/settings', { query: { scope: MODEL_ROUTING_SCOPE } })
+      const result = await requestResult<ModelRoutingResponse>(baseUrl, '/model-routing')
       return {
-        data: normalizeModelUsageSettings(result.data),
+        data: normalizeModelUsageSettings(result.data.routes),
         error: result.error
       }
     },
     async saveModelUsageSettings(settings) {
-      const savedSettings = await Promise.all(
-        modelUsageKeys.map((key) => requestJson<AppSetting>(baseUrl, `/settings/${pathSegment(MODEL_ROUTING_SCOPE)}/${pathSegment(key)}`, {
-          method: 'PUT',
-          body: { scope: MODEL_ROUTING_SCOPE, key, value: { [MODEL_ROUTING_VALUE_KEY]: settings[key].trim() } }
-        }))
-      )
+      const routes = modelUsageKeys.reduce<Partial<ModelUsageSettings>>((items, key) => {
+        items[key] = settings[key].trim()
+        return items
+      }, {})
+      const result = await requestResult<ModelRoutingResponse>(baseUrl, '/model-routing', {
+        method: 'PUT',
+        body: { routes }
+      })
       return {
-        data: normalizeModelUsageSettings(savedSettings),
-        error: undefined
+        data: normalizeModelUsageSettings(result.data.routes),
+        error: result.error
       }
     },
     listProjects() {
@@ -977,7 +1213,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     initializeProject(seed) {
       return requestMapped<InitializeProjectResponse, StoryBible>(
         baseUrl,
-        '/projects/initialize',
+        '/projects',
         { method: 'POST', body: projectSeedToBackend(seed, copy) },
         (response) => normalizeStoryBible(response.story_bible, copy)
       )
@@ -985,7 +1221,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
     initializeProjectFull(seed) {
       return requestMapped<InitializeProjectResponse, InitializeProjectResponse>(
         baseUrl,
-        '/projects/initialize',
+        '/projects',
         { method: 'POST', body: projectSeedToBackend(seed, copy) },
         (response) => ({
           ...response,
@@ -995,12 +1231,13 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       )
     },
     getStoryBible(projectId) {
-      return requestMapped<StoryBible, StoryBible>(baseUrl, `/projects/${pathSegment(projectId)}/story-bible`, {}, (storyBible) => normalizeStoryBible(storyBible, copy))
+      return requestMapped<StoryBible, StoryBible>(baseUrl, `/projects/${pathSegment(projectId)}/story-bibles/current`, {}, (storyBible) => normalizeStoryBible(storyBible, copy))
     },
     updateStoryBible(projectId, bible) {
+      const storyBibleId = requirePathId(bible.id, 'story_bible_id')
       return requestMapped<StoryBible, StoryBible>(
         baseUrl,
-        `/projects/${pathSegment(projectId)}/story-bible`,
+        `/projects/${pathSegment(projectId)}/story-bibles/${pathSegment(storyBibleId)}`,
         { method: 'PUT', body: storyBibleToBackend(bible) },
         (storyBible) => normalizeStoryBible(storyBible, copy)
       )
@@ -1036,7 +1273,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       }
       return requestResult<CharacterSyncResponse>(
         baseUrl,
-        `/projects/${pathSegment(projectId)}/characters/sync`,
+        `/projects/${pathSegment(projectId)}/story-bibles/${pathSegment(requirePathId(bible.id, 'story_bible_id'))}/character-syncs`,
         {
           method: 'POST',
           body
@@ -1044,13 +1281,20 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       )
     },
     expandGraph(request) {
+      const projectId = requirePathId(request.project_id, 'project_id')
       const entityIds = request.entity_ids?.map((item) => item.trim()).filter(Boolean) || []
       return requestMapped<GraphExpansion, GraphExpandResponse>(
         baseUrl,
-        '/graph/expand',
-        { query: { project_id: request.project_id, entity_ids: entityIds.length > 0 ? entityIds.join(',') : undefined, depth: request.depth } },
+        `/projects/${pathSegment(projectId)}/graph/expansions`,
+        { method: 'POST', body: { entity_ids: entityIds.length > 0 ? entityIds : undefined, depth: request.depth } },
         normalizeGraphExpansion
       )
+    },
+    semanticSearch(projectId, request) {
+      return requestResult<SemanticSearchResponse>(baseUrl, `/projects/${pathSegment(projectId)}/retrieval/semantic-searches`, {
+        method: 'POST',
+        body: request
+      })
     },
     listChapters(projectId) {
       return requestMapped<Chapter[], Chapter[]>(
@@ -1061,24 +1305,29 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       )
     },
     ensureChapter(projectId, request) {
-      return requestMapped<EnsureChapterResponse, EnsureChapterResponse>(
+      const chapterId = request.chapter_id?.trim()
+      const endpoint = chapterId
+        ? `/projects/${pathSegment(projectId)}/chapters/${pathSegment(chapterId)}`
+        : `/projects/${pathSegment(projectId)}/chapters`
+      return requestMapped<EnsureChapterResponse | Chapter, EnsureChapterResponse>(
         baseUrl,
-        `/projects/${pathSegment(projectId)}/chapters/ensure`,
-        { method: 'POST', body: request },
+        endpoint,
+        { method: chapterId ? 'PUT' : 'POST', body: chapterRequestToBackend(request) },
         normalizeEnsureChapterResponse
       )
     },
     listChapterVersions(projectId, chapterId) {
       return requestMapped<ChapterVersion[], ChapterVersion[]>(
         baseUrl,
-        `/projects/${pathSegment(projectId)}/chapter-versions`,
-        { query: { chapter_id: chapterId } },
+        `/projects/${pathSegment(projectId)}/chapters/${pathSegment(chapterId)}/versions`,
+        {},
         (items) => items.map((item) => normalizeChapterVersion(item, copy))
       )
     },
     saveChapterVersion(projectId, version) {
+      const chapterId = requirePathId(version.chapter_id, 'chapter_id')
       const body: BackendChapterVersionRequest = {
-        chapter_id: version.chapter_id || '',
+        id: version.id,
         title: version.title || '',
         content: version.content || '',
         summary: version.summary,
@@ -1089,7 +1338,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       }
       return requestMapped<SaveChapterVersionResponse, SaveChapterVersionResponse>(
         baseUrl,
-        `/projects/${pathSegment(projectId)}/chapter-versions`,
+        `/projects/${pathSegment(projectId)}/chapters/${pathSegment(chapterId)}/versions`,
         {
           method: 'POST',
           body
@@ -1112,7 +1361,7 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       return requestResult<{ status: string }>(baseUrl, `/agents/${pathSegment(id)}`, { method: 'DELETE' })
     },
     runAgent(agentId, request) {
-      return requestResult<AgentRunResult>(baseUrl, `/agents/${pathSegment(agentId)}/runs`, { method: 'POST', body: request })
+      return requestResult<AgentRunResult>(baseUrl, `/agents/${pathSegment(agentId)}/runs`, { method: 'POST', body: agentRunRequestToBackend(request) })
     },
     listAgentRuns(options) {
       return requestResult<AgentRun[]>(baseUrl, '/agent-runs', {
@@ -1120,15 +1369,15 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       })
     },
     listSkillSources(options) {
-      return requestResult<SkillSource[]>(baseUrl, '/skills/sources', {
+      return requestResult<SkillSource[]>(baseUrl, '/skill-sources', {
         query: { project_id: options?.projectId, enabled: options?.enabled, limit: options?.limit }
       })
     },
     scanDefaultSkillSource() {
-      return requestResult<SkillScanResult>(baseUrl, '/skills/sources/default/scan', { method: 'POST' })
+      return requestResult<SkillScanResult>(baseUrl, '/skill-sources/default/scans', { method: 'POST' })
     },
     scanSkillSource(id) {
-      return requestResult<SkillScanResult>(baseUrl, `/skills/sources/${pathSegment(id)}/scan`, { method: 'POST' })
+      return requestResult<SkillScanResult>(baseUrl, `/skill-sources/${pathSegment(id)}/scans`, { method: 'POST' })
     },
     listSkills(options) {
       return requestResult<Skill[]>(baseUrl, '/skills', {
@@ -1139,42 +1388,42 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       const isExisting = mode === 'edit' || (!mode && Boolean(skill.id && skill.created_at))
       const endpoint = isExisting ? `/skills/${pathSegment(skill.id)}` : '/skills'
       const method = isExisting ? 'PUT' : 'POST'
-      return requestResult<Skill>(baseUrl, endpoint, { method, body: skill })
+      return requestResult<Skill>(baseUrl, endpoint, { method, body: skillToBackend(skill, isExisting) })
     },
     deleteSkill(id) {
       return requestResult<{ status: string }>(baseUrl, `/skills/${pathSegment(id)}`, { method: 'DELETE' })
     },
     setSkillEnabled(id, enabled) {
-      return requestResult<Skill>(baseUrl, `/skills/${pathSegment(id)}/enabled`, { method: 'PUT', body: { enabled } })
+      return requestResult<Skill>(baseUrl, `/skills/${pathSegment(id)}`, { method: 'PATCH', body: { enabled } })
     },
     listMCPServers(options) {
-      return requestResult<MCPServerConfig[]>(baseUrl, '/mcp/servers', {
+      return requestResult<MCPServerConfig[]>(baseUrl, '/mcp-servers', {
         query: { project_id: options?.projectId, enabled: options?.enabled, status: options?.status, limit: options?.limit }
       })
     },
     saveMCPServer(server, mode) {
       const isExisting = mode === 'edit' || (!mode && Boolean(server.id && server.created_at))
-      const endpoint = isExisting ? `/mcp/servers/${pathSegment(server.id)}` : '/mcp/servers'
+      const endpoint = isExisting ? `/mcp-servers/${pathSegment(server.id)}` : '/mcp-servers'
       const method = isExisting ? 'PUT' : 'POST'
-      return requestResult<MCPServerConfig>(baseUrl, endpoint, { method, body: server })
+      return requestResult<MCPServerConfig>(baseUrl, endpoint, { method, body: mcpServerToBackend(server, isExisting) })
     },
     deleteMCPServer(id) {
-      return requestResult<{ status: string }>(baseUrl, `/mcp/servers/${pathSegment(id)}`, { method: 'DELETE' })
+      return requestResult<{ status: string }>(baseUrl, `/mcp-servers/${pathSegment(id)}`, { method: 'DELETE' })
     },
     setMCPServerEnabled(id, enabled) {
-      return requestResult<MCPServerConfig>(baseUrl, `/mcp/servers/${pathSegment(id)}/enabled`, { method: 'PUT', body: { enabled } })
+      return requestResult<MCPServerConfig>(baseUrl, `/mcp-servers/${pathSegment(id)}`, { method: 'PATCH', body: { enabled } })
     },
     testMCPServer(id) {
-      return requestResult<{ ok: boolean; server: MCPServerConfig }>(baseUrl, `/mcp/servers/${pathSegment(id)}/test`, { method: 'POST' })
+      return requestResult<{ ok: boolean; server: MCPServerConfig }>(baseUrl, `/mcp-servers/${pathSegment(id)}/connection-tests`, { method: 'POST' })
     },
     refreshMCPTools(id) {
-      return requestResult<{ tools: ToolDefinition[]; count: number; unavailable: number }>(baseUrl, `/mcp/servers/${pathSegment(id)}/refresh-tools`, { method: 'POST' })
+      return requestResult<{ tools: ToolDefinition[]; count: number; unavailable: number }>(baseUrl, `/mcp-servers/${pathSegment(id)}/tool-refreshes`, { method: 'POST' })
     },
     listMCPServerTools(id) {
-      return requestResult<ToolDefinition[]>(baseUrl, `/mcp/servers/${pathSegment(id)}/tools`)
+      return requestResult<ToolDefinition[]>(baseUrl, `/mcp-servers/${pathSegment(id)}/tools`)
     },
     listToolCatalog(options) {
-      return requestResult<ToolDefinition[]>(baseUrl, '/tools/catalog', {
+      return requestResult<ToolDefinition[]>(baseUrl, '/tools', {
         query: {
           project_id: options?.projectId,
           kind: options?.kind,
@@ -1187,10 +1436,10 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       })
     },
     setToolEnabled(id, enabled) {
-      return requestResult<ToolDefinition>(baseUrl, `/tools/catalog/${pathSegment(id)}/enabled`, { method: 'PUT', body: { enabled } })
+      return requestResult<ToolDefinition>(baseUrl, `/tools/${pathSegment(id)}`, { method: 'PATCH', body: { enabled } })
     },
     listToolInvocations(options) {
-      return requestResult<ToolInvocation[]>(baseUrl, '/tools/invocations', {
+      return requestResult<ToolInvocation[]>(baseUrl, '/tool-invocations', {
         query: {
           agent_run_id: options?.agentRunId,
           agent_id: options?.agentId,
@@ -1205,21 +1454,21 @@ export function createApiClient(baseUrl: string, locale?: string): ApiClient {
       const query = typeof options === 'string'
         ? { project_id: options }
         : { project_id: options?.projectId, status: options?.status, limit: options?.limit }
-      return requestResult<IndexJob[]>(baseUrl, '/index/jobs', { query })
+      return requestResult<IndexJob[]>(baseUrl, '/index-jobs', { query })
     },
     runIndexJob(id) {
-      return requestResult<IndexJob>(baseUrl, `/index/jobs/${pathSegment(id)}/run`, { method: 'POST' })
+      return requestResult<IndexJob>(baseUrl, `/index-jobs/${pathSegment(id)}/runs`, { method: 'POST' })
     },
     runPendingIndexJobs(projectId, limit = 10) {
-      return requestResult<RunPendingIndexResponse>(baseUrl, '/index/run-pending', { method: 'POST', query: { project_id: projectId, limit } })
+      return requestResult<RunPendingIndexResponse>(baseUrl, '/index-runs', { method: 'POST', query: { project_id: projectId, limit } })
     },
     rebuildVectors() {
-      return requestResult<RebuildVectorsResponse>(baseUrl, '/index/rebuild-vectors', { method: 'POST' })
+      return requestResult<RebuildVectorsResponse>(baseUrl, '/vector-index-rebuilds', { method: 'POST' })
     },
     optimizeProjectSeed(seed) {
       return requestMapped<ProjectSeed, ProjectSeed>(
         baseUrl,
-        '/projects/seed/optimize',
+        '/project-seed-optimizations',
         { method: 'POST', body: projectSeedToBackend(seed, copy) },
         (response) => ({
           ...seed,
