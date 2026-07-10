@@ -16,6 +16,13 @@ describe('UiButton', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 
+  it('运行时保持直角按钮边界', () => {
+    render(Button, { slots: { default: '保存' } })
+    const button = screen.getByRole('button', { name: '保存' })
+
+    expect(getComputedStyle(button).borderRadius).toBe('0px')
+  })
+
   it('加载时禁用交互并声明忙碌状态', () => {
     render(Button, { props: { loading: true, loadingLabel: '正在保存' }, slots: { default: '保存' } })
     const button = screen.getByRole('button', { name: '正在保存 保存' })

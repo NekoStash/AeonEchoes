@@ -5,7 +5,7 @@ import { computed, useAttrs, watchEffect } from 'vue'
 import { cn } from '~/lib/utils'
 
 const buttonVariants = cva(
-  'focus-ring inline-flex min-w-0 shrink-0 items-center justify-center gap-2 rounded-md border border-transparent text-center text-sm font-semibold leading-5 transition-colors disabled:pointer-events-none disabled:opacity-50',
+  'focus-ring inline-flex min-w-0 shrink-0 items-center justify-center gap-2 border border-transparent text-center text-sm font-semibold leading-5 transition-colors disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {

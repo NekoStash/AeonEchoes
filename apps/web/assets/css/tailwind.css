@@ -1,3 +1,5 @@
+@import './square-controls.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -191,7 +193,7 @@
   }
 
   .reading-panel {
-    @apply rounded-md border border-border bg-surface-muted p-4 leading-7 sm:p-5;
+    @apply border border-border bg-surface-muted p-4 leading-7 sm:p-5;
   }
 
   .field-label {

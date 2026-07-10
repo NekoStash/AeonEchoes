@@ -36,3 +36,5 @@ Thumbs.db
 logs
 artifacts
 *.tmp
+
+apps/web/test/e2e/__screenshots__

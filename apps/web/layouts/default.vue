@@ -43,7 +43,7 @@ const settingsItems = computed(() => [
 const desktopGroups = computed<AppNavigationGroup[]>(() => {
   const groups: AppNavigationGroup[] = [{ label: t('nav.creation'), items: creativeItems.value }]
   if (projectItems.value.length > 0) groups.push({ label: t('nav.currentProject'), items: projectItems.value })
-  if (!route.path.startsWith('/settings')) groups.push({ label: t('nav.settings'), items: settingsItems.value })
+  groups.push({ label: t('nav.settings'), items: settingsItems.value })
   return groups
 })
 

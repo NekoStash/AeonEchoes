@@ -14,7 +14,8 @@ describe('UiSheet', () => {
       props: { open: true, title: '导航' },
       slots: { default: '<button type="button">项目</button>' }
     })
-    await screen.findByRole('dialog', { name: '导航' })
+    const sheet = await screen.findByRole('dialog', { name: '导航' })
+    expect(getComputedStyle(sheet).borderRadius).toBe('0px')
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(background.inert).toBe(true)
     expect(background).toHaveAttribute('aria-hidden', 'true')

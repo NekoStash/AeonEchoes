@@ -11,7 +11,9 @@ describe('UiToast', () => {
         message: { id: 7, title: '保存失败', description: '请检查连接', tone: 'danger', duration: 0 }
       }
     })
-    expect(screen.getByRole('alert')).toHaveTextContent('保存失败')
+    const toast = screen.getByRole('alert')
+    expect(toast).toHaveTextContent('保存失败')
+    expect(getComputedStyle(toast).borderRadius).toBe('0px')
     await user.click(screen.getByRole('button', { name: '关闭通知' }))
     expect(view.emitted().dismiss).toContainEqual([7])
   })

@@ -11,7 +11,8 @@ describe('UiDialog', () => {
       slots: { default: '<button type="button">第一个</button><button type="button">第二个</button>' }
     })
 
-    await screen.findByRole('dialog', { name: '确认操作' })
+    const dialog = await screen.findByRole('dialog', { name: '确认操作' })
+    expect(getComputedStyle(dialog).borderRadius).toBe('0px')
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.getByRole('button', { name: '关闭' })).toHaveFocus()
 

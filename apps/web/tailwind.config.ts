@@ -16,6 +16,17 @@ export default <Partial<Config>>{
     './widgets/**/*.{vue,js,ts}'
   ],
   theme: {
+    borderRadius: {
+      none: '0px',
+      sm: '0px',
+      DEFAULT: '0px',
+      md: '0px',
+      lg: '0px',
+      xl: '0px',
+      '2xl': '0px',
+      '3xl': '0px',
+      full: '0px'
+    },
     extend: {
       colors: {
         border: 'hsl(var(--border))',
@@ -108,15 +119,6 @@ export default <Partial<Config>>{
       },
       minHeight: {
         main: 'calc(100dvh - var(--layout-height-topbar))'
-      },
-      borderRadius: {
-        sm: '0.125rem',
-        DEFAULT: '0.1875rem',
-        md: '0.25rem',
-        lg: '0.25rem',
-        xl: '0.25rem',
-        '2xl': '0.25rem',
-        '3xl': '0.25rem'
       },
       fontFamily: {
         sans: ['Inter', 'Noto Sans SC', 'Segoe UI', 'ui-sans-serif', 'system-ui', 'sans-serif'],

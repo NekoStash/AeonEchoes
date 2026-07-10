@@ -54,7 +54,7 @@ useModalFocus(openRef, dialogRef, close)
     <Transition enter-active-class="transition duration-150 ease-out" enter-from-class="translate-y-3 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-100 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-3 opacity-0">
       <section
         ref="dialogRef"
-        :class="cn('fixed inset-x-2 bottom-2 top-6 z-50 mx-auto flex w-auto flex-col rounded-md border border-border bg-card sm:inset-x-4 sm:bottom-auto sm:top-1/2 sm:max-h-[min(86vh,900px)] sm:w-[calc(100vw-2rem)] sm:-translate-y-1/2', sizeClass, props.class)"
+        :class="cn('fixed inset-x-2 bottom-2 top-6 z-50 mx-auto flex w-auto flex-col border border-border bg-card sm:inset-x-4 sm:bottom-auto sm:top-1/2 sm:max-h-[min(86vh,900px)] sm:w-[calc(100vw-2rem)] sm:-translate-y-1/2', sizeClass, props.class)"
         role="dialog"
         aria-modal="true"
         :aria-label="resolvedAriaLabel"

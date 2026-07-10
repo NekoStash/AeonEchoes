@@ -45,3 +45,4 @@ artifacts/
 
 # NarraFork/tool temp files
 *.tmp
+apps/web/test/e2e/__screenshots__

@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest'
+import '../assets/css/square-controls.css'
 import { config } from '@vue/test-utils'
 import { vi } from 'vitest'
 

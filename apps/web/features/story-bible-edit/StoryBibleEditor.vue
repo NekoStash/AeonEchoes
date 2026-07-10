@@ -129,7 +129,7 @@ function removeForeshadow(index: number) {
             :disabled="disabled"
             :rows="8"
             :placeholder="t('projectOverview.placeholders.premise')"
-            class="rounded-none border-x-0 border-t-0 bg-transparent px-0 text-base leading-8"
+            class="border-x-0 border-t-0 bg-transparent px-0 text-base leading-8"
             @update:model-value="update((draft) => { draft.premise = $event })"
           />
         </label>
@@ -150,7 +150,7 @@ function removeForeshadow(index: number) {
               :model-value="modelValue.themes[index]"
               :disabled="disabled"
               :aria-label="t('projectOverview.fields.themeNumber', { number: index + 1 })"
-              class="rounded-none border-x-0 border-t-0 bg-transparent"
+              class="border-x-0 border-t-0 bg-transparent"
               @update:model-value="update((draft) => { draft.themes[index] = $event })"
             />
             <UiButton
@@ -187,7 +187,7 @@ function removeForeshadow(index: number) {
             :disabled="disabled"
             :rows="3"
             :aria-label="t('projectOverview.fields.worldRuleNumber', { number: index + 1 })"
-            class="rounded-none border-0 bg-transparent p-0 shadow-none"
+            class="border-0 bg-transparent p-0 shadow-none"
             @update:model-value="update((draft) => { draft.world_rules[index] = $event })"
           />
           <UiButton

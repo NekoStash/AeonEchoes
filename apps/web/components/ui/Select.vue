@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Check, ChevronDown, Search } from '@lucide/vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useAttrs, useId, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useAttrs, useId, watch, type CSSProperties } from 'vue'
 import { cn } from '~/lib/utils'
 
 export interface SelectOption {
@@ -15,6 +15,7 @@ defineOptions({ inheritAttrs: false })
 const attrs = useAttrs()
 const { t } = useI18n()
 const props = withDefaults(defineProps<{
+  id?: string
   modelValue?: string
   options: SelectOption[]
   placeholder?: string
@@ -27,6 +28,7 @@ const props = withDefaults(defineProps<{
   ariaLabel?: string
   class?: string
 }>(), {
+  id: undefined,
   modelValue: '',
   placeholder: undefined,
   disabled: false,
@@ -46,11 +48,13 @@ const open = ref(false)
 const searchQuery = ref('')
 const root = ref<HTMLElement | null>(null)
 const trigger = ref<HTMLButtonElement | null>(null)
+const listbox = ref<HTMLElement | null>(null)
 const searchInput = ref<HTMLInputElement | null>(null)
-const triggerId = `select-trigger-${useId()}`
+const generatedTriggerId = `select-trigger-${useId()}`
+const triggerId = computed(() => props.id || generatedTriggerId)
 const listboxId = `select-listbox-${useId()}`
 const activeIndex = ref(-1)
-const openAbove = ref(false)
+const menuStyle = ref<CSSProperties>({})
 
 const selectedOption = computed(() => props.options.find((option) => option.value === props.modelValue))
 const displayLabel = computed(() => selectedOption.value?.label || props.placeholder || '')
@@ -63,7 +67,11 @@ const filteredOptions = computed(() => {
     .filter(Boolean)
     .some((value) => String(value).toLocaleLowerCase().includes(query)))
 })
-const selectableOptions = computed(() => filteredOptions.value.filter((option) => !option.disabled))
+const placeholderOption = computed<SelectOption | undefined>(() => props.placeholder ? { label: props.placeholder, value: '' } : undefined)
+const selectableOptions = computed(() => [
+  ...(placeholderOption.value ? [placeholderOption.value] : []),
+  ...filteredOptions.value
+].filter((option) => !option.disabled))
 const activeOption = computed(() => selectableOptions.value[activeIndex.value])
 
 function optionId(value: string) {
@@ -75,15 +83,35 @@ function resetActiveIndex() {
   activeIndex.value = selectedIndex >= 0 ? selectedIndex : (selectableOptions.value.length > 0 ? 0 : -1)
 }
 
+function updateMenuPosition() {
+  const triggerRect = trigger.value?.getBoundingClientRect()
+  if (!triggerRect) {
+    console.error('[AeonEchoes UI] Select menu opened without a mounted trigger.')
+    return
+  }
+  const viewportPadding = 8
+  const gap = 4
+  const spaceBelow = window.innerHeight - triggerRect.bottom - viewportPadding - gap
+  const spaceAbove = triggerRect.top - viewportPadding - gap
+  const openAbove = spaceBelow < 240 && spaceAbove > spaceBelow
+  const availableHeight = Math.max(120, Math.min(288, openAbove ? spaceAbove : spaceBelow))
+  menuStyle.value = {
+    left: `${Math.max(viewportPadding, triggerRect.left)}px`,
+    width: `${Math.min(triggerRect.width, window.innerWidth - viewportPadding * 2)}px`,
+    maxHeight: `${availableHeight}px`,
+    top: openAbove ? undefined : `${triggerRect.bottom + gap}px`,
+    bottom: openAbove ? `${window.innerHeight - triggerRect.top + gap}px` : undefined
+  }
+}
+
 async function openMenu() {
   if (props.disabled) return
-  const triggerRect = trigger.value?.getBoundingClientRect()
-  openAbove.value = Boolean(triggerRect && window.innerHeight - triggerRect.bottom < 300 && triggerRect.top > 300)
+  updateMenuPosition()
   open.value = true
   resetActiveIndex()
   await nextTick()
   if (props.searchable) searchInput.value?.focus()
-  else root.value?.querySelector<HTMLElement>(`#${CSS.escape(listboxId)}`)?.focus()
+  else listbox.value?.focus()
 }
 
 function closeMenu(restoreFocus = false) {
@@ -153,12 +181,31 @@ function handleListboxKeydown(event: KeyboardEvent) {
 }
 
 function handleDocumentClick(event: MouseEvent) {
-  if (!root.value?.contains(event.target as Node)) closeMenu()
+  const target = event.target as Node
+  if (!root.value?.contains(target) && !listbox.value?.contains(target)) closeMenu()
+}
+
+function handleViewportScroll(event: Event) {
+  if (!open.value || listbox.value?.contains(event.target as Node)) return
+  closeMenu()
+}
+
+function handleViewportResize() {
+  if (!open.value) return
+  updateMenuPosition()
 }
 
 watch(filteredOptions, resetActiveIndex)
-onMounted(() => document.addEventListener('click', handleDocumentClick))
-onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick))
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+  document.addEventListener('scroll', handleViewportScroll, true)
+  window.addEventListener('resize', handleViewportResize)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick)
+  document.removeEventListener('scroll', handleViewportScroll, true)
+  window.removeEventListener('resize', handleViewportResize)
+})
 </script>
 
 <template>
@@ -176,7 +223,7 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
       :aria-invalid="invalid || attrs['aria-invalid'] === 'true' ? 'true' : undefined"
       aria-haspopup="listbox"
       :class="cn(
-        'focus-ring flex h-10 w-full items-center justify-between gap-3 rounded-md border border-input bg-background px-3 py-2 text-left text-sm text-foreground transition-colors hover:border-foreground/40 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70',
+        'focus-ring flex h-10 w-full items-center justify-between gap-3 border border-input bg-background px-3 py-2 text-left text-sm text-foreground transition-colors hover:border-foreground/40 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70',
         invalid && 'border-state-danger focus-visible:ring-state-danger'
       )"
       @click.stop="toggleMenu"
@@ -186,10 +233,13 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
       <ChevronDown :class="cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')" aria-hidden="true" />
     </button>
 
+    <Teleport to="body">
     <div
       v-if="open"
       :id="listboxId"
-      :class="cn('absolute left-0 right-0 z-50 max-h-72 min-w-0 overflow-auto border border-border bg-popover p-1 subtle-scrollbar', openAbove ? 'bottom-full mb-1' : 'top-full mt-1')"
+      ref="listbox"
+      :style="menuStyle"
+      class="fixed z-[70] min-w-0 overflow-auto border border-border bg-popover p-1 subtle-scrollbar"
       role="listbox"
       :aria-label="resolvedAriaLabel"
       :aria-labelledby="resolvedAriaLabel ? undefined : triggerId"
@@ -215,10 +265,15 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
       </div>
       <button
         v-if="placeholder"
+        :id="optionId('')"
         type="button"
         role="option"
         :aria-selected="!modelValue"
-        class="focus-ring flex w-full items-center justify-between px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+        :class="cn(
+          'focus-ring flex w-full items-center justify-between px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted',
+          activeOption?.value === '' && modelValue !== '' && 'bg-muted text-foreground'
+        )"
+        @mouseenter="activeIndex = selectableOptions.findIndex((item) => item.value === '')"
         @click="choose({ label: placeholder, value: '' })"
       >
         <span>{{ placeholder }}</span>
@@ -249,5 +304,6 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
         <Check v-if="option.value === modelValue" class="h-4 w-4 shrink-0" aria-hidden="true" />
       </button>
     </div>
+    </Teleport>
   </div>
 </template>

@@ -33,7 +33,7 @@ const iconByTone = {
 </script>
 
 <template>
-  <div :class="cn('flex items-start gap-3 rounded-md border px-4 py-3 text-sm leading-6', toneClass, props.class)" :role="tone === 'danger' ? 'alert' : 'status'">
+  <div data-aeon-square :class="cn('flex items-start gap-3 border px-4 py-3 text-sm leading-6', toneClass, props.class)" :role="tone === 'danger' ? 'alert' : 'status'">
     <slot name="icon"><component :is="iconByTone[tone]" class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /></slot>
     <div class="min-w-0 flex-1">
       <p v-if="title" class="font-semibold">{{ title }}</p>

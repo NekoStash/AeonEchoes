@@ -48,6 +48,31 @@ const version = {
   metadata: { change_note: '初始版本' },
   created_at: now
 }
+const visualProviders = [
+  { id: 'provider-1', name: 'Primary Ink', provider_type: 'openai-responses', type: 'openai-responses', base_url: 'https://example.test/v1', enabled: true, streaming: true, status: 'online', api_key_hint: 'sk-…1234' },
+  { id: 'provider-2', name: 'Secondary Archive', provider_type: 'anthropic', type: 'anthropic', base_url: 'https://secondary.example.test', enabled: true, streaming: true, status: 'online', api_key_hint: 'sk-…5678' }
+]
+const visualModels = [
+  ...Array.from({ length: 14 }, (_, index) => ({
+    id: `provider-${index % 2 + 1}:visual-${index + 1}`,
+    provider_id: `provider-${index % 2 + 1}`,
+    name: `visual-${index + 1}`,
+    display_name: `叙事模型 ${String(index + 1).padStart(2, '0')}`,
+    kind: 'text',
+    enabled: index !== 11,
+    context_window: 32000 + index * 16000,
+    max_output_tokens: 2048 + index * 512,
+    supports_tools: index % 3 !== 0,
+    supports_streaming: index % 4 !== 0,
+    default_for_kind: index === 0,
+    cost_input_per_mtok: index + 0.25,
+    cost_output_per_mtok: index + 1.25,
+    routing_weight: 100 - index,
+    allowed_agent_roles: index === 2 ? ['editor', 'continuity-auditor'] : []
+  })),
+  { id: 'provider-1:visual-embedding', provider_id: 'provider-1', name: 'visual-embedding', display_name: '档案向量模型', kind: 'embedding', enabled: true, dimension: 1536, default_for_kind: true, routing_weight: 100, cost_input_per_mtok: 0.1, cost_output_per_mtok: 0, allowed_agent_roles: [] },
+  { id: 'provider-2:old-embedding', provider_id: 'provider-2', name: 'old-embedding', display_name: '停用向量模型', kind: 'embedding', enabled: false, dimension: 3072, routing_weight: 5, allowed_agent_roles: [] }
+]
 
 function envelope(data: unknown) {
   return JSON.stringify({ data, meta: { request_id: 'visual' }, page: { count: Array.isArray(data) ? data.length : 1 } })
@@ -72,9 +97,9 @@ async function mockApi(page: Page) {
     if (path.endsWith('/projects/project-1/story-bibles/current')) return fulfill(route, bible)
     if (path.endsWith('/projects/project-1/chapters')) return fulfill(route, [chapter])
     if (path.endsWith('/projects/project-1/chapters/chapter-1/versions')) return fulfill(route, [version])
-    if (path.endsWith('/providers')) return fulfill(route, [{ id: 'provider-1', name: 'Primary', provider_type: 'openai-responses', type: 'openai-responses', base_url: 'https://example.test/v1', enabled: true, streaming: true, status: 'online', api_key_hint: 'sk-…1234' }])
-    if (path.endsWith('/models')) return fulfill(route, [{ id: 'provider-1:model-1', provider_id: 'provider-1', name: 'model-1', display_name: 'Model One', kind: 'text', enabled: true, context_window: 128000, max_output_tokens: 4096, supports_tools: true, supports_streaming: true, routing_weight: 100, allowed_agent_roles: [] }])
-    if (path.endsWith('/model-routing')) return fulfill(route, { routes: {} })
+    if (path.endsWith('/providers')) return fulfill(route, visualProviders)
+    if (path.endsWith('/models')) return fulfill(route, visualModels)
+    if (path.endsWith('/model-routing')) return fulfill(route, { routes: { writer: 'provider-1:visual-1', editor: '', 'genesis-optimizer': '', 'plot-architect': '', 'world-builder': '', 'character-keeper': '', 'continuity-auditor': '', 'fact-extractor': '', 'graph-curator': '', embedding: 'provider-1:visual-embedding' } })
     if (path.endsWith('/agents') && request.method() === 'GET') return fulfill(route, [{ id: 'agent-1', project_id: 'project-1', name: '写作 Agent', role: 'writer', enabled: true }])
     if (path.endsWith('/skills') || path.endsWith('/mcp-servers') || path.endsWith('/tools') || path.endsWith('/index-jobs')) return fulfill(route, [])
     if (path.endsWith('/projects/project-1/graph/expansions')) return fulfill(route, {
@@ -106,6 +131,7 @@ const cases = [
   { name: 'project-workspace', path: '/projects/project-1', ready: (page: Page) => expect(page.getByRole('heading', { name: '墨色档案' })).toBeVisible() },
   { name: 'editor', path: '/projects/project-1/editor?chapter=chapter-1', ready: (page: Page) => expect(page.getByTestId('writing-workspace')).toBeVisible() },
   { name: 'settings', path: '/settings/providers', ready: (page: Page) => expect(page.getByRole('heading', { name: '提供商连接' })).toBeVisible() },
+  { name: 'models-settings', path: '/settings/models', ready: (page: Page) => expect(page.getByText('叙事模型 14')).toBeAttached() },
   { name: 'graph', path: '/projects/project-1/graph', ready: (page: Page) => expect(page.getByText('林澈', { exact: true })).toBeVisible() }
 ]
 

@@ -144,6 +144,40 @@ test('章节列表 500 显式报错并可重试，不伪装为 0 章节', async 
   await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
 })
 
+test('Tab 聚焦标题和正文时显示直角焦点环', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium')
+  await mockEditorApi(page)
+  await page.goto('/projects/project-1/editor?chapter=chapter-1')
+
+  const title = page.locator('input[placeholder="第一章"]')
+  const editor = page.getByTestId('chapter-content')
+  const titleBoxBeforeFocus = await title.boundingBox()
+  const editorBoxBeforeFocus = await editor.boundingBox()
+
+  await page.getByRole('button', { name: '正文全屏' }).focus()
+  await page.keyboard.press('Tab')
+  await expect(title).toBeFocused()
+  const titleFocusStyle = await title.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { borderRadius: style.borderRadius, boxShadow: style.boxShadow, backgroundColor: style.backgroundColor }
+  })
+  expect(titleFocusStyle.borderRadius).toBe('0px')
+  expect(titleFocusStyle.boxShadow).not.toBe('none')
+  expect(await title.boundingBox()).toEqual(titleBoxBeforeFocus)
+  await expect.poll(() => title.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)')
+
+  await page.keyboard.press('Tab')
+  await expect(editor).toBeFocused()
+  const editorFocusStyle = await editor.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { borderRadius: style.borderRadius, boxShadow: style.boxShadow, backgroundColor: style.backgroundColor }
+  })
+  expect(editorFocusStyle.borderRadius).toBe('0px')
+  expect(editorFocusStyle.boxShadow).not.toBe('none')
+  expect(await editor.boundingBox()).toEqual(editorBoxBeforeFocus)
+  await expect.poll(() => editor.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)')
+})
+
 test('标题变化先更新真实 Chapter，再创建版本并同步章节选择器', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium')
   const calls: string[] = []

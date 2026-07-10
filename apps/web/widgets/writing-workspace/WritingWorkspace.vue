@@ -99,7 +99,7 @@ defineExpose({
         <span class="sr-only">{{ t('editor.fields.title') }}</span>
         <input
           :value="title"
-          class="w-full border-0 bg-transparent font-serif text-3xl font-semibold tracking-tight text-current outline-none placeholder:text-current/35 sm:text-4xl"
+          class="w-full rounded-none border-0 bg-transparent font-serif text-3xl font-semibold tracking-tight text-current outline-none transition-colors placeholder:text-current/35 focus-visible:bg-surface-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:text-4xl"
           :placeholder="chapter.title || t('editor.fields.titlePlaceholder')"
           @input="emit('update:title', ($event.target as HTMLInputElement).value)"
         >
@@ -112,7 +112,7 @@ defineExpose({
         ref="textarea"
         :value="content"
         data-testid="chapter-content"
-        class="mt-8 min-h-[62vh] w-full flex-1 resize-none border-0 bg-transparent font-serif text-[1.08rem] leading-[2.05] text-current outline-none placeholder:text-current/35 sm:text-[1.15rem]"
+        class="mt-8 min-h-[62vh] w-full flex-1 resize-none rounded-none border-0 bg-transparent font-serif text-[1.08rem] leading-[2.05] text-current outline-none transition-colors placeholder:text-current/35 focus-visible:bg-surface-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:text-[1.15rem]"
         :placeholder="t('editor.fields.contentPlaceholder')"
         @input="emit('update:content', ($event.target as HTMLTextAreaElement).value); emitSelection()"
         @select="emitSelection"

@@ -1621,10 +1621,117 @@
       "messages": { "loading": "Loading providers", "loadFailed": "Failed to load providers", "saved": "Provider saved", "saveFailed": "Failed to save provider", "modelsRefreshed": "Models refreshed", "modelsRefreshedDescription": "The backend returned {count} models.", "refreshFailed": "Failed to refresh models", "deleted": "Provider deleted", "deleteFailed": "Failed to delete provider" }
     },
     "models": {
-      "title": "Models and usage routing", "description": "Maintain the real model contract and route agent roles plus embedding usage to explicit models.", "catalogEyebrow": "Model catalog", "catalogTitle": "Model capability and cost", "searchPlaceholder": "Search name, ID, provider, kind, or role", "allProviders": "All providers", "add": "Add model", "emptyTitle": "No models yet", "emptyDescription": "Add a provider, then add a model manually or refresh models from the provider.", "routingEyebrow": "Usage routing", "routingTitle": "Roles and embedding model", "routingDescription": "Saving calls the real model routing endpoint. Empty values inherit backend fallback policy.", "saveRouting": "Save routes", "inheritRouting": "Inherit backend route", "deleteTitle": "Delete model", "deleteDescription": "Delete model “{name}”? Explicit routes or agents using it may fail.",
+      "title": "Models and usage routing",
+      "description": "Maintain the model catalog and real usage routes in one workspace, with persistent side-by-side context on desktop and routing first on mobile.",
+      "catalogEyebrow": "Model catalog",
+      "catalogTitle": "Model capability and cost",
+      "searchPlaceholder": "Search name, ID, provider, kind, or role",
+      "allProviders": "All providers",
+      "add": "Add model",
+      "emptyTitle": "No models yet",
+      "emptyDescription": "Add a provider, then add a model manually or refresh models from the provider.",
+      "routingEyebrow": "Usage routing",
+      "routingTitle": "Roles and embedding model",
+      "routingDescription": "Empty values keep inheritance so the backend chooses by kind default and routing weight. Explicit values submit only the selected model ID.",
+      "routingStatus": "Save status",
+      "saveRouting": "Save routes",
+      "inheritRouting": "Inherit backend route",
+      "routeFieldLabel": "Model used by {role}",
+      "routeSearchLabel": "Search models eligible for {role}",
+      "listSeparator": ", ",
+      "routingStates": {
+        "saved": "Saved",
+        "dirty": "Unsaved changes",
+        "saving": "Saving",
+        "failed": "Save failed"
+      },
+      "routeState": {
+        "explicit": "Explicit",
+        "inherited": "Inherited",
+        "explicitDescription": "A specific model will be stored. Only models eligible for this role or usage can be selected.",
+        "inheritedDescription": "An empty string is submitted so the backend fallback policy selects the model."
+      },
+      "routingValidation": {
+        "summary": "One or more routes are invalid. Fix the first highlighted route before saving.",
+        "unknown": "Model “{model}” was deleted or is missing from the current catalog.",
+        "unknownDescription": "The current catalog does not contain this saved model.",
+        "disabled": "Model “{model}” is disabled and cannot be used for an explicit route.",
+        "kind": "Model “{model}” has the wrong kind. {role} requires a {expected} model.",
+        "role": "Model “{model}” is not allowed for role “{role}”."
+      },
+      "embeddingChange": {
+        "title": "Embedding model changed",
+        "description": "After saving, existing vector indexes may need an explicit rebuild from Index maintenance. This page never starts a rebuild automatically."
+      },
+      "catalog": {
+        "resultCount": "Showing {visible} of {total}",
+        "searchLabel": "Search model catalog",
+        "providerFilterLabel": "Filter by provider",
+        "kindFilterLabel": "Filter by model kind",
+        "statusFilterLabel": "Filter by enabled status",
+        "allStatuses": "All statuses",
+        "enabledOnly": "Enabled only",
+        "disabledOnly": "Disabled only",
+        "clearFilters": "Clear filters",
+        "listLabel": "Model catalog list",
+        "unknownKind": "Unknown kind",
+        "disabledRouting": "This model is disabled and cannot be an explicit routing candidate.",
+        "context": "Context window",
+        "output": "Maximum output",
+        "dimension": "Embedding dimension",
+        "tools": "Tool calls",
+        "streaming": "Streaming",
+        "supported": "Supported",
+        "notSupported": "Not supported",
+        "inputCost": "Input cost / MTok",
+        "outputCost": "Output cost / MTok",
+        "weight": "Routing weight",
+        "roleEligibility": "Role eligibility",
+        "allRolesEligible": "All agent roles",
+        "roleCount": "{count} allowed roles",
+        "rolesNotApplicable": "Embedding usage only"
+      },
+      "references": {
+        "saved": "Referenced by saved routes: {roles}.",
+        "draft": "Referenced by unsaved draft routes: {roles}."
+      },
+      "deleteTitle": "Delete model",
+      "deleteDescription": "Delete model “{name}”? This action cannot be undone.",
+      "deleteBlocked": {
+        "title": "This model is still referenced and cannot be deleted",
+        "description": "Model “{name}” is still referenced by: {roles}. Change and save those routes before deleting the model."
+      },
+      "refresh": {
+        "title": "Discard the routing draft and refresh?",
+        "description": "Refreshing reloads routes from the server and discards the current unsaved draft. Continue?",
+        "confirm": "Discard and refresh",
+        "draftKeptTitle": "Unsaved routes were kept",
+        "draftKept": "The refresh did not overwrite the current routing draft. Catalog data was updated."
+      },
+      "leave": {
+        "title": "Discard unsaved routes?",
+        "description": "Usage routing has unsaved changes. Leaving will discard them. Leave anyway?",
+        "confirm": "Discard and leave"
+      },
       "sections": { "identity": "Model identity", "limits": "Context, output, and cost", "capabilities": "Capabilities and status" },
       "fields": { "provider": "Provider", "upstreamId": "Upstream model ID", "kind": "Model kind" },
-      "dialog": { "createTitle": "Add model", "editTitle": "Edit model", "description": "Covers ModelRequest identity, limits, cost, capabilities, routing weight, role restrictions, and metadata." },
+      "roleEligibility": {
+        "title": "Allowed roles (eligibility)",
+        "description": "This only limits which agent roles are eligible to select this text model. It does not configure the actual usage route.",
+        "emptyMeansAll": "Selecting no roles means every agent role is eligible. Configure actual routes in the usage routing panel on the models page.",
+        "embeddingTitle": "Embedding models do not use role eligibility",
+        "embeddingDescription": "Embedding models are eligible only for the embedding route. Switching kind does not silently clear text capability values that are temporarily hidden."
+      },
+      "dialog": {
+        "createTitle": "Add model",
+        "editTitle": "Edit model",
+        "description": "Maintain identity, limits, cost, capabilities, routing weight, role eligibility, and metadata. Role eligibility is not the actual route.",
+        "unsaved": "The form has unsaved changes",
+        "savedState": "The form has not changed",
+        "discardTitle": "Discard model form changes?",
+        "discardDescription": "Closing now will lose the current unsaved model configuration.",
+        "discardAction": "Discard changes"
+      },
       "errors": { "invalidForm": "The model form is invalid." },
       "messages": { "loading": "Loading model configuration", "loadFailed": "Failed to load model configuration", "saved": "Model saved", "saveFailed": "Failed to save model", "routingSaved": "Usage routing saved", "routingSaveFailed": "Failed to save usage routing", "deleted": "Model deleted", "deleteFailed": "Failed to delete model" }
     },

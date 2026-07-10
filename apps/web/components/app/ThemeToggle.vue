@@ -36,7 +36,7 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
 
 <template>
   <div ref="root" class="relative inline-flex">
-    <div v-if="!compact" class="inline-flex rounded-md border border-border bg-card p-1" role="group" :aria-label="t('theme.label')">
+    <div v-if="!compact" class="inline-flex border border-border bg-card p-1" role="group" :aria-label="t('theme.label')">
       <button
         v-for="option in options"
         :key="option.value"
@@ -44,7 +44,7 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
         :title="t(option.labelKey)"
         :aria-label="t(option.labelKey)"
         :aria-pressed="colorMode.preference === option.value"
-        :class="cn('focus-ring inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground', colorMode.preference === option.value && 'bg-foreground text-background')"
+        :class="cn('focus-ring inline-flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:text-foreground', colorMode.preference === option.value && 'bg-foreground text-background')"
         @click="selectTheme(option.value)"
       >
         <component :is="option.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -54,7 +54,7 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
     <template v-else>
       <button
         type="button"
-        class="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        class="focus-ring flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         :title="t(activeOption.labelKey)"
         :aria-label="`${t('theme.label')}: ${t(activeOption.labelKey)}`"
         :aria-expanded="open"
@@ -64,14 +64,14 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
         <component :is="activeOption.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
       </button>
 
-      <div v-if="open" class="absolute right-0 top-full z-50 mt-1 w-44 rounded-md border border-border bg-popover p-1 text-popover-foreground" role="menu">
+      <div v-if="open" class="absolute right-0 top-full z-50 mt-1 w-44 border border-border bg-popover p-1 text-popover-foreground" role="menu">
         <button
           v-for="option in options"
           :key="option.value"
           type="button"
           role="menuitemradio"
           :aria-checked="colorMode.preference === option.value"
-          :class="cn('focus-ring flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors', colorMode.preference === option.value ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted hover:text-foreground')"
+          :class="cn('focus-ring flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors', colorMode.preference === option.value ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted hover:text-foreground')"
           @click="selectTheme(option.value)"
         >
           <span class="inline-flex min-w-0 items-center gap-2">

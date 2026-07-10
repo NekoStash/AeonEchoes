@@ -1639,7 +1639,7 @@
     },
     "models": {
       "title": "模型与用途路由",
-      "description": "维护真实模型契约字段，并把各智能体角色与向量用途路由到明确模型。",
+      "description": "在同一工作台维护模型目录与真实用途路由；桌面端可持续对照，移动端优先处理路由。",
       "catalogEyebrow": "模型目录",
       "catalogTitle": "模型能力与成本",
       "searchPlaceholder": "搜索名称、ID、提供商、类型或角色",
@@ -1649,14 +1649,106 @@
       "emptyDescription": "先新增提供商，再手动新增模型或从提供商刷新模型。",
       "routingEyebrow": "用途路由",
       "routingTitle": "角色与向量模型",
-      "routingDescription": "保存后调用真实 model routing 接口；空值表示继承后端回退策略。",
+      "routingDescription": "空值保持继承，由后端按类型默认与路由权重选择；显式值只会提交所选模型 ID。",
+      "routingStatus": "保存状态",
       "saveRouting": "保存路由",
       "inheritRouting": "继承后端路由",
+      "routeFieldLabel": "{role}使用的模型",
+      "routeSearchLabel": "搜索{role}可用模型",
+      "listSeparator": "、",
+      "routingStates": {
+        "saved": "已保存",
+        "dirty": "有未保存更改",
+        "saving": "保存中",
+        "failed": "保存失败"
+      },
+      "routeState": {
+        "explicit": "显式",
+        "inherited": "继承",
+        "explicitDescription": "当前保存具体模型；只有符合该角色或用途资格的模型可选。",
+        "inheritedDescription": "提交空字符串，由后端回退策略决定模型。"
+      },
+      "routingValidation": {
+        "summary": "存在无效路由。请修正第一个标红项目后再保存。",
+        "unknown": "模型“{model}”已删除或不在当前目录中。",
+        "unknownDescription": "当前目录中找不到这个已保存模型。",
+        "disabled": "模型“{model}”已停用，不能用于显式路由。",
+        "kind": "模型“{model}”类型不匹配；{role}需要{expected}模型。",
+        "role": "模型“{model}”未授权给角色“{role}”。"
+      },
+      "embeddingChange": {
+        "title": "向量模型已更改",
+        "description": "保存后，既有向量索引可能需要在“索引维护”页显式重建；本页不会自动触发重建。"
+      },
+      "catalog": {
+        "resultCount": "共 {total} 个，当前显示 {visible} 个",
+        "searchLabel": "搜索模型目录",
+        "providerFilterLabel": "按提供商筛选",
+        "kindFilterLabel": "按模型类型筛选",
+        "statusFilterLabel": "按启用状态筛选",
+        "allStatuses": "全部状态",
+        "enabledOnly": "仅已启用",
+        "disabledOnly": "仅已停用",
+        "clearFilters": "清除筛选",
+        "listLabel": "模型目录列表",
+        "unknownKind": "未知类型",
+        "disabledRouting": "此模型已停用，不能作为显式路由候选。",
+        "context": "上下文窗口",
+        "output": "最大输出",
+        "dimension": "向量维度",
+        "tools": "工具调用",
+        "streaming": "流式输出",
+        "supported": "支持",
+        "notSupported": "不支持",
+        "inputCost": "输入成本 / MTok",
+        "outputCost": "输出成本 / MTok",
+        "weight": "路由权重",
+        "roleEligibility": "角色资格",
+        "allRolesEligible": "全部智能体角色",
+        "roleCount": "允许 {count} 个角色",
+        "rolesNotApplicable": "仅用于向量用途"
+      },
+      "references": {
+        "saved": "已保存路由引用：{roles}。",
+        "draft": "未保存草稿引用：{roles}。"
+      },
       "deleteTitle": "删除模型",
-      "deleteDescription": "确认删除模型“{name}”？已显式引用此模型的路由或智能体可能失效。",
+      "deleteDescription": "确认删除模型“{name}”？该操作不可撤销。",
+      "deleteBlocked": {
+        "title": "模型仍被路由引用，无法删除",
+        "description": "模型“{name}”仍由以下路由引用：{roles}。请先调整路由并保存，再删除模型。"
+      },
+      "refresh": {
+        "title": "放弃路由草稿并刷新？",
+        "description": "刷新会重新读取服务端路由，并丢弃当前未保存草稿。确定继续吗？",
+        "confirm": "放弃并刷新",
+        "draftKeptTitle": "已保留未保存路由",
+        "draftKept": "刷新结果未覆盖当前路由草稿；目录数据已更新。"
+      },
+      "leave": {
+        "title": "放弃未保存路由？",
+        "description": "用途路由有未保存更改，离开后这些更改会丢失。确定离开吗？",
+        "confirm": "放弃并离开"
+      },
       "sections": { "identity": "模型身份", "limits": "上下文、输出与成本", "capabilities": "能力与状态" },
       "fields": { "provider": "提供商", "upstreamId": "上游模型 ID", "kind": "模型类型" },
-      "dialog": { "createTitle": "新增模型", "editTitle": "编辑模型", "description": "覆盖 ModelRequest 中的身份、限制、成本、能力、路由权重、角色限制与 metadata。" },
+      "roleEligibility": {
+        "title": "允许使用的角色（资格）",
+        "description": "这里只限制哪些智能体角色有资格选择此文本模型，不会设置实际用途路由。",
+        "emptyMeansAll": "未选择任何角色表示所有智能体角色都有资格使用。实际路由请在模型设置页的用途路由面板配置。",
+        "embeddingTitle": "向量模型不使用角色资格",
+        "embeddingDescription": "向量模型仅能用于 embedding 路由；切换类型不会静默清除表单中暂时隐藏的文本能力字段。"
+      },
+      "dialog": {
+        "createTitle": "新增模型",
+        "editTitle": "编辑模型",
+        "description": "维护模型身份、限制、成本、能力、路由权重、角色资格与 metadata；角色资格不是实际路由。",
+        "unsaved": "表单有未保存更改",
+        "savedState": "表单尚未更改",
+        "discardTitle": "放弃模型表单更改？",
+        "discardDescription": "关闭后，当前未保存的模型配置会丢失。",
+        "discardAction": "放弃更改"
+      },
       "errors": { "invalidForm": "模型表单无效。" },
       "messages": { "loading": "正在加载模型配置", "loadFailed": "模型配置加载失败", "saved": "模型已保存", "saveFailed": "模型保存失败", "routingSaved": "用途路由已保存", "routingSaveFailed": "用途路由保存失败", "deleted": "模型已删除", "deleteFailed": "模型删除失败" }
     },

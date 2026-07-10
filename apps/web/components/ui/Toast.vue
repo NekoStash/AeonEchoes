@@ -29,6 +29,7 @@ const icons = {
 
 <template>
   <article
+    data-aeon-square
     :class="cn('pointer-events-auto flex w-full items-start gap-3 border border-l-4 px-4 py-3', toneClasses[message.tone])"
     :role="message.tone === 'danger' ? 'alert' : 'status'"
     :aria-live="message.tone === 'danger' ? 'assertive' : 'polite'"

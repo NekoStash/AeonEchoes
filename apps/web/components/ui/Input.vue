@@ -33,7 +33,7 @@ const emit = defineEmits<{
     :disabled="disabled"
     :aria-invalid="invalid || attrs['aria-invalid'] === 'true' ? 'true' : undefined"
     :class="cn(
-      'focus-ring h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm leading-6 text-foreground transition-colors placeholder:text-muted-foreground hover:border-foreground/40 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70',
+      'focus-ring h-10 w-full min-w-0 border border-input bg-background px-3 py-2 text-sm leading-6 text-foreground transition-colors placeholder:text-muted-foreground hover:border-foreground/40 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70',
       invalid && 'border-state-danger focus-visible:ring-state-danger',
       props.class
     )"

@@ -27,7 +27,7 @@ function toggle() {
     role="switch"
     :aria-checked="modelValue"
     :disabled="disabled"
-    :class="cn('focus-ring group flex min-h-14 w-full items-center justify-between gap-4 rounded-md border border-border bg-card px-4 py-3 text-left text-sm leading-6 transition-colors hover:border-foreground/35 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50', modelValue && 'border-foreground/45 bg-accent', props.class)"
+    :class="cn('focus-ring group flex min-h-14 w-full items-center justify-between gap-4 border border-border bg-card px-4 py-3 text-left text-sm leading-6 transition-colors hover:border-foreground/35 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50', modelValue && 'border-foreground/45 bg-accent', props.class)"
     @click="toggle"
   >
     <span class="min-w-0 flex-1">
@@ -35,8 +35,8 @@ function toggle() {
       <span v-if="description" class="mt-1 block text-xs leading-5 text-muted-foreground">{{ description }}</span>
       <slot v-if="!label" />
     </span>
-    <span :class="cn('relative inline-flex h-6 w-11 shrink-0 items-center rounded-md border border-border bg-muted p-0.5 transition-colors', modelValue && 'border-foreground bg-foreground')">
-      <span :class="cn('block h-5 w-5 rounded-md bg-background transition-transform', modelValue && 'translate-x-5')" />
+    <span data-aeon-square :class="cn('relative inline-flex h-6 w-11 shrink-0 items-center border border-border bg-muted p-0.5 transition-colors', modelValue && 'border-foreground bg-foreground')">
+      <span data-aeon-square :class="cn('block h-5 w-5 bg-background transition-transform', modelValue && 'translate-x-5')" />
     </span>
   </button>
 </template>
