@@ -194,14 +194,6 @@ func NarrativeToolSpecs() []provider.ToolSpec {
 			"closed_chapter_id":  strSchema("Closed chapter id"),
 			"metadata":           objectStringSchema("Metadata"),
 		}, "project_id", "title"),
-		toolSpec("chapter.ensure", "Ensure a stable chapter identity exists without creating content versions.", map[string]any{
-			"project_id": strSchema("Project id"),
-			"chapter_id": strSchema("Optional chapter id"),
-			"number":     intSchema("Optional chapter number"),
-			"title":      strSchema("Title"),
-			"status":     strSchema("Status"),
-			"metadata":   objectStringSchema("Metadata"),
-		}, "project_id"),
 		toolSpec("chapter.list", "List project chapters.", map[string]any{
 			"project_id": strSchema("Project id"),
 		}),
@@ -213,7 +205,7 @@ func NarrativeToolSpecs() []provider.ToolSpec {
 		toolSpec("graph.expand", "Expand narrative graph from optional entity ids.", map[string]any{
 			"project_id": strSchema("Project id"),
 			"entity_ids": arrayStringSchema("Seed entity ids"),
-			"depth":      intSchema("Expansion depth"),
+			"depth":      intRangeSchema("Expansion depth", 1, 4),
 		}, "project_id"),
 	}
 }
@@ -260,8 +252,6 @@ func (e *ToolExecutor) Execute(ctx context.Context, call provider.ToolCall) (any
 		return e.searchPlotThreads(args)
 	case "plot_thread.upsert":
 		return e.upsertPlotThread(args)
-	case "chapter.ensure":
-		return e.ensureChapter(args)
 	case "chapter.list":
 		return e.listChapters(args)
 	case "chapter.get_range":
@@ -751,18 +741,6 @@ func (e *ToolExecutor) upsertPlotThread(args map[string]any) (map[string]any, er
 	return map[string]any{"action": action, "plot_thread": saved}, nil
 }
 
-func (e *ToolExecutor) ensureChapter(args map[string]any) (map[string]any, error) {
-	projectID, err := requireToolString(args, "project_id")
-	if err != nil {
-		return nil, err
-	}
-	chapter, err := e.store.EnsureChapter(domain.ChapterEnsureRequest{ProjectID: projectID, ChapterID: optionalString(args, "chapter_id"), Number: optionalInt(args, "number"), Title: optionalString(args, "title"), Status: optionalString(args, "status"), Metadata: optionalStringMap(args, "metadata")})
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{"chapter": chapter}, nil
-}
-
 func (e *ToolExecutor) listChapters(args map[string]any) (map[string]any, error) {
 	projectID, err := requireToolString(args, "project_id")
 	if err != nil {
@@ -820,7 +798,14 @@ func (e *ToolExecutor) graphExpand(args map[string]any) (domain.GraphExpansion, 
 	if err != nil {
 		return domain.GraphExpansion{}, err
 	}
-	return e.store.ExpandGraph(projectID, optionalStringSlice(args, "entity_ids"), firstPositive(optionalInt(args, "depth"), 1))
+	depth := 1
+	if _, provided := args["depth"]; provided {
+		depth = optionalInt(args, "depth")
+		if depth < 1 || depth > 4 {
+			return domain.GraphExpansion{}, fmt.Errorf("tool argument depth must be between 1 and 4")
+		}
+	}
+	return e.store.ExpandGraph(projectID, optionalStringSlice(args, "entity_ids"), depth)
 }
 
 func decodeToolArgs(raw json.RawMessage) (map[string]any, error) {
@@ -854,6 +839,9 @@ func strSchema(description string) map[string]any {
 }
 func intSchema(description string) map[string]any {
 	return map[string]any{"type": "integer", "description": description}
+}
+func intRangeSchema(description string, minimum, maximum int) map[string]any {
+	return map[string]any{"type": "integer", "description": description, "minimum": minimum, "maximum": maximum}
 }
 func numSchema(description string) map[string]any {
 	return map[string]any{"type": "number", "description": description}

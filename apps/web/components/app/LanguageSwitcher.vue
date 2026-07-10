@@ -56,12 +56,12 @@ onBeforeUnmount(() => {
 <template>
   <div ref="root" :class="cn('relative', compact ? 'inline-flex' : 'w-36')">
     <span class="sr-only">{{ t('language.label') }}</span>
-    <UiSelect v-if="!compact" v-model="selectedLocale" :options="localeOptions" />
+    <UiSelect v-if="!compact" v-model="selectedLocale" :options="localeOptions" :aria-label="t('language.label')" />
 
     <template v-else>
       <button
         type="button"
-        class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-muted/70 hover:text-foreground focus-ring"
+        class="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         :title="`${t('language.label')}: ${activeLocaleLabel}`"
         :aria-label="t('language.label')"
         :aria-expanded="open"
@@ -78,14 +78,16 @@ onBeforeUnmount(() => {
         leave-from-class="translate-y-0 opacity-100"
         leave-to-class="translate-y-1 opacity-0"
       >
-        <div v-if="open" class="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-2xl shadow-slate-950/10 dark:shadow-black/25">
+        <div v-if="open" class="absolute right-0 top-full z-50 mt-1 w-44 rounded-md border border-border bg-popover p-1 text-popover-foreground" role="menu">
           <button
             v-for="option in localeOptions"
             :key="option.value"
             type="button"
+            role="menuitemradio"
+            :aria-checked="option.value === locale"
             :class="
               cn(
-                'flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors focus-ring',
+                'focus-ring flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors',
                 option.value === locale ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               )
             "

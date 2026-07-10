@@ -27,22 +27,21 @@ func StoryBibleDTOFromDomain(bible domain.StoryBible) (dto.StoryBibleDTO, error)
 	if err != nil {
 		return dto.StoryBibleDTO{}, err
 	}
-	characters, err := MetadataJSONValue(metadata, storyBibleCharactersMetadataKey, FallbackStoryBibleCharacters(bible.SourceSeed))
+	characters, err := MetadataJSONValue(metadata, storyBibleCharactersMetadataKey, []dto.StoryBibleCharacterDTO{})
 	if err != nil {
 		return dto.StoryBibleDTO{}, err
 	}
-	foreshadows, err := MetadataJSONValue(metadata, storyBibleForeshadowsMetadataKey, FallbackStoryBibleForeshadows(bible.Rules))
+	foreshadows, err := MetadataJSONValue(metadata, storyBibleForeshadowsMetadataKey, []dto.StoryBibleForeshadowDTO{})
 	if err != nil {
 		return dto.StoryBibleDTO{}, err
 	}
-	chapterPlan, err := MetadataJSONValue(metadata, storyBibleChapterPlanMetadataKey, []dto.StoryBibleChapterPlanDTO(nil))
+	chapterPlan, err := MetadataJSONValue(metadata, storyBibleChapterPlanMetadataKey, []dto.StoryBibleChapterPlanDTO{})
 	if err != nil {
 		return dto.StoryBibleDTO{}, err
 	}
-	if len(chapterPlan) == 0 {
-		chapterPlan, err = MetadataJSONValue(metadata, storyBibleLegacyChaptersMetadataKey, FallbackStoryBibleChapterPlan(bible))
-		if err != nil {
-			return dto.StoryBibleDTO{}, err
+	for index, chapter := range chapterPlan {
+		if !chapter.Status.Valid() {
+			return dto.StoryBibleDTO{}, fmt.Errorf("chapter plan item %d status %q is invalid", index, chapter.Status)
 		}
 	}
 	themes := CopyStringSliceV1(bible.Themes)
@@ -73,7 +72,6 @@ func StoryBibleDTOFromDomain(bible domain.StoryBible) (dto.StoryBibleDTO, error)
 		Characters:        characters,
 		Foreshadows:       foreshadows,
 		ChapterPlan:       chapterPlan,
-		Chapters:          CopyStoryBibleChapterPlanV1(chapterPlan),
 		SourceSeed:        ProjectSeedDTOFromDomain(bible.SourceSeed),
 	}, nil
 }
@@ -84,6 +82,7 @@ func StoryBibleDTOToDomain(input dto.StoryBibleDTO) (domain.StoryBible, error) {
 	if metadata == nil {
 		metadata = map[string]string{}
 	}
+	delete(metadata, storyBibleLegacyChaptersMetadataKey)
 	premise := strings.TrimSpace(shared.FirstNonEmpty(input.Premise, input.Logline, input.Synopsis, sourceSeed.Premise))
 	if premise != "" {
 		sourceSeed.Premise = premise
@@ -93,24 +92,21 @@ func StoryBibleDTOToDomain(input dto.StoryBibleDTO) (domain.StoryBible, error) {
 	if err := SetMetadataJSON(metadata, storyBibleWorldRulesMetadataKey, worldRules); err != nil {
 		return domain.StoryBible{}, err
 	}
-	characters := append([]dto.StoryBibleCharacterDTO(nil), input.Characters...)
+	characters := append([]dto.StoryBibleCharacterDTO{}, input.Characters...)
 	if err := SetMetadataJSON(metadata, storyBibleCharactersMetadataKey, characters); err != nil {
 		return domain.StoryBible{}, err
 	}
-	foreshadows := append([]dto.StoryBibleForeshadowDTO(nil), input.Foreshadows...)
+	foreshadows := append([]dto.StoryBibleForeshadowDTO{}, input.Foreshadows...)
 	if err := SetMetadataJSON(metadata, storyBibleForeshadowsMetadataKey, foreshadows); err != nil {
 		return domain.StoryBible{}, err
 	}
-	chapterPlan := append([]dto.StoryBibleChapterPlanDTO(nil), input.ChapterPlan...)
-	if len(chapterPlan) == 0 {
-		chapterPlan = append([]dto.StoryBibleChapterPlanDTO(nil), input.Chapters...)
+	chapterPlan := append([]dto.StoryBibleChapterPlanDTO{}, input.ChapterPlan...)
+	for index, chapter := range chapterPlan {
+		if !chapter.Status.Valid() {
+			return domain.StoryBible{}, fmt.Errorf("chapter plan item %d status %q is invalid", index, chapter.Status)
+		}
 	}
 	if err := SetMetadataJSON(metadata, storyBibleChapterPlanMetadataKey, chapterPlan); err != nil {
-		return domain.StoryBible{}, err
-	}
-	// Keep the previous metadata key populated as an internal migration bridge while v1
-	// exposes chapter_plan as the formal protocol field.
-	if err := SetMetadataJSON(metadata, storyBibleLegacyChaptersMetadataKey, chapterPlan); err != nil {
 		return domain.StoryBible{}, err
 	}
 	sourceSeed.Metadata = metadata
@@ -167,9 +163,13 @@ func MetadataJSONValue[T any](metadata map[string]string, key string, fallback T
 	if raw == "" {
 		return fallback, nil
 	}
+
 	var value T
 	if err := json.Unmarshal([]byte(raw), &value); err != nil {
 		return fallback, fmt.Errorf("story bible metadata %q contains invalid JSON: %w", key, err)
+	}
+	if string(raw) == "null" {
+		return fallback, nil
 	}
 	return value, nil
 }
@@ -215,73 +215,6 @@ func WorldRulesToDomainRules(worldRules []string) map[string]string {
 		}
 	}
 	return rules
-}
-
-func FallbackStoryBibleCharacters(seed domain.ProjectSeed) []dto.StoryBibleCharacterDTO {
-	if len(seed.MainCharacters) == 0 {
-		return nil
-	}
-	characters := make([]dto.StoryBibleCharacterDTO, 0, len(seed.MainCharacters))
-	for index, name := range seed.MainCharacters {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		role := "key_character"
-		if index == 0 {
-			role = "protagonist"
-		}
-		characters = append(characters, dto.StoryBibleCharacterDTO{ID: fmt.Sprintf("character-%d", index+1), Name: name, Role: role, Desire: seed.Premise, Wound: "to be developed"})
-	}
-	return characters
-}
-
-func FallbackStoryBibleForeshadows(rules map[string]string) []dto.StoryBibleForeshadowDTO {
-	if len(rules) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(rules))
-	for key := range rules {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	foreshadows := make([]dto.StoryBibleForeshadowDTO, 0, len(keys))
-	for _, key := range keys {
-		if strings.TrimSpace(rules[key]) == "" {
-			continue
-		}
-		foreshadows = append(foreshadows, dto.StoryBibleForeshadowDTO{ID: "rule-" + key, Title: key, PlantedIn: "story_bible", PayoffHint: rules[key], Status: "planted"})
-	}
-	return foreshadows
-}
-
-func FallbackStoryBibleChapterPlan(bible domain.StoryBible) []dto.StoryBibleChapterPlanDTO {
-	target := bible.SourceSeed.TargetChapters
-	if target <= 0 {
-		target = 1
-	}
-	plan := make([]dto.StoryBibleChapterPlanDTO, 0, target)
-	for i := 1; i <= target; i++ {
-		status := "planned"
-		if i == 1 {
-			status = "drafting"
-		}
-		summary := "Chapter outline pending."
-		if i == 1 {
-			summary = shared.FirstNonEmpty(bible.Logline, bible.Synopsis, bible.SourceSeed.Premise, summary)
-		}
-		plan = append(plan, dto.StoryBibleChapterPlanDTO{ID: fmt.Sprintf("chapter-%d", i), Title: fmt.Sprintf("Chapter %d", i), Status: status, Summary: summary})
-	}
-	return plan
-}
-
-func CopyStoryBibleChapterPlanV1(items []dto.StoryBibleChapterPlanDTO) []dto.StoryBibleChapterPlanDTO {
-	if len(items) == 0 {
-		return nil
-	}
-	copied := make([]dto.StoryBibleChapterPlanDTO, len(items))
-	copy(copied, items)
-	return copied
 }
 
 func CharacterProfileFromDTO(dto dto.StoryBibleCharacterDTO) domain.CharacterProfile {

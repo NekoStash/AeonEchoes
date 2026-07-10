@@ -124,6 +124,13 @@ func TestHandlerProjectSmokePaths(t *testing.T) {
 	if initialized.Workflow.Output["mode"] != "rule_based_genesis" {
 		t.Fatalf("POST /api/v1/projects workflow.output.mode = %q, want rule_based_genesis", initialized.Workflow.Output["mode"])
 	}
+	chaptersResponse := sendJSON(t, handler, http.MethodGet, "/api/v1/projects/"+initialized.Project.ID+"/chapters", nil)
+	assertStatus(t, chaptersResponse, http.StatusOK)
+	var initializedChapters []domain.Chapter
+	decodeJSON(t, chaptersResponse, &initializedChapters)
+	if len(initializedChapters) != 0 {
+		t.Fatalf("POST /api/v1/projects created chapters: %+v", initializedChapters)
+	}
 
 	projectsResponse := sendJSON(t, handler, http.MethodGet, "/api/v1/projects", nil)
 	assertStatus(t, projectsResponse, http.StatusOK)
@@ -135,10 +142,21 @@ func TestHandlerProjectSmokePaths(t *testing.T) {
 
 	bibleResponse := sendJSON(t, handler, http.MethodGet, "/api/v1/projects/"+initialized.Project.ID+"/story-bibles/current", nil)
 	assertStatus(t, bibleResponse, http.StatusOK)
-	var bible domain.StoryBible
+	var bible struct {
+		ProjectID   string `json:"project_id"`
+		Characters  []any  `json:"characters"`
+		Foreshadows []any  `json:"foreshadows"`
+		ChapterPlan []any  `json:"chapter_plan"`
+	}
 	decodeJSON(t, bibleResponse, &bible)
 	if bible.ProjectID != initialized.Project.ID {
 		t.Fatalf("GET /api/v1/projects/{id}/story-bibles/current project_id = %q, want %q", bible.ProjectID, initialized.Project.ID)
+	}
+	if bible.Characters == nil || bible.Foreshadows == nil || bible.ChapterPlan == nil {
+		t.Fatalf("story bible arrays must be present: %+v", bible)
+	}
+	if len(bible.Characters) != 0 || len(bible.Foreshadows) != 0 || len(bible.ChapterPlan) != 0 {
+		t.Fatalf("story bible arrays must initialize empty: %+v", bible)
 	}
 }
 
@@ -151,13 +169,13 @@ func TestHandlerV1ChapterSummaryAndUnknownFieldContracts(t *testing.T) {
 	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	const summary = "主角第一次听见灰塔钟声。"
-	chapterResponse := sendJSON(t, server.Handler(), http.MethodPut, "/api/v1/projects/"+project.ID+"/chapters/chapter_contract", map[string]any{
+	chapterResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters", map[string]any{
 		"number":  1,
 		"title":   "钟声",
 		"status":  "planned",
 		"summary": summary,
 	})
-	assertStatus(t, chapterResponse, http.StatusOK)
+	assertStatus(t, chapterResponse, http.StatusCreated)
 	var chapterEnvelope struct {
 		Data struct {
 			Summary string `json:"summary"`
@@ -197,6 +215,204 @@ func TestHandlerV1ChapterSummaryAndUnknownFieldContracts(t *testing.T) {
 	}
 }
 
+func TestHandlerStoryBibleChapterPlanDoesNotCreateChapters(t *testing.T) {
+	store := memory.NewStore()
+	project, bible, err := store.CreateProject(domain.Project{Title: "规划不建章", Slug: "plan-only", Status: "active"}, domain.StoryBible{Title: "规划不建章", Logline: "测试", SourceSeed: domain.ProjectSeed{Title: "规划不建章", Premise: "测试"}})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	response := sendJSON(t, server.Handler(), http.MethodPut, "/api/v1/projects/"+project.ID+"/story-bibles/"+bible.ID, map[string]any{
+		"title":        "规划不建章",
+		"premise":      "测试",
+		"chapter_plan": []map[string]any{{"id": "plan-1", "title": "计划第一章", "status": "planned", "summary": "仅保存规划"}},
+		"characters":   []any{},
+		"foreshadows":  []any{},
+		"world_rules":  []any{},
+		"themes":       []any{},
+		"source_seed":  map[string]any{"title": "规划不建章", "premise": "测试"},
+	})
+	assertStatus(t, response, http.StatusOK)
+
+	chaptersResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/v1/projects/"+project.ID+"/chapters", nil)
+	assertStatus(t, chaptersResponse, http.StatusOK)
+	var chapters []domain.Chapter
+	decodeJSON(t, chaptersResponse, &chapters)
+	if len(chapters) != 0 {
+		t.Fatalf("saving chapter_plan created chapters: %+v", chapters)
+	}
+}
+
+func TestHandlerChapterCreationUpdateAndVersionContracts(t *testing.T) {
+	store := memory.NewStore()
+	project, _, err := store.CreateProject(domain.Project{Title: "严格章节契约", Slug: "strict-chapters", Status: "active"}, domain.StoryBible{Title: "严格章节契约", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	createWithID := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters", map[string]any{"chapter_id": "forbidden", "title": "非法"})
+	assertStatus(t, createWithID, http.StatusBadRequest)
+	missingTitle := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters", map[string]any{"status": "planned"})
+	assertStatus(t, missingTitle, http.StatusBadRequest)
+	blankTitle := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters", map[string]any{"title": "   "})
+	assertStatus(t, blankTitle, http.StatusBadRequest)
+	invalidCreateStatus := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters", map[string]any{"title": "非法状态", "status": "draft"})
+	assertStatus(t, invalidCreateStatus, http.StatusBadRequest)
+
+	missingUpdate := sendJSON(t, server.Handler(), http.MethodPut, "/api/v1/projects/"+project.ID+"/chapters/missing", map[string]any{"title": "不存在"})
+	assertStatus(t, missingUpdate, http.StatusNotFound)
+
+	missingVersion := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters/missing/versions", map[string]any{"title": "不存在", "content": "不应保存", "author_role": "writer"})
+	assertStatus(t, missingVersion, http.StatusNotFound)
+
+	chaptersResponse := sendJSON(t, server.Handler(), http.MethodGet, "/api/v1/projects/"+project.ID+"/chapters", nil)
+	assertStatus(t, chaptersResponse, http.StatusOK)
+	var chapters []domain.Chapter
+	decodeJSON(t, chaptersResponse, &chapters)
+	if len(chapters) != 0 {
+		t.Fatalf("failed update/version requests created chapters: %+v", chapters)
+	}
+
+	createdResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters", map[string]any{"number": 1, "title": "第一章", "status": "planned"})
+	assertStatus(t, createdResponse, http.StatusCreated)
+	var created domain.Chapter
+	decodeJSON(t, createdResponse, &created)
+	if created.ID == "" || created.ProjectID != project.ID {
+		t.Fatalf("created chapter invalid: %+v", created)
+	}
+	defaultStatusResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters", map[string]any{"number": 2, "title": "第二章"})
+	assertStatus(t, defaultStatusResponse, http.StatusCreated)
+	var defaultStatusChapter domain.Chapter
+	decodeJSON(t, defaultStatusResponse, &defaultStatusChapter)
+	if defaultStatusChapter.Status != domain.ChapterStatusDrafting {
+		t.Fatalf("default chapter status = %q, want %q", defaultStatusChapter.Status, domain.ChapterStatusDrafting)
+	}
+
+	emptyUpdate := sendJSON(t, server.Handler(), http.MethodPatch, "/api/v1/projects/"+project.ID+"/chapters/"+created.ID, map[string]any{})
+	assertStatus(t, emptyUpdate, http.StatusBadRequest)
+
+	invalidUpdateStatus := sendJSON(t, server.Handler(), http.MethodPatch, "/api/v1/projects/"+project.ID+"/chapters/"+created.ID, map[string]any{"status": "done"})
+	assertStatus(t, invalidUpdateStatus, http.StatusBadRequest)
+
+	updatedResponse := sendJSON(t, server.Handler(), http.MethodPatch, "/api/v1/projects/"+project.ID+"/chapters/"+created.ID, map[string]any{"title": "第一章·更新"})
+	assertStatus(t, updatedResponse, http.StatusOK)
+	var updated domain.Chapter
+	decodeJSON(t, updatedResponse, &updated)
+	if updated.ID != created.ID || updated.Title != "第一章·更新" {
+		t.Fatalf("updated chapter invalid: %+v", updated)
+	}
+
+	versionCases := []struct {
+		name string
+		body map[string]any
+	}{
+		{name: "missing title", body: map[string]any{"content": "正文", "author_role": "writer"}},
+		{name: "blank content", body: map[string]any{"title": "版本", "content": "  ", "author_role": "writer"}},
+		{name: "missing author role", body: map[string]any{"title": "版本", "content": "正文"}},
+		{name: "invalid author role", body: map[string]any{"title": "版本", "content": "正文", "author_role": "reader"}},
+		{name: "client id forbidden", body: map[string]any{"id": "client-version", "title": "版本", "content": "正文", "author_role": "writer"}},
+		{name: "client version forbidden", body: map[string]any{"version": 9, "title": "版本", "content": "正文", "author_role": "writer"}},
+		{name: "client index status forbidden", body: map[string]any{"index_status": "indexed", "title": "版本", "content": "正文", "author_role": "writer"}},
+	}
+	for _, tc := range versionCases {
+		t.Run(tc.name, func(t *testing.T) {
+			response := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters/"+created.ID+"/versions", tc.body)
+			assertStatus(t, response, http.StatusBadRequest)
+		})
+	}
+	missingParent := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters/"+created.ID+"/versions", map[string]any{
+		"title": "缺失父版本", "content": "正文", "author_role": "editor", "parent_version_id": "version-parent",
+	})
+	assertStatus(t, missingParent, http.StatusNotFound)
+
+	firstVersionResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters/"+created.ID+"/versions", map[string]any{
+		"title": "第一章·版本一", "content": "正文一", "author_role": "editor", "change_note": "人工保存", "metadata": map[string]string{"source": "editor"},
+	})
+	assertStatus(t, firstVersionResponse, http.StatusCreated)
+	var firstSaved struct {
+		ChapterVersion domain.ChapterVersion `json:"chapter_version"`
+	}
+	decodeJSON(t, firstVersionResponse, &firstSaved)
+	if firstSaved.ChapterVersion.ID == "" || firstSaved.ChapterVersion.IndexStatus != "pending" || firstSaved.ChapterVersion.Metadata["change_note"] != "人工保存" || firstSaved.ChapterVersion.ParentVersionID != "" {
+		t.Fatalf("first saved chapter version contract invalid: %+v", firstSaved.ChapterVersion)
+	}
+
+	secondVersionResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters/"+created.ID+"/versions", map[string]any{
+		"title": "第一章·版本二", "content": "正文二", "author_role": "editor", "parent_version_id": firstSaved.ChapterVersion.ID,
+	})
+	assertStatus(t, secondVersionResponse, http.StatusCreated)
+	var secondSaved struct {
+		ChapterVersion domain.ChapterVersion `json:"chapter_version"`
+	}
+	decodeJSON(t, secondVersionResponse, &secondSaved)
+	if secondSaved.ChapterVersion.ParentVersionID != firstSaved.ChapterVersion.ID || secondSaved.ChapterVersion.Metadata["parent_version_id"] != "" {
+		t.Fatalf("second saved chapter version parent contract invalid: %+v", secondSaved.ChapterVersion)
+	}
+
+	crossChapterParent := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters/"+defaultStatusChapter.ID+"/versions", map[string]any{
+		"title": "跨章节父版本", "content": "正文", "author_role": "editor", "parent_version_id": firstSaved.ChapterVersion.ID,
+	})
+	assertStatus(t, crossChapterParent, http.StatusBadRequest)
+
+	conflictResponse := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/chapters", map[string]any{"number": 1, "title": "冲突章节"})
+	assertStatus(t, conflictResponse, http.StatusConflict)
+}
+
+func TestHandlerChapterListOwnershipContracts(t *testing.T) {
+	store := memory.NewStore()
+	projectA, _, err := store.CreateProject(domain.Project{Title: "章节归属 A"}, domain.StoryBible{Title: "章节归属 A", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject(A) error: %v", err)
+	}
+	projectB, _, err := store.CreateProject(domain.Project{Title: "章节归属 B"}, domain.StoryBible{Title: "章节归属 B", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject(B) error: %v", err)
+	}
+	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectA.ID, Title: "A 第一章"})
+	if err != nil {
+		t.Fatalf("CreateChapter() error: %v", err)
+	}
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	missingProject := sendJSON(t, server.Handler(), http.MethodGet, "/api/v1/projects/missing/chapters", nil)
+	assertStatus(t, missingProject, http.StatusNotFound)
+	missingVersionProject := sendJSON(t, server.Handler(), http.MethodGet, "/api/v1/projects/missing/chapters/"+chapter.ID+"/versions", nil)
+	assertStatus(t, missingVersionProject, http.StatusNotFound)
+	wrongOwnership := sendJSON(t, server.Handler(), http.MethodGet, "/api/v1/projects/"+projectB.ID+"/chapters/"+chapter.ID+"/versions", nil)
+	assertStatus(t, wrongOwnership, http.StatusNotFound)
+	missingChapter := sendJSON(t, server.Handler(), http.MethodGet, "/api/v1/projects/"+projectA.ID+"/chapters/missing/versions", nil)
+	assertStatus(t, missingChapter, http.StatusNotFound)
+}
+
+func TestHandlerGraphExpansionStrictContract(t *testing.T) {
+	store := memory.NewStore()
+	project, _, err := store.CreateProject(domain.Project{Title: "严格图谱"}, domain.StoryBible{Title: "严格图谱", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	entity, err := store.SaveEntity(domain.Entity{ProjectID: project.ID, Name: "林烬", Type: "character", Summary: "主角", Importance: 1, Status: "stable", Metadata: map[string]string{"depth": "1", "timeline": "2"}})
+	if err != nil {
+		t.Fatalf("SaveEntity() error: %v", err)
+	}
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	for _, depth := range []int{0, 5} {
+		response := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/graph/expansions", map[string]any{"depth": depth})
+		assertStatus(t, response, http.StatusBadRequest)
+	}
+	invalidEntity := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/graph/expansions", map[string]any{"depth": 1, "entity_ids": []string{"missing"}})
+	assertStatus(t, invalidEntity, http.StatusNotFound)
+	valid := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/projects/"+project.ID+"/graph/expansions", map[string]any{"depth": 1, "entity_ids": []string{entity.ID}})
+	assertStatus(t, valid, http.StatusOK)
+	var expansion domain.GraphExpansion
+	decodeJSON(t, valid, &expansion)
+	if expansion.Depth != 1 || expansion.GeneratedAt.IsZero() || len(expansion.Entities) != 1 || expansion.Entities[0].ID != entity.ID {
+		t.Fatalf("graph expansion contract invalid: %+v", expansion)
+	}
+}
+
 func TestHandlerRebuildVectorsEndpoint(t *testing.T) {
 	store := memory.NewStore()
 	providerCfg, err := store.CreateProvider(domain.ProviderConfig{ID: "provider_embed", Name: "Embedding", Type: domain.ProviderOpenAI, Enabled: true})
@@ -211,7 +427,11 @@ func TestHandlerRebuildVectorsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProject() error: %v", err)
 	}
-	_, _, err = store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: "chapter_1", Title: "第一章", Content: "测试内容", IndexStatus: "indexed"})
+	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: project.ID, Title: "第一章"})
+	if err != nil {
+		t.Fatalf("CreateChapter() error: %v", err)
+	}
+	_, _, err = store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: chapter.ID, Title: "第一章", Content: "测试内容", AuthorRole: domain.AgentRoleWriter, IndexStatus: "indexed"})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion() error: %v", err)
 	}
@@ -687,11 +907,19 @@ func newWorkflowBackedServerFixture(t *testing.T) (*memory.Store, *agent.Workflo
 	if err != nil {
 		t.Fatalf("SaveEntity(灰烬钥匙) error: %v", err)
 	}
-	chapterOne, _, err := store.SaveChapterVersion(domain.ChapterVersion{ID: "chapter_version_seed_1", ProjectID: project.ID, ChapterID: "chapter-manual", Title: "前章", Content: "林烬得到灰烬钥匙", Summary: "林烬得到灰烬钥匙", AuthorRole: domain.AgentRoleWriter, SourceWorkflowID: seedWorkflow.ID, IndexStatus: "indexed"})
+	chapterManual, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: project.ID, Number: 1, Title: "前章"})
+	if err != nil {
+		t.Fatalf("CreateChapter(前章) error: %v", err)
+	}
+	chapterOther, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: project.ID, Number: 2, Title: "旁章"})
+	if err != nil {
+		t.Fatalf("CreateChapter(旁章) error: %v", err)
+	}
+	chapterOne, _, err := store.SaveChapterVersion(domain.ChapterVersion{ID: "chapter_version_seed_1", ProjectID: project.ID, ChapterID: chapterManual.ID, Title: "前章", Content: "林烬得到灰烬钥匙", Summary: "林烬得到灰烬钥匙", AuthorRole: domain.AgentRoleWriter, SourceWorkflowID: seedWorkflow.ID, IndexStatus: "indexed"})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion(前章) error: %v", err)
 	}
-	chapterTwo, _, err := store.SaveChapterVersion(domain.ChapterVersion{ID: "chapter_version_seed_2", ProjectID: project.ID, ChapterID: "chapter-other", Title: "旁章", Content: "苏九调查灰塔", Summary: "苏九调查灰塔", AuthorRole: domain.AgentRoleWriter, SourceWorkflowID: seedWorkflow.ID, IndexStatus: "indexed"})
+	chapterTwo, _, err := store.SaveChapterVersion(domain.ChapterVersion{ID: "chapter_version_seed_2", ProjectID: project.ID, ChapterID: chapterOther.ID, Title: "旁章", Content: "苏九调查灰塔", Summary: "苏九调查灰塔", AuthorRole: domain.AgentRoleWriter, SourceWorkflowID: seedWorkflow.ID, IndexStatus: "indexed"})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion(旁章) error: %v", err)
 	}

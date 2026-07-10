@@ -2,76 +2,131 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"aeonechoes/server/internal/domain"
+	"aeonechoes/server/internal/repository"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func (s *Store) EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error) {
+func (s *Store) CreateChapter(req domain.CreateChapterRequest) (domain.Chapter, error) {
 	if err := requireStore(s); err != nil {
 		return domain.Chapter{}, err
 	}
 	projectID := strings.TrimSpace(req.ProjectID)
 	if projectID == "" {
-		return domain.Chapter{}, fmt.Errorf("chapter ensure project_id must not be empty")
+		return domain.Chapter{}, fmt.Errorf("create chapter project_id must not be empty")
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		return domain.Chapter{}, fmt.Errorf("chapter title must not be empty")
 	}
 	if _, err := s.GetProject(projectID); err != nil {
 		return domain.Chapter{}, err
 	}
-	chapterID := strings.TrimSpace(req.ChapterID)
-	if chapterID != "" {
-		chapter, err := s.GetChapter(chapterID)
-		if err == nil {
-			if chapter.ProjectID != projectID {
-				return domain.Chapter{}, fmt.Errorf("chapter %q belongs to project %q, not %q", chapterID, chapter.ProjectID, projectID)
-			}
-			return s.updateChapter(chapter, req)
-		}
-		if !strings.Contains(err.Error(), "not found") {
-			return domain.Chapter{}, err
-		}
-	}
-	if req.Number > 0 {
-		chapter, err := s.getChapterByNumber(projectID, req.Number)
-		if err == nil {
-			return s.updateChapter(chapter, req)
-		}
-		if !strings.Contains(err.Error(), "not found") {
-			return domain.Chapter{}, err
-		}
-	}
-	if chapterID == "" {
-		id, err := s.NewID("chapter")
-		if err != nil {
-			return domain.Chapter{}, fmt.Errorf("generate chapter id: %w", err)
-		}
-		chapterID = id
+	chapterID, err := s.NewID("chapter")
+	if err != nil {
+		return domain.Chapter{}, fmt.Errorf("generate chapter id: %w", err)
 	}
 	number := req.Number
 	if number <= 0 {
-		next, err := nextChapterNumber(s, projectID)
+		number, err = nextChapterNumber(s, projectID)
 		if err != nil {
 			return domain.Chapter{}, err
 		}
-		number = next
 	}
 	n := now()
-	status := strings.TrimSpace(req.Status)
+	status := req.Status
 	if status == "" {
-		status = "draft"
+		status = domain.ChapterStatusDrafting
+	}
+	if !status.Valid() {
+		return domain.Chapter{}, fmt.Errorf("chapter status %q is invalid", status)
 	}
 	metadata, err := jsonbOrEmptyObject(req.Metadata)
 	if err != nil {
 		return domain.Chapter{}, err
 	}
-	chapter := domain.Chapter{ID: chapterID, ProjectID: projectID, Number: number, Title: strings.TrimSpace(req.Title), Status: status, Metadata: req.Metadata, CreatedAt: n, UpdatedAt: n}
+	chapter := domain.Chapter{ID: chapterID, ProjectID: projectID, Number: number, Title: title, Status: status, Metadata: req.Metadata, CreatedAt: n, UpdatedAt: n}
 	if _, err := s.pool.Exec(context.Background(), `INSERT INTO chapters(id, project_id, number, title, status, metadata, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, chapter.ID, chapter.ProjectID, chapter.Number, chapter.Title, chapter.Status, metadata, chapter.CreatedAt, chapter.UpdatedAt); err != nil {
+		if isUniqueViolation(err) {
+			return domain.Chapter{}, repository.Conflict("chapter", chapter.ID, fmt.Sprintf("chapter number %d already exists in project %q", number, projectID), err)
+		}
 		return domain.Chapter{}, fmt.Errorf("insert chapter %q: %w", chapter.ID, err)
 	}
 	return chapter, nil
+}
+
+func (s *Store) UpdateChapter(req domain.UpdateChapterRequest) (domain.Chapter, error) {
+	if err := requireStore(s); err != nil {
+		return domain.Chapter{}, err
+	}
+	projectID := strings.TrimSpace(req.ProjectID)
+	chapterID := strings.TrimSpace(req.ChapterID)
+	if projectID == "" || chapterID == "" {
+		return domain.Chapter{}, fmt.Errorf("update chapter project_id and chapter_id must not be empty")
+	}
+	if req.Number == nil && req.Title == nil && req.Status == nil && req.Metadata == nil {
+		return domain.Chapter{}, fmt.Errorf("chapter update must include at least one field")
+	}
+	existing, err := s.GetChapter(chapterID)
+	if err != nil {
+		return domain.Chapter{}, err
+	}
+	if existing.ProjectID != projectID {
+		return domain.Chapter{}, repository.NotFound("chapter", chapterID)
+	}
+	updated := existing
+	if req.Number != nil {
+		if *req.Number <= 0 {
+			return domain.Chapter{}, fmt.Errorf("chapter number must be greater than zero")
+		}
+		updated.Number = *req.Number
+	}
+	if req.Title != nil {
+		title := strings.TrimSpace(*req.Title)
+		if title == "" {
+			return domain.Chapter{}, fmt.Errorf("chapter title must not be empty")
+		}
+		updated.Title = title
+	}
+	if req.Status != nil {
+		status := *req.Status
+		if !status.Valid() {
+			return domain.Chapter{}, fmt.Errorf("chapter status %q is invalid", status)
+		}
+		updated.Status = status
+	}
+	if req.Metadata != nil {
+		metadata := make(map[string]string, len(updated.Metadata)+len(*req.Metadata))
+		for key, value := range updated.Metadata {
+			metadata[key] = value
+		}
+		for key, value := range *req.Metadata {
+			metadata[key] = value
+		}
+		updated.Metadata = metadata
+	}
+	updated.UpdatedAt = now()
+	metadata, err := jsonbOrEmptyObject(updated.Metadata)
+	if err != nil {
+		return domain.Chapter{}, err
+	}
+	result, err := s.pool.Exec(context.Background(), `UPDATE chapters SET number=$3, title=$4, status=$5, metadata=$6, updated_at=$7 WHERE id=$1 AND project_id=$2`, updated.ID, projectID, updated.Number, updated.Title, updated.Status, metadata, updated.UpdatedAt)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return domain.Chapter{}, repository.Conflict("chapter", chapterID, fmt.Sprintf("chapter number %d already exists in project %q", updated.Number, projectID), err)
+		}
+		return domain.Chapter{}, fmt.Errorf("update chapter %q: %w", updated.ID, err)
+	}
+	if result.RowsAffected() != 1 {
+		return domain.Chapter{}, repository.NotFound("chapter", chapterID)
+	}
+	return updated, nil
 }
 
 func (s *Store) GetChapter(id string) (domain.Chapter, error) {
@@ -86,7 +141,7 @@ func (s *Store) GetChapter(id string) (domain.Chapter, error) {
 	item, err := scanChapter(row)
 	if err != nil {
 		if isNoRows(err) {
-			return domain.Chapter{}, fmt.Errorf("chapter %q not found", id)
+			return domain.Chapter{}, repository.NotFound("chapter", id)
 		}
 		return domain.Chapter{}, fmt.Errorf("get chapter %q: %w", id, err)
 	}
@@ -100,6 +155,9 @@ func (s *Store) ListChapters(projectID string) ([]domain.Chapter, error) {
 	projectID = strings.TrimSpace(projectID)
 	if projectID == "" {
 		return nil, fmt.Errorf("list chapters project_id must not be empty")
+	}
+	if _, err := s.GetProject(projectID); err != nil {
+		return nil, err
 	}
 	rows, err := s.pool.Query(context.Background(), chapterSelectSQL()+` WHERE project_id=$1 ORDER BY number ASC, id ASC`, projectID)
 	if err != nil {
@@ -120,51 +178,6 @@ func (s *Store) ListChapters(projectID string) ([]domain.Chapter, error) {
 	return items, nil
 }
 
-func (s *Store) updateChapter(existing domain.Chapter, req domain.ChapterEnsureRequest) (domain.Chapter, error) {
-	updated := existing
-	if strings.TrimSpace(req.Title) != "" {
-		updated.Title = strings.TrimSpace(req.Title)
-	}
-	if strings.TrimSpace(req.Status) != "" {
-		updated.Status = strings.TrimSpace(req.Status)
-	}
-	if len(req.Metadata) > 0 {
-		metadata := make(map[string]string, len(updated.Metadata)+len(req.Metadata))
-		for key, value := range updated.Metadata {
-			metadata[key] = value
-		}
-		for key, value := range req.Metadata {
-			metadata[key] = value
-		}
-		updated.Metadata = metadata
-	}
-	updated.UpdatedAt = now()
-	metadata, err := jsonbOrEmptyObject(updated.Metadata)
-	if err != nil {
-		return domain.Chapter{}, err
-	}
-	result, err := s.pool.Exec(context.Background(), `UPDATE chapters SET title=$2, status=$3, metadata=$4, updated_at=$5 WHERE id=$1`, updated.ID, updated.Title, updated.Status, metadata, updated.UpdatedAt)
-	if err != nil {
-		return domain.Chapter{}, fmt.Errorf("update chapter %q: %w", updated.ID, err)
-	}
-	if result.RowsAffected() != 1 {
-		return domain.Chapter{}, fmt.Errorf("chapter %q not found", updated.ID)
-	}
-	return updated, nil
-}
-
-func (s *Store) getChapterByNumber(projectID string, number int) (domain.Chapter, error) {
-	row := s.pool.QueryRow(context.Background(), chapterSelectSQL()+` WHERE project_id=$1 AND number=$2`, projectID, number)
-	item, err := scanChapter(row)
-	if err != nil {
-		if isNoRows(err) {
-			return domain.Chapter{}, fmt.Errorf("chapter number %d for project %q not found", number, projectID)
-		}
-		return domain.Chapter{}, fmt.Errorf("get chapter number %d for project %q: %w", number, projectID, err)
-	}
-	return item, nil
-}
-
 func nextChapterNumber(s *Store, projectID string) (int, error) {
 	var next int
 	if err := s.pool.QueryRow(context.Background(), `SELECT COALESCE(MAX(number), 0) + 1 FROM chapters WHERE project_id=$1`, projectID).Scan(&next); err != nil {
@@ -177,11 +190,23 @@ func (s *Store) SaveChapterVersion(version domain.ChapterVersion) (domain.Chapte
 	if err := requireStore(s); err != nil {
 		return domain.ChapterVersion{}, domain.IndexJob{}, err
 	}
-	if strings.TrimSpace(version.ProjectID) == "" {
+	version.ProjectID = strings.TrimSpace(version.ProjectID)
+	if version.ProjectID == "" {
 		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version project_id must not be empty")
+	}
+	version.Title = strings.TrimSpace(version.Title)
+	if version.Title == "" {
+		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version title must not be empty")
 	}
 	if strings.TrimSpace(version.Content) == "" {
 		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version content must not be empty")
+	}
+	if !version.AuthorRole.Valid() {
+		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version author_role %q is invalid", version.AuthorRole)
+	}
+	version.ChapterID = strings.TrimSpace(version.ChapterID)
+	if version.ChapterID == "" {
+		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version chapter_id must not be empty")
 	}
 	if _, err := s.GetProject(version.ProjectID); err != nil {
 		return domain.ChapterVersion{}, domain.IndexJob{}, err
@@ -191,45 +216,35 @@ func (s *Store) SaveChapterVersion(version domain.ChapterVersion) (domain.Chapte
 		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("begin save chapter version: %w", err)
 	}
 	defer tx.Rollback(context.Background())
-	chapterID := strings.TrimSpace(version.ChapterID)
-	if chapterID == "" {
-		id, err := s.NewID("chapter")
-		if err != nil {
-			return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("generate chapter id: %w", err)
+	chapterID := version.ChapterID
+	var chapterProjectID string
+	if err := tx.QueryRow(context.Background(), `SELECT project_id FROM chapters WHERE id=$1`, chapterID).Scan(&chapterProjectID); err != nil {
+		if isNoRows(err) {
+			return domain.ChapterVersion{}, domain.IndexJob{}, repository.NotFound("chapter", chapterID)
 		}
-		chapterID = id
-		number, err := nextChapterNumberTx(tx, version.ProjectID)
-		if err != nil {
-			return domain.ChapterVersion{}, domain.IndexJob{}, err
-		}
-		n := now()
-		if _, err := tx.Exec(context.Background(), `INSERT INTO chapters(id, project_id, number, title, status, metadata, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, chapterID, version.ProjectID, number, version.Title, "draft", []byte("{}"), n, n); err != nil {
-			return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("insert chapter %q: %w", chapterID, err)
-		}
-	} else {
-		var existing string
-		err := tx.QueryRow(context.Background(), `SELECT id FROM chapters WHERE id=$1`, chapterID).Scan(&existing)
-		if err != nil {
-			if !isNoRows(err) {
-				return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("get chapter %q: %w", chapterID, err)
-			}
-			number, err := nextChapterNumberTx(tx, version.ProjectID)
-			if err != nil {
-				return domain.ChapterVersion{}, domain.IndexJob{}, err
-			}
-			n := now()
-			if _, err := tx.Exec(context.Background(), `INSERT INTO chapters(id, project_id, number, title, status, metadata, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, chapterID, version.ProjectID, number, version.Title, "draft", []byte("{}"), n, n); err != nil {
-				return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("insert supplied chapter %q: %w", chapterID, err)
-			}
-		}
+		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("get chapter %q: %w", chapterID, err)
 	}
-	version.ChapterID = chapterID
+	if chapterProjectID != version.ProjectID {
+		return domain.ChapterVersion{}, domain.IndexJob{}, repository.NotFound("chapter", chapterID)
+	}
 	if strings.TrimSpace(version.ID) == "" {
 		id, err := s.NewID("chapter_version")
 		if err != nil {
 			return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("generate chapter version id: %w", err)
 		}
 		version.ID = id
+	}
+	var existingVersionID string
+	err = tx.QueryRow(context.Background(), `SELECT id FROM chapter_versions WHERE id=$1`, version.ID).Scan(&existingVersionID)
+	if err == nil {
+		return domain.ChapterVersion{}, domain.IndexJob{}, repository.Conflict("chapter version", version.ID, fmt.Sprintf("chapter version %q already exists", version.ID), nil)
+	}
+	if !isNoRows(err) {
+		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("check chapter version %q existence: %w", version.ID, err)
+	}
+	version.ParentVersionID = strings.TrimSpace(version.ParentVersionID)
+	if err := validateChapterVersionParentTx(tx, version); err != nil {
+		return domain.ChapterVersion{}, domain.IndexJob{}, err
 	}
 	chapterVersion, err := nextChapterVersionTx(tx, chapterID)
 	if err != nil {
@@ -245,8 +260,8 @@ func (s *Store) SaveChapterVersion(version domain.ChapterVersion) (domain.Chapte
 		return domain.ChapterVersion{}, domain.IndexJob{}, err
 	}
 	if _, err := tx.Exec(context.Background(), `
-INSERT INTO chapter_versions(id, project_id, chapter_id, version, title, content, summary, author_role, source_workflow_id, index_status, metadata, created_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, version.ID, version.ProjectID, version.ChapterID, version.Version, version.Title, version.Content, version.Summary, string(version.AuthorRole), version.SourceWorkflowID, version.IndexStatus, metadata, version.CreatedAt); err != nil {
+INSERT INTO chapter_versions(id, project_id, chapter_id, parent_version_id, version, title, content, summary, author_role, source_workflow_id, index_status, metadata, created_at)
+VALUES ($1,$2,$3,NULLIF($4,''),$5,$6,$7,$8,$9,$10,$11,$12,$13)`, version.ID, version.ProjectID, version.ChapterID, version.ParentVersionID, version.Version, version.Title, version.Content, version.Summary, string(version.AuthorRole), version.SourceWorkflowID, version.IndexStatus, metadata, version.CreatedAt); err != nil {
 		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("insert chapter version %q: %w", version.ID, err)
 	}
 	if _, err := tx.Exec(context.Background(), `
@@ -311,9 +326,26 @@ func (s *Store) ListChapterVersions(projectID, chapterID string) ([]domain.Chapt
 	if err := requireStore(s); err != nil {
 		return nil, err
 	}
+	projectID = strings.TrimSpace(projectID)
+	chapterID = strings.TrimSpace(chapterID)
+	if projectID == "" {
+		return nil, fmt.Errorf("list chapter versions project_id must not be empty")
+	}
+	if _, err := s.GetProject(projectID); err != nil {
+		return nil, err
+	}
+	if chapterID != "" {
+		chapter, err := s.GetChapter(chapterID)
+		if err != nil {
+			return nil, err
+		}
+		if chapter.ProjectID != projectID {
+			return nil, repository.NotFound("chapter", chapterID)
+		}
+	}
 	query := chapterVersionSelectSQL() + ` WHERE project_id=$1`
 	args := []any{projectID}
-	if strings.TrimSpace(chapterID) != "" {
+	if chapterID != "" {
 		query += ` AND chapter_id=$2`
 		args = append(args, chapterID)
 	}
@@ -337,12 +369,46 @@ func (s *Store) ListChapterVersions(projectID, chapterID string) ([]domain.Chapt
 	return items, nil
 }
 
-func nextChapterNumberTx(tx pgx.Tx, projectID string) (int, error) {
-	var next int
-	if err := tx.QueryRow(context.Background(), `SELECT COALESCE(MAX(number), 0) + 1 FROM chapters WHERE project_id=$1`, projectID).Scan(&next); err != nil {
-		return 0, fmt.Errorf("next chapter number for project %q: %w", projectID, err)
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func validateChapterVersionParentTx(tx pgx.Tx, version domain.ChapterVersion) error {
+	if version.ParentVersionID == "" {
+		return nil
 	}
-	return next, nil
+	if version.ParentVersionID == version.ID {
+		return fmt.Errorf("chapter version %q cannot reference itself as parent", version.ID)
+	}
+	currentID := version.ParentVersionID
+	visited := map[string]struct{}{version.ID: {}}
+	for {
+		if _, seen := visited[currentID]; seen {
+			return fmt.Errorf("chapter version parent chain contains a cycle at %q", currentID)
+		}
+		visited[currentID] = struct{}{}
+		var projectID string
+		var chapterID string
+		var parentVersionID *string
+		err := tx.QueryRow(context.Background(), `SELECT project_id, chapter_id, parent_version_id FROM chapter_versions WHERE id=$1`, currentID).Scan(&projectID, &chapterID, &parentVersionID)
+		if err != nil {
+			if isNoRows(err) {
+				if currentID == version.ParentVersionID {
+					return repository.NotFound("chapter version", currentID)
+				}
+				return fmt.Errorf("chapter version parent chain references missing version %q", currentID)
+			}
+			return fmt.Errorf("get chapter version parent %q: %w", currentID, err)
+		}
+		if projectID != version.ProjectID || chapterID != version.ChapterID {
+			return fmt.Errorf("chapter version parent chain crosses project or chapter at %q", currentID)
+		}
+		if parentVersionID == nil || strings.TrimSpace(*parentVersionID) == "" {
+			return nil
+		}
+		currentID = strings.TrimSpace(*parentVersionID)
+	}
 }
 
 func nextChapterVersionTx(tx pgx.Tx, chapterID string) (int, error) {
@@ -358,7 +424,7 @@ func chapterSelectSQL() string {
 }
 
 func chapterVersionSelectSQL() string {
-	return `SELECT id, project_id, chapter_id, version, title, content, summary, author_role, source_workflow_id, index_status, metadata, created_at FROM chapter_versions`
+	return `SELECT id, project_id, chapter_id, COALESCE(parent_version_id, ''), version, title, content, summary, author_role, source_workflow_id, index_status, metadata, created_at FROM chapter_versions`
 }
 
 type chapterVersionScanner interface{ Scan(dest ...any) error }
@@ -381,7 +447,7 @@ func scanChapterVersion(scanner chapterVersionScanner) (domain.ChapterVersion, e
 	var item domain.ChapterVersion
 	var authorRole string
 	var metadata []byte
-	if err := scanner.Scan(&item.ID, &item.ProjectID, &item.ChapterID, &item.Version, &item.Title, &item.Content, &item.Summary, &authorRole, &item.SourceWorkflowID, &item.IndexStatus, &metadata, &item.CreatedAt); err != nil {
+	if err := scanner.Scan(&item.ID, &item.ProjectID, &item.ChapterID, &item.ParentVersionID, &item.Version, &item.Title, &item.Content, &item.Summary, &authorRole, &item.SourceWorkflowID, &item.IndexStatus, &metadata, &item.CreatedAt); err != nil {
 		return domain.ChapterVersion{}, err
 	}
 	parsedMetadata, err := unmarshalJSONB[map[string]string](metadata)

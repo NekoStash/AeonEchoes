@@ -1,7 +1,9 @@
 {
   "product": {
     "name": "Aeon Echoes",
-    "tagline": "Long-form writing workspace"
+    "tagline": "Long-form writing workspace",
+    "pageTitle": "Aeon Echoes | Long-form writing workspace",
+    "description": "A focused workspace for projects, Story Bibles, and long-form fiction writing."
   },
   "common": {
     "emptyValue": "—",
@@ -16,12 +18,23 @@
   "nav": {
     "dashboard": "Dashboard",
     "projects": "Projects",
+    "providers": "Providers",
     "models": "Models",
     "agents": "Agents",
+    "indexMaintenance": "Index maintenance",
     "newProject": "New project",
     "project": "Project overview",
     "editor": "Editor",
     "graph": "Story graph",
+    "creation": "Create",
+    "settings": "Settings",
+    "currentProject": "Current project",
+    "primaryNavigation": "Primary navigation",
+    "mobileNavigation": "Mobile navigation",
+    "navigation": "Navigation",
+    "projectSwitcher": "Switch open project",
+    "openSettingsNavigation": "Open settings navigation",
+    "mobileMenuDescription": "Creation, current project, and settings destinations.",
     "openedProjects": "Open projects",
     "emptyOpenedProjects": "Open projects from the project list to pin them here.",
     "openMenu": "Open navigation menu",
@@ -49,9 +62,13 @@
     "edit": "Edit",
     "delete": "Delete",
     "cancel": "Cancel",
+    "confirm": "Confirm",
+    "dismiss": "Dismiss notification",
+    "skipToContent": "Skip to main content",
     "close": "Close"
   },
   "theme": {
+    "label": "Theme",
     "system": "System",
     "light": "Light",
     "dark": "Dark"
@@ -66,29 +83,15 @@
     "sheet": {
       "label": "Side panel"
     },
+    "field": {
+      "required": "required"
+    },
+    "toast": {
+      "region": "Notifications"
+    },
     "select": {
       "noResults": "No matching results",
       "search": "Search options"
-    },
-    "search": {
-      "label": "Search",
-      "placeholder": "Search",
-      "clear": "Clear search"
-    },
-    "sort": {
-      "placeholder": "Sort by"
-    },
-    "viewMode": {
-      "label": "View mode",
-      "table": "Table view",
-      "grid": "Card view",
-      "list": "List view"
-    },
-    "density": {
-      "label": "Display density",
-      "compact": "Compact",
-      "comfortable": "Comfortable",
-      "relaxed": "Relaxed"
     },
     "states": {
       "emptyTitle": "No data yet",
@@ -99,13 +102,6 @@
       "errorDescription": "The request could not be completed. Check the connection or try again later.",
       "noResultsTitle": "No matching results",
       "noResultsDescription": "Try changing the search terms or filters."
-    },
-    "editableList": {
-      "add": "Add item",
-      "remove": "Remove item",
-      "empty": "The list is empty. Add an item to continue.",
-      "itemPlaceholder": "Enter content",
-      "itemLabel": "List item {index}"
     }
   },
   "status": {
@@ -177,54 +173,125 @@
       "deep": "Deep"
     }
   },
-  "apiError": {
-    "title": "Backend request failed",
-    "saveFailed": "Save request failed"
+  "home": {
+    "eyebrow": "Work entry",
+    "title": "Return to the story that is still becoming.",
+    "description": "Continue recent work or begin a new project. This page shows no invented progress—only next actions grounded in real project state.",
+    "newProjectTitle": "Begin a new project",
+    "newProjectDescription": "Define the story core, character conflict, and voice boundaries before creating the Story Bible.",
+    "loadErrorTitle": "Unable to load the work entry"
   },
-  "dashboard": {
-    "title": "Dashboard",
-    "description": "Monitor projects, model providers, and indexing tasks.",
-    "tabs": {
-      "continue": "Continue writing",
-      "flow": "Creation flow",
-      "system": "System status"
+  "recentWork": {
+    "eyebrow": "Recent work",
+    "title": "Continue where you stopped",
+    "nextAction": "Real next action",
+    "moreRecent": "Other recent projects",
+    "noMoreRecent": "No other recently opened projects yet.",
+    "emptyTitle": "No recent work yet",
+    "emptyDescription": "Create the first project or open one from the project library.",
+    "actions": {
+      "completeStoryBible": "Complete Story Bible",
+      "completeStoryBibleDescription": "Clarify the premise, world rules, and characters before drafting prose.",
+      "createFirstChapter": "Create chapter",
+      "createFirstChapterDescription": "The real chapter count is 0. Start a genuinely new chapter.",
+      "continueProject": "Open project",
+      "continueProjectDescription": "Chapter count is unknown or real chapters already exist. Open the project to inspect the current state."
+    }
+  },
+  "projectOverviewWidget": {
+    "eyebrow": "Project overview",
+    "title": "Keep attention on work that can move",
+    "description": "Story Bible plans and real chapters are counted separately. Unknown chapter counts are never treated as zero.",
+    "totalProjects": "Total projects",
+    "readyStoryBibles": "Ready Story Bibles",
+    "knownChapters": "Known real chapters",
+    "unknownChapterProjects": "{count} other projects have an unknown chapter count",
+    "setupQueue": "Setup to complete",
+    "setupQueueDescription": "These projects do not yet have a ready Story Bible.",
+    "setupQueueEmpty": "No Story Bible setup is waiting.",
+    "firstChapterQueue": "Ready for a first chapter",
+    "firstChapterQueueDescription": "Only projects whose backend chapter count is explicitly 0 appear here.",
+    "firstChapterQueueEmpty": "No project is explicitly at 0 chapters.",
+    "openLibrary": "Open project library"
+  },
+  "projectLibrary": {
+    "pageEyebrow": "All projects",
+    "pageTitle": "Project library",
+    "pageDescription": "Browse a prose-first vertical catalog. Search stays available; advanced filters remain out of the way until needed.",
+    "eyebrow": "Project catalog",
+    "title": "Choose work to continue",
+    "description": "Each project shows only verifiable state and useful actions, without a wide table dependency.",
+    "resultCount": "Showing {visible} / {total}",
+    "searchPlaceholder": "Search title, brief, tags, or project ID",
+    "advancedFilters": "Advanced filters",
+    "openProject": "Open project",
+    "missingLogline": "No project brief yet.",
+    "filters": {
+      "allProjectStatuses": "All project statuses",
+      "allStoryBibleStatuses": "All Story Bible statuses",
+      "allRecentStates": "All recent states",
+      "projectStatus": "Project status",
+      "storyBibleStatus": "Story Bible status",
+      "recent": "Recently opened state",
+      "sort": "Sort"
     },
-    "systemStatusDescription": "Review backend health, model providers, and index jobs in one place.",
-    "systemHealth": "Service health",
-    "activeIndexJobs": "Pending or running index jobs",
-    "quickStart": "Quick start",
-    "systemStatus": "System status",
-    "projects": "Projects",
-    "openedProjects": "Opened projects",
-    "providers": "Providers",
-    "models": "Models",
-    "indexQueue": "Index queue",
-    "emptyProjects": "No projects yet. Created projects will appear here.",
-    "recentProjects": "Recently opened",
-    "recentProjectsDescription": "Continue from opened projects.",
-    "emptyRecentProjects": "No opened projects yet. Open one from the projects page.",
-    "primaryFlowEyebrow": "Primary flow",
-    "primaryFlowTitle": "From story setup to prose",
-    "primaryFlowDescription": "Create a project, organize the Story Bible, then open the editor to generate a plan or continue prose with the right context.",
-    "flow": {
-      "create": {
-        "title": "Create project",
-        "description": "Capture the story core, genre tags, and key constraints."
+    "sort": {
+      "updated": "Recently updated first",
+      "created": "Recently created first",
+      "title": "Title A → Z"
+    }
+  },
+  "projectCreateFlow": {
+    "pageEyebrow": "New project",
+    "pageTitle": "Begin with story intent",
+    "pageDescription": "Clarify the project in four steps. Project creation produces a maintainable Story Bible, but it never creates, ensures, or disguises real chapters.",
+    "progressLabel": "New project steps",
+    "stepCounter": "Step {current} of {total}",
+    "next": "Next",
+    "incompleteTitle": "Complete this step first",
+    "reviewIncomplete": "Required information is still missing. Return to the relevant step and complete it.",
+    "createErrorTitle": "Unable to create project",
+    "organizerTitle": "Organize current setup",
+    "organizerDescription": "Optional. This only refines the project seed you entered; it does not create chapters.",
+    "realChapterTitle": "Real chapter count starts at 0",
+    "realChapterDescription": "Chapter plans in the Story Bible are not chapter records. Only chapters you explicitly create and save count as real chapters.",
+    "createdEyebrow": "Project created",
+    "createdDescription": "The project and Story Bible are ready. The real chapter count is 0. Choose one explicit next action.",
+    "completeStoryBible": "Complete Story Bible",
+    "completeStoryBibleDescription": "Continue editing the premise, rules, characters, and chapter planning.",
+    "createChapter": "Create chapter",
+    "createChapterDescription": "Enter a blank chapter flow; no chapter record is pre-created.",
+    "steps": {
+      "core": {
+        "title": "Story core",
+        "description": "Set the project name, one-line core, and searchable tags.",
+        "error": "Project name and one-line core are required."
       },
-      "prepare": {
-        "title": "Prepare canon",
-        "description": "Review the premise, world rules, characters, and chapter plan."
+      "world": {
+        "title": "Characters and conflict",
+        "description": "Define the world, protagonist, and conflict that drives the story.",
+        "error": "World background, protagonist, and central conflict are required."
       },
-      "write": {
-        "title": "Write chapters",
-        "description": "Pick a chapter, preview context, then generate a plan or prose."
+      "voice": {
+        "title": "Voice and boundaries",
+        "description": "Specify the narrative voice and content that must be avoided.",
+        "error": "Writing style and avoid list are required."
+      },
+      "review": {
+        "title": "Review and create",
+        "description": "Review the project and confirm that real chapters still begin at 0.",
+        "error": "Complete the first three steps before creating the project."
       }
     },
-    "metricHints": {
-      "readyProjects": "{count} story bibles ready",
-      "openedProjectsHint": "{count} total projects",
-      "enabledProviders": "{count} total providers",
-      "totalJobs": "{count} total jobs"
+    "fields": {
+      "titleDescription": "The name shown in the project library and work entry.",
+      "briefDescription": "State the protagonist, goal, or central anomaly in one sentence.",
+      "tagsDescription": "Separate tags with commas for later search.",
+      "worldDescription": "Include only background that changes character choices or plot logic.",
+      "protagonistDescription": "Explain who the protagonist is and why they must act.",
+      "conflictDescription": "Clarify resistance, cost, and the unavoidable contradiction.",
+      "styleDescription": "Describe sentence style, viewpoint, pace, and emotional texture.",
+      "avoidDescription": "List narrative shortcuts or content boundaries to exclude."
     }
   },
   "projects": {
@@ -234,7 +301,7 @@
     "libraryTitle": "Project library",
     "libraryDescription": "Manage every writing project with search, filters, sorting, view mode, and density controls.",
     "emptyTitle": "No projects yet",
-    "emptyDescription": "After creating a project, you can review story bible status, chapter count, and open it here.",
+    "emptyDescription": "After creating a project, you can review Story Bible status, chapter count, and open it here.",
     "opened": "Recently opened",
     "notOpened": "Not opened",
     "noTags": "No tags",
@@ -254,8 +321,6 @@
     "seedGenre": "Genre",
     "seedTone": "Tone",
     "seedAudience": "Audience",
-    "viewModeLabel": "Project library view",
-    "densityLabel": "Project library density",
     "actions": {
       "overview": "Overview",
       "editor": "Editor",
@@ -325,7 +390,7 @@
   },
   "projectNew": {
     "title": "Create project",
-    "description": "Start with the story direction. The system will turn it into a maintainable story bible.",
+    "description": "Start with the story direction. The system will turn it into a maintainable Story Bible.",
     "tabs": {
       "core": "Story core",
       "world": "World & characters",
@@ -398,7 +463,7 @@
   },
   "projectOverview": {
     "loadingDescription": "Loading project details.",
-    "storyBible": "Story bible",
+    "storyBible": "Story Bible",
     "worldRules": "World rules",
     "characters": "Characters",
     "foreshadowing": "Foreshadowing",
@@ -406,52 +471,24 @@
     "saveStoryBible": "Save Story Bible",
     "openChapter": "Open in editor",
     "summary": {
-      "premise": "Premise",
-      "themes": "Themes",
-      "worldRules": "World rules"
+      "title": "Project overview",
+      "eyebrow": "Project dossier",
+      "plans": "Chapter plans",
+      "realChapters": "Real chapters"
     },
-    "workspaceEyebrow": "Workspace",
-    "workspaceTitle": "Project setup overview",
-    "nextActionEyebrow": "Next action",
-    "nextActionTitle": "Continue chapters",
-    "chapterSummary": "{active} / {total} chapters in progress",
-    "continueWriting": "Continue writing",
-    "reviewChapters": "Review chapters",
-    "prepTitle": "Writing preparation",
-    "prepDescription": "Before writing prose, confirm that core canon, characters, and foreshadowing are usable.",
-    "prepCount": "{count} items",
-    "prep": {
-      "rules": {
-        "title": "World rules",
-        "description": "Maintain rules, limits, and canon constraints that affect continuity checks."
-      },
-      "characters": {
-        "title": "Character files",
-        "description": "Review character goals, wounds, secrets, and current roles."
-      },
-      "foreshadows": {
-        "title": "Foreshadowing",
-        "description": "Confirm planted details, payoff hints, and current status."
-      }
+    "storyBibleSections": {
+      "foundationEyebrow": "Story foundation",
+      "foundationTitle": "Premise and themes",
+      "foundationDescription": "Maintain durable story canon here. This workspace never generates characters or chapters in the background.",
+      "worldEyebrow": "World constraints",
+      "charactersEyebrow": "Character files",
+      "foreshadowEyebrow": "Clue ledger"
     },
-    "sections": {
-      "overview": "Overview",
-      "story": "Story setup",
-      "characters": "Characters",
-      "chapters": "Chapters"
-    },
-    "sectionDescriptions": {
-      "story": "Edit the premise, themes, world rules, and foreshadowing.",
-      "characters": "Maintain the cast list and writing constraints for each character."
-    },
-    "openStorySetup": "Open story setup",
-    "openCharacters": "Open characters",
-    "quickActions": "Quick actions",
-    "editStoryBible": "Edit Story Bible",
-    "planChapters": "Plan chapters",
     "fields": {
       "premise": "Premise",
       "themes": "Themes",
+      "themeNumber": "Theme {number}",
+      "worldRuleNumber": "World rule {number}",
       "characterName": "Name",
       "characterRole": "Role",
       "characterDesire": "Desire / goal",
@@ -467,99 +504,90 @@
       "chapterSummary": "Chapter summary"
     },
     "placeholders": {
+      "premise": "Write the irreplaceable core premise.",
       "theme": "Theme keyword",
       "worldRule": "Write a canon rule or constraint."
     },
-    "resultScopes": {
-      "storyBibleSave": "Story Bible save",
-      "characterSync": "Character sync",
-      "characterGeneration": "Character generation",
-      "chapterEnsure": "Chapter ensure"
+    "saveState": {
+      "dirty": "Unsaved",
+      "saving": "Saving",
+      "saved": "Saved",
+      "failed": "Save failed",
+      "conflict": "Version conflict",
+      "conflictDescription": "The server Story Bible changed. Load the server version before continuing."
+    },
+    "leaveProtection": {
+      "title": "Discard unsaved changes?",
+      "message": "The Story Bible has unsaved changes. Leaving will discard them. Leave anyway?",
+      "loadServer": "Load server version"
     },
     "characterSync": {
+      "eyebrow": "Explicit side effect",
+      "title": "Sync real characters",
+      "description": "{syncable} character profiles are complete and {pending} are not linked to real characters. Sync requests the character endpoint, then explicitly saves returned mappings.",
+      "action": "Sync characters",
       "syncing": "Syncing characters",
-      "synced": "Characters synced",
+      "synced": "Characters synced and saved",
       "failed": "Character sync failed",
       "pending": "Pending real character sync",
       "realCharacter": "Real character"
     },
-    "characterGenerator": {
-      "eyebrow": "Character generator",
-      "title": "Generate syncable character profiles",
-      "description": "Generate a complete protagonist profile or a new key character. The result is written into the current Story Bible and synced to real backend characters after save.",
-      "generateProtagonist": "Generate protagonist",
-      "generateCharacter": "Generate character",
-      "latestResult": "Latest generated result",
-      "failed": "Character draft generation failed. Check the current Story Bible.",
-      "prompts": {
-        "protagonist": "Generate or complete the protagonist profile. Include name, role, desire/goal, wound/gap, and secret, and anchor it tightly to the current premise.",
-        "character": "Generate one key character suitable for the next stage of this story. Include name, role, desire/goal, wound/gap, and secret."
-      },
-      "localFallback": {
-        "theme": "the core theme",
-        "rule": "the current world rule",
-        "protagonistName": "Unnamed protagonist",
-        "protagonistRole": "Protagonist",
-        "protagonistDesire": "Actively pursues the truth around “{premise}”.",
-        "protagonistWound": "Paid a price because of “{rule}” and now resists trusting systems again.",
-        "protagonistSecret": "Has not revealed key information tied to “{theme}”.",
-        "supportingName": "Key character {count}",
-        "supportingRole": "Key supporting character",
-        "supportingDesire": "Wants to use “{premise}” to change their situation.",
-        "supportingWound": "Developed a rigid stance under the influence of “{rule}”.",
-        "supportingSecret": "Holds a hidden clue tied to “{theme}”."
-      }
+    "chapterPlan": {
+      "eyebrow": "Story Bible field · chapter_plan",
+      "title": "Chapter planning",
+      "description": "Adding a plan only changes the Story Bible and never creates a real chapter.",
+      "add": "Add plan",
+      "empty": "No chapter plans. “Add plan” creates one editable plan only."
     },
-    "metrics": {
-      "themes": "Themes",
-      "rules": "Rules",
-      "rulesHint": "Canon constraints",
-      "characters": "Characters",
-      "charactersHint": "Initial cast",
-      "progress": "Progress",
-      "chapterCount": "{count} chapters"
+    "chapterCreate": {
+      "eyebrow": "Real chapter operation",
+      "sectionTitle": "Create a chapter from zero",
+      "sectionDescription": "Real chapters start at 0. A create request is sent only after this dialog is opened, completed, and confirmed. Cancelled or failed attempts never enter the chapter list.",
+      "action": "New chapter",
+      "title": "Create real chapter",
+      "description": "The real chapter is created only after confirmation. You may use a chapter plan as initial content.",
+      "fromPlan": "Use chapter plan",
+      "noPlan": "Do not use a plan",
+      "untitledPlan": "Untitled plan {number}",
+      "confirm": "Confirm new chapter",
+      "creating": "Creating chapter",
+      "titleRequired": "Chapter title is required.",
+      "failed": "Chapter creation failed. Check the input and try again."
+    },
+    "realChapters": {
+      "eyebrow": "Chapter Store · read-only list",
+      "title": "Real chapters",
+      "description": "This list reads only from Chapter Store and is never backfilled or inferred from the Story Bible.",
+      "emptyTitle": "0 real chapters",
+      "emptyDescription": "The first real chapter appears only after “New chapter” is confirmed."
     },
     "empty": {
       "themes": "No themes yet.",
       "worldRules": "No world rules yet.",
       "characters": "No characters yet.",
-      "foreshadowing": "No foreshadowing items yet.",
+      "foreshadowing": "No foreshadowing yet.",
       "chapters": "No chapters yet."
-    }
-  },
-  "taskBoard": {
-    "tabs": {
-      "all": "All",
-      "pending": "Pending",
-      "running": "Running",
-      "failed": "Failed",
-      "completed": "Completed"
     },
-    "stats": {
-      "all": "All",
-      "pending": "Pending",
-      "running": "Running",
-      "completed": "Completed",
-      "failed": "Failed"
+    "confirmRemove": {
+      "theme": "Remove theme {number}?",
+      "worldRule": "Remove world rule {number}?",
+      "character": "Remove character “{name}”?",
+      "foreshadow": "Remove foreshadowing “{name}”?",
+      "chapterPlan": "Remove chapter plan “{name}”?"
     },
-    "empty": "No index jobs yet.",
-    "emptyProject": "No index jobs for this project yet.",
-    "details": "Show raw details",
-    "fields": {
-      "id": "Raw ID",
-      "kind": "Index job type",
-      "scope": "Scope",
-      "project": "Project",
-      "chapter": "Chapter",
-      "chapterVersion": "Chapter version",
-      "attempts": "Attempts",
-      "createdAt": "Created at",
-      "updatedAt": "Updated at",
-      "startedAt": "Started at",
-      "completedAt": "Completed at",
-      "scheduledAt": "Scheduled at",
-      "payload": "Payload",
-      "error": "Failure reason"
+    "actions": {
+      "addWorldRule": "Add world rule",
+      "addCharacter": "Add character",
+      "addForeshadow": "Add foreshadowing",
+      "removeThemeNumber": "Remove theme {number}",
+      "removeWorldRuleNumber": "Remove world rule {number}",
+      "removeForeshadowNamed": "Remove foreshadowing {name}",
+      "removeCharacterNamed": "Remove character {name}",
+      "removeChapterPlanNamed": "Remove chapter plan {name}"
+    },
+    "errors": {
+      "loadFailed": "Failed to load the project workspace.",
+      "saveFailed": "Failed to save the Story Bible."
     }
   },
   "tooltips": {
@@ -579,14 +607,6 @@
     "roleRoute": "Choose a model for this Agent role. Leave empty to use default model routing.",
     "embeddingRoute": "Embedding routing affects index job vector dimensions. Rebuild vectors after changing it.",
     "indexJobs": "Index jobs write chapter versions, facts, and graph data into retrieval/vector systems.",
-    "indexJobKind": "The index job type explains what object or workflow the job processes.",
-    "indexJobScope": "Project, chapter, and chapter version IDs locate the impact scope of this index job.",
-    "indexJobAttempts": "How many times the backend has tried to run this index job.",
-    "indexJobCreatedAt": "When this index job was queued.",
-    "indexJobUpdatedAt": "The latest status update time for this index job.",
-    "indexJobError": "Backend error returned when the index job failed.",
-    "indexJobRawId": "Raw backend index job ID for log lookup.",
-    "indexJobPayload": "Raw parameters attached to the index job.",
     "editorVersions": "Saved chapter versions with prose, author role, word count, and index status.",
     "runLog": "Run log shows model provider, model, Token-related context, tool trace, index freshness, and index jobs.",
     "modelResolution": "The model provider, model, and route source resolved for this request.",
@@ -608,7 +628,6 @@
     "apiKeySavedConfigured": "API Key configured",
     "confirmDeleteTitle": "Confirm deletion",
     "confirmDeleteWarning": "This action cannot be undone. Make sure the target is no longer used by routing or projects.",
-    "indexJobsTitle": "Index job board",
     "routeGroups": {
       "writing": {
         "title": "Writing and editing",
@@ -887,8 +906,6 @@
       "streaming": "Streaming",
       "tools": "Tools"
     },
-    "viewModeLabel": "Model catalog view",
-    "densityLabel": "Model catalog density",
     "outputShort": "Output",
     "dimensionShort": "Dim",
     "updatedAt": "Updated at",
@@ -958,7 +975,66 @@
   "editor": {
     "eyebrow": "Writing workspace",
     "title": "Chapter",
-    "description": "Edit content, save versions, and inspect real context hits plus execution diagnostics.",
+    "description": "Edit real chapters only. Drafts stay local until you explicitly create a backend version.",
+    "actions": {
+      "openAssistant": "AI assistant",
+      "fullscreen": "Fullscreen prose",
+      "exitFullscreen": "Exit fullscreen",
+      "createVersion": "Create version",
+      "runAgent": "Run Agent"
+    },
+    "fields": {
+      "title": "Chapter title",
+      "titlePlaceholder": "Enter chapter title",
+      "contentPlaceholder": "Start writing here…"
+    },
+    "assistant": {
+      "title": "AI proposals",
+      "description": "Generic Agent Run output only enters the proposal area. It never edits prose or creates a version automatically.",
+      "agentLabel": "Choose Agent",
+      "agentPlaceholder": "Choose an enabled Agent",
+      "promptPlaceholder": "Describe the writing proposal you want from the Agent…",
+      "defaultPrompt": "Provide a reviewable writing proposal for “{title}”.",
+      "sheetTitle": "AI assistant",
+      "sheetDescription": "Choose context and run an Agent. You decide how every result is applied."
+    },
+    "proposals": {
+      "title": "Proposal area",
+      "description": "Proposals never enter prose automatically. Insert at the caret, replace a valid selection, append, or reject.",
+      "emptyTitle": "No proposals",
+      "emptyDescription": "Agent results appear here before they can affect prose.",
+      "received": "Agent proposal received",
+      "insert": "Insert",
+      "replace": "Replace selection",
+      "append": "Append",
+      "reject": "Reject",
+      "status": {
+        "pending": "Pending",
+        "applied": "Applied",
+        "rejected": "Rejected"
+      }
+    },
+    "recovery": {
+      "title": "Local recovery draft found",
+      "description": "This browser saved a draft at {time} that differs from the backend version.",
+      "viewDiff": "View diff",
+      "keepBackend": "Keep backend",
+      "restore": "Restore local draft",
+      "restored": "Local draft restored",
+      "backendKept": "Backend version kept",
+      "diffTitle": "Local draft and backend diff",
+      "diffDescription": "Plus lines were added locally. Minus lines exist in the backend version but were removed locally."
+    },
+    "emptyProject": {
+      "title": "This project has no real chapters",
+      "description": "A chapter plan is not a real chapter. Return to the project chapter area and explicitly create a chapter before writing. This editor never creates or ensures one.",
+      "back": "Back to project chapters"
+    },
+    "invalidChapter": {
+      "title": "This chapter cannot be opened",
+      "description": "Chapter {id} is not in the project's real chapter list. The editor will not create, ensure, or replace it.",
+      "openFirst": "Open the first real chapter"
+    },
     "reference": "Reference",
     "referenceDescription": "This panel shows the real reference materials available for the chapter, with this request's focused scope highlighted.",
     "emptyReference": "No reference material is available yet.",
@@ -1032,8 +1108,6 @@
       "wound": "wound: {value}",
       "secret": "secret: {value}"
     },
-    "invalidChapterLabel": "Target chapter {id} is not created yet",
-    "invalidChapterNotice": "Chapter {id} is not in the current chapter list. Generate or save to auto-create it and switch to the real chapter ID.",
     "chapterFallbackTitle": "Chapter {number}",
     "chapterOptionDescription": "Chapter {number} · {status}",
     "chapterSelector": {
@@ -1069,7 +1143,15 @@
       "completed": "Background indexing completed",
       "idle": "No background indexing activity"
     },
-    "context": "Context",
+    "context": {
+      "title": "Context selection",
+      "description": "Controls the real Agent Run request only; the page does not simulate or display backend context hits.",
+      "currentChapter": "Include current chapter",
+      "worldRules": "Include world rules",
+      "previousChapters": "Reference previous N real chapters",
+      "characters": "Focus characters",
+      "noSyncedCharacters": "No characters are synced as real entities yet."
+    },
     "plan": "Idea / plan",
     "draft": "Generate",
     "review": "Review",
@@ -1088,13 +1170,16 @@
     "runLog": {
       "title": "Run log",
       "description": "Inspect the latest actual model resolution, index freshness, tool trace, and index jobs.",
-      "empty": "No run log yet. Preview context or generate content first.",
+      "empty": "No run log yet. Run an Agent to inspect actual execution details.",
       "modelResolution": "Model resolution",
       "toolTrace": "Tool trace",
       "indexFreshness": "Index freshness",
       "indexJobs": "Index jobs"
     },
     "workspace": {
+      "unsaved": "Local draft not versioned",
+      "savedLocally": "Matches backend version",
+      "chapterNumber": "Chapter {number}",
       "ready": "Workspace ready",
       "busy": "Working",
       "inspectorEyebrow": "Inspector",
@@ -1102,6 +1187,7 @@
       "inspectorDescription": "Organizes assistant information by context, generation, review, versions, and run log."
     },
     "states": {
+      "loadingWorkspace": "Loading real chapters and versions…",
       "versionsDescription": "Review and load saved versions for the current chapter.",
       "loadingVersionsTitle": "Loading chapter versions",
       "loadingVersionsDescription": "Reading saved versions for the current chapter.",
@@ -1121,95 +1207,14 @@
     "chapterPlanLine": "Editable chapter plan:\n{plan}",
     "content": "Content",
     "noIndexJobs": "No index jobs for this project yet. Saving a chapter version will create a re-indexing task.",
-    "emptyVersions": "No chapter versions yet. Saved versions will appear here.",
+    "emptyVersions": "This real chapter has no saved versions. A version is created only when you click Create version.",
     "versionLabel": "v{version} · {title}",
     "jobAttempts": "{id} · {count} attempts",
     "feedback": {
       "planReady": "Chapter plan updated",
       "draftAppended": "Draft appended to content",
-      "versionSaved": "Chapter version saved",
+      "versionSaved": "Real chapter version created",
       "versionLoaded": "Loaded"
-    },
-    "preview": {
-      "eyebrow": "Context preview",
-      "title": "Actual context hit",
-      "description": "Preview the real ContextPack, index freshness, and model routing result that the backend will use for the current selection.",
-      "loadingTitle": "Preparing context",
-      "loading": "Generating context preview…",
-      "emptyTitle": "No context preview yet",
-      "empty": "No preview result yet. Pick a focused scope, then preview plan or draft context.",
-      "unavailableTitle": "Context preview unavailable",
-      "actualContext": "Actual context hit",
-      "structuredContextTitle": "Structured retrieved context",
-      "emptyStructuredContext": "This preview returned no structured retrieval content to display.",
-      "freshnessTitle": "Index freshness",
-      "modelResolutionTitle": "Model resolution",
-      "estimatedTokens": "Estimated {count} tokens",
-      "summaryText": "{chapterSummaryCount} chapter summaries, {entityCount} entities, {factCount} facts, {plotThreadCount} plot threads, {worldRuleCount} world rules",
-      "targets": {
-        "chapter_idea": "Plan generation context",
-        "draft": "Draft generation context"
-      },
-      "actions": {
-        "chapter_idea": "Preview plan context",
-        "draft": "Preview draft context"
-      },
-      "sections": {
-        "chapterSummaries": "Chapter summaries",
-        "worldRules": "World rules",
-        "entities": "Entities",
-        "facts": "Facts",
-        "plotThreads": "Plot threads"
-      },
-      "counts": {
-        "chapterSummaries": "Chapter summaries {count}",
-        "entities": "Entities {count}",
-        "facts": "Facts {count}",
-        "plotThreads": "Plot threads {count}",
-        "worldRules": "World rules {count}"
-      }
-    },
-    "continuityAudit": {
-      "title": "Continuity audit",
-      "description": "Shows the real continuity_audit payload returned by the backend. The frontend does not generate or infer extra conclusions.",
-      "empty": "No continuity audit result is available yet. Generate a draft to see the real audit output.",
-      "passed": "This continuity audit returned no issues.",
-      "summary": {
-        "empty": "No continuity audit result is available yet. Generate a draft to see the real audit output.",
-        "passed": "A continuity audit result is available and no issues were found.",
-        "hasIssues": "A continuity audit result is available with {count} issues."
-      },
-      "issueCount": "{count} issues",
-      "message": "Message",
-      "excerpt": "Draft excerpt",
-      "suggestion": "Suggestion",
-      "evidence": "Evidence",
-      "status": {
-        "passed": "Passed",
-        "warning": "Warning",
-        "failed": "Failed"
-      },
-      "types": {
-        "hard_conflict": "Hard conflict",
-        "soft_drift": "Soft drift",
-        "missing_followup": "Missing follow-up",
-        "unsupported_new_claim": "Unsupported new claim"
-      },
-      "severity": {
-        "error": "Error",
-        "warning": "Warning"
-      },
-      "evidenceKinds": {
-        "world_rule": "World rule",
-        "fact": "Fact",
-        "entity": "Entity",
-        "plot_thread": "Plot thread",
-        "chapter_summary": "Chapter summary",
-        "chapter_idea": "Chapter idea",
-        "brief": "Chapter brief",
-        "draft_observation": "Draft observation"
-      }
-
     },
     "diagnostics": {
       "eyebrow": "Diagnostics",
@@ -1300,20 +1305,27 @@
       "aiPlan": "AI chapter plan",
       "aiDraft": "AI chapter draft",
       "saveVersion": "Chapter version save",
-      "previewContext": "Context preview",
       "agentRuns": "Agent run"
     },
     "changeNotes": {
-      "manualSave": "Manual save"
+      "manualSave": "User-created version"
     },
     "errors": {
+      "title": "Writing operation failed",
+      "draftTitle": "Local draft unavailable",
+      "loadWorkspaceFailed": "Failed to load the writing workspace",
+      "chapterDoesNotExist": "Chapter {id} does not exist in this project.",
+      "realChapterRequired": "Select a real existing chapter first.",
+      "draftReadFailed": "Failed to read the local draft. Check browser storage permissions.",
+      "draftWriteFailed": "Failed to write the local draft. Current edits may not be recoverable.",
+      "draftRemoveFailed": "Failed to remove the local draft. Check browser storage permissions.",
+      "agentRunFailed": "Agent Run failed",
+      "proposalApplyFailed": "Failed to apply the proposal",
       "loadVersionsFailed": "Failed to load chapter versions",
       "loadIndexJobsFailed": "Failed to load index jobs",
       "generatePlanFailed": "Failed to generate chapter plan",
       "generateDraftFailed": "Failed to generate AI draft",
       "saveVersionFailed": "Failed to save chapter version",
-      "previewContextFailed": "Failed to preview context",
-      "previewContextRemoved": "Context preview is temporarily unavailable. Generate a plan or continue prose directly; this page will show the actual model route, tool trace, and index state after generation.",
       "loadAgentsFailed": "Failed to load agent configs",
       "noAgentConfigured": "No enabled agent is available. Create and enable a writing or plot agent in Agent Management first."
     }
@@ -1589,14 +1601,58 @@
     },
     "confirmDeleteTitle": "Confirm resource deletion",
     "confirmDeleteDescription": "Delete “{name}”?",
-    "confirmDeleteWarning": "This action cannot be undone. Make sure this resource is no longer referenced by projects or other resources.",
-    "viewModeLabel": "Resource view",
-    "densityLabel": "Resource display density"
+    "confirmDeleteWarning": "This action cannot be undone. Make sure this resource is no longer referenced by projects or other resources."
+  },
+  "settings": {
+    "eyebrow": "System settings",
+    "navigation": "Settings navigation",
+    "formError": "Fix the configuration",
+    "stringMapHelp": "Enter a JSON object whose values are all strings.",
+    "nav": { "providers": "Providers", "models": "Models & routing", "agents": "Agent resources", "indexMaintenance": "Index maintenance" },
+    "navDescriptions": { "providers": "Connections, secrets, and runtime policy", "models": "Model capability, cost, and usage routes", "agents": "Agents, Skills, MCP, and Tools", "indexMaintenance": "Vector rebuilds and index jobs" },
+    "fields": { "name": "Name", "description": "Description", "enabled": "Enabled" },
+    "providers": {
+      "title": "Provider connections", "description": "Maintain real upstream connections, secrets, and runtime policy. Model sync only calls the provider refresh endpoint; the frontend does not fabricate models.", "search": "Find providers", "searchPlaceholder": "Search name, ID, type, URL, or status", "add": "Add provider", "refreshModels": "Refresh models", "emptyTitle": "No providers yet", "emptyDescription": "Add a provider before configuring models and usage routes.", "noSecret": "No secret hint returned", "secretHelp": "Leave blank while editing to preserve the stored secret. The backend never returns the raw secret.", "deleteTitle": "Delete provider", "deleteDescription": "Delete provider “{name}”? Related resources may no longer route.",
+      "sections": { "identity": "Connection identity", "runtime": "Runtime policy" },
+      "fields": { "type": "Protocol type", "streaming": "Streaming responses", "traceEnabled": "Request tracing", "traceRetention": "Trace retention days", "timeout": "Default timeout (seconds)", "defaultModel": "Default model ID" },
+      "placeholders": { "id": "provider-openai", "keepSecret": "Leave blank to keep the stored secret" },
+      "dialog": { "createTitle": "Add provider", "editTitle": "Edit provider", "description": "Fields match ProviderRequestWritable. Unsupported connection tests and simulated success are not shown." },
+      "errors": { "invalidForm": "The provider form is invalid." },
+      "messages": { "loading": "Loading providers", "loadFailed": "Failed to load providers", "saved": "Provider saved", "saveFailed": "Failed to save provider", "modelsRefreshed": "Models refreshed", "modelsRefreshedDescription": "The backend returned {count} models.", "refreshFailed": "Failed to refresh models", "deleted": "Provider deleted", "deleteFailed": "Failed to delete provider" }
+    },
+    "models": {
+      "title": "Models and usage routing", "description": "Maintain the real model contract and route agent roles plus embedding usage to explicit models.", "catalogEyebrow": "Model catalog", "catalogTitle": "Model capability and cost", "searchPlaceholder": "Search name, ID, provider, kind, or role", "allProviders": "All providers", "add": "Add model", "emptyTitle": "No models yet", "emptyDescription": "Add a provider, then add a model manually or refresh models from the provider.", "routingEyebrow": "Usage routing", "routingTitle": "Roles and embedding model", "routingDescription": "Saving calls the real model routing endpoint. Empty values inherit backend fallback policy.", "saveRouting": "Save routes", "inheritRouting": "Inherit backend route", "deleteTitle": "Delete model", "deleteDescription": "Delete model “{name}”? Explicit routes or agents using it may fail.",
+      "sections": { "identity": "Model identity", "limits": "Context, output, and cost", "capabilities": "Capabilities and status" },
+      "fields": { "provider": "Provider", "upstreamId": "Upstream model ID", "kind": "Model kind" },
+      "dialog": { "createTitle": "Add model", "editTitle": "Edit model", "description": "Covers ModelRequest identity, limits, cost, capabilities, routing weight, role restrictions, and metadata." },
+      "errors": { "invalidForm": "The model form is invalid." },
+      "messages": { "loading": "Loading model configuration", "loadFailed": "Failed to load model configuration", "saved": "Model saved", "saveFailed": "Failed to save model", "routingSaved": "Usage routing saved", "routingSaveFailed": "Failed to save usage routing", "deleted": "Model deleted", "deleteFailed": "Failed to delete model" }
+    },
+    "agents": {
+      "title": "Agent resources", "description": "Manage Agents, Skills, MCP Servers, and Tools as tasks. Only real contract operations for save, enable, scan, test, and refresh are shown.", "search": "Find current resources", "searchPlaceholder": "Search name, ID, source, role, status, or binding", "addAgent": "Add Agent", "addSkill": "Add Skill", "addMCP": "Add MCP Server", "scanSkills": "Scan default skills", "enable": "Enable", "disable": "Disable", "test": "Test", "refreshTools": "Refresh tools", "noDescription": "No description.", "noResults": "No matching resources.", "inheritModel": "Inherit role route", "deleteTitle": "Delete resource", "deleteDescription": "Delete “{name}”? This cannot be undone.", "secretBlankHelp": "Leave blank to avoid overwriting stored secrets; only new values are submitted.", "jsonHelp": "memory_policy and runtime_options accept arbitrary JSON objects; metadata values must be strings.",
+      "resources": { "agents": "Agents", "skills": "Skills", "mcp": "MCP Servers", "tools": "Tools" },
+      "resourceDescriptions": { "agents": "Role, model, prompt, and bindings", "skills": "Inline content, sources, and scan results", "mcp": "Connection, secrets, environment, and tool refresh", "tools": "Read-only catalog and enabled state" },
+      "sections": { "identity": "Identity and execution", "bindings": "Resource bindings", "runtime": "Memory and runtime options", "environment": "Headers and environment" },
+      "dialog": { "createTitle": "Add Agent", "editTitle": "Edit Agent", "description": "Maintain project, role, model, prompt, bindings, memory policy, and runtime options from the Agent contract." },
+      "skillDialog": { "createTitle": "Add Skill", "editTitle": "Edit Skill", "description": "Maintain Skill source, project, path, content, enabled state, and metadata." },
+      "mcpDialog": { "createTitle": "Add MCP Server", "editTitle": "Edit MCP Server", "description": "Maintain MCP transport, endpoint, arguments, headers, secrets, environment, timeout, and metadata." },
+      "errors": { "invalidForm": "The resource form is invalid." },
+      "messages": { "loading": "Loading agent resources", "loadFailed": "Failed to load agent resources", "agentSaved": "Agent saved", "agentSaveFailed": "Failed to save Agent", "skillSaved": "Skill saved", "skillSaveFailed": "Failed to save Skill", "mcpSaved": "MCP Server saved", "mcpSaveFailed": "Failed to save MCP Server", "toggleFailed": "Failed to toggle resource", "scanComplete": "Skill scan complete", "scanSummary": "Created {created}, updated {updated}, deleted {deleted}, unchanged {unchanged}.", "scanFailed": "Failed to scan skills", "testPassed": "MCP connection test passed", "testFailed": "MCP connection test failed", "toolsRefreshed": "MCP tools refreshed", "toolsRefreshSummary": "{count} tools, {unavailable} unavailable.", "toolsRefreshFailed": "Failed to refresh MCP tools", "deleted": "Resource deleted", "deleteFailed": "Failed to delete resource" }
+    },
+    "index": {
+      "title": "Index maintenance", "description": "Every maintenance operation requires confirmation and exposes real execution phases, responses, job states, and errors.", "allProjects": "All projects",
+      "rebuild": { "eyebrow": "Global maintenance", "title": "Rebuild vector index", "description": "Calls the global rebuild-vector-index endpoint. The backend creates index jobs from the current embedding route.", "action": "Confirm vector rebuild", "result": "Latest rebuild response" },
+      "pending": { "eyebrow": "Job execution", "title": "Run pending indexing", "description": "Call pending indexing with an optional project_id and limit. Blank project_id uses the backend-supported global scope.", "action": "Run pending jobs" },
+      "jobs": { "eyebrow": "Real task status", "title": "Index jobs", "allStatuses": "All statuses", "empty": "No index jobs match this scope.", "run": "Run this job" },
+      "phases": { "idle": "Not started", "running": "Maintenance is running", "succeeded": "Maintenance completed", "failed": "Maintenance failed" },
+      "confirm": { "rebuildTitle": "Confirm vector index rebuild", "rebuildDescription": "This creates rebuild jobs from the current embedding model and existing chapter versions. Continue?", "pendingTitle": "Confirm pending indexing", "pendingDescription": "Scope: {project}; process at most {limit} jobs. Continue?", "jobTitle": "Confirm index job run", "jobDescription": "Run job {id} now?" },
+      "messages": { "loading": "Loading index jobs", "loadFailed": "Failed to load index jobs", "running": "The backend request is running. Do not trigger it again.", "rebuildCompleted": "Vector rebuild returned and created {count} jobs.", "pendingCompleted": "Pending indexing processed {count} jobs.", "jobCompleted": "Job {id} returned its latest state.", "operationSucceeded": "Maintenance succeeded", "operationFailed": "Maintenance failed" }
+    }
   },
   "graph": {
     "eyebrow": "Graph workspace",
     "title": "Story graph",
-    "description": "Explore characters, events, chapters, and canon rules in one dense graph workspace with search, filters, and sortable collections.",
+    "description": "Explore real graph expansion results as a task. Mobile defaults to equivalent node and edge lists; the canvas lazy-loads Cytoscape.",
     "tabs": {
       "graph": "Graph",
       "nodes": "Nodes",
@@ -1641,13 +1697,12 @@
     "timelineControlHint": "Lowering the timeline hides later nodes and relationships; reload after increasing it if you need more data.",
     "depthControlHint": "Lowering depth narrows the local scope; reload after increasing it if you need deeper expansion.",
     "openDetails": "View details",
-    "viewModeLabel": "Graph collection view",
-    "densityLabel": "Graph collection density",
     "placeholders": {
       "root": "story_start"
     },
     "filterControls": {
       "allStatuses": "All statuses",
+      "allNodeTypes": "All node types",
       "allEdgeTypes": "All relationship types",
       "includedTypes": "Node types included in expansion",
       "selectedTypeCount": "{count} selected",
@@ -1724,6 +1779,37 @@
     "errors": {
       "loadFailed": "Failed to load story graph",
       "cytoscapeFailed": "Cytoscape could not load; list view is shown instead."
+    },
+    "metrics": {
+      "nodes": "Returned nodes",
+      "edges": "Returned edges"
+    },
+    "query": {
+      "title": "Backend query",
+      "description": "Only entity_ids and depth are sent to graph expansion.",
+      "entityIdsPlaceholder": "entity-1, entity-2",
+      "entityIdsHelp": "Leave blank for the project graph scope, or enter entity IDs separated by commas or lines.",
+      "depthHelp": "Server expansion depth from 1 to 4.",
+      "run": "Run query",
+      "contractTitle": "Actual request contract"
+    },
+    "localFilters": {
+      "title": "Local view filters",
+      "description": "Search, type, status, relationship type, and timeline limit only filter returned data. They are not sent to the backend.",
+      "timeline": "Local timeline limit",
+      "allTimeline": "All",
+      "clearTimeline": "No timeline limit",
+      "badge": "Local view only"
+    },
+    "views": {
+      "list": "List",
+      "canvas": "Canvas",
+      "openList": "Open equivalent list"
+    },
+    "canvas": {
+      "zoomIn": "Zoom graph in",
+      "zoomOut": "Zoom graph out",
+      "fit": "Fit all nodes"
     },
     "nodeTypes": {
       "story_start": "Story start",

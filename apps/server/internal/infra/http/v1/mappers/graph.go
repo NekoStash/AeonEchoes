@@ -70,5 +70,5 @@ func PlotThreadDTOsFromDomain(items []domain.PlotThread) []dto.PlotThreadDTO {
 }
 
 func GraphExpansionDTOFromDomain(item domain.GraphExpansion) dto.GraphExpansionDTO {
-	return dto.GraphExpansionDTO{ProjectID: item.ProjectID, Depth: item.Depth, Entities: EntityDTOsFromDomain(item.Entities), Edges: GraphEdgeDTOsFromDomain(item.Edges), Facts: FactDTOsFromDomain(item.Facts)}
+	return dto.GraphExpansionDTO{ProjectID: item.ProjectID, Depth: item.Depth, Entities: EntityDTOsFromDomain(item.Entities), Edges: GraphEdgeDTOsFromDomain(item.Edges), Facts: FactDTOsFromDomain(item.Facts), GeneratedAt: item.GeneratedAt}
 }

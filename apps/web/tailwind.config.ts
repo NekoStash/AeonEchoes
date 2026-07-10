@@ -5,11 +5,15 @@ export default <Partial<Config>>{
   content: [
     './app.vue',
     './components/**/*.{vue,js,ts}',
+    './entities/**/*.{vue,js,ts}',
+    './features/**/*.{vue,js,ts}',
     './layouts/**/*.vue',
     './pages/**/*.vue',
     './composables/**/*.{js,ts}',
     './lib/**/*.{js,ts}',
-    './stores/**/*.{js,ts}'
+    './shared/**/*.{vue,js,ts}',
+    './stores/**/*.{js,ts}',
+    './widgets/**/*.{vue,js,ts}'
   ],
   theme: {
     extend: {
@@ -63,7 +67,7 @@ export default <Partial<Config>>{
         },
         destructive: {
           DEFAULT: 'hsl(var(--state-danger))',
-          foreground: 'hsl(var(--state-danger-foreground))'
+          foreground: 'hsl(var(--destructive-foreground))'
         },
         muted: {
           DEFAULT: 'hsl(var(--muted))',
@@ -80,16 +84,6 @@ export default <Partial<Config>>{
         card: {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))'
-        },
-        archive: {
-          ink: '#070A12',
-          panel: '#0D1324',
-          glass: '#121A2E',
-          line: '#27344E',
-          cyan: '#67E8F9',
-          violet: '#A78BFA',
-          gold: '#F8D16C',
-          rose: '#FB7185'
         }
       },
       spacing: {
@@ -116,21 +110,18 @@ export default <Partial<Config>>{
         main: 'calc(100dvh - var(--layout-height-topbar))'
       },
       borderRadius: {
-        xl: '1rem',
-        '2xl': '1.25rem'
-      },
-      boxShadow: {
-        'star-glow': '0 0 40px rgba(103, 232, 249, 0.16)',
-        'violet-glow': '0 0 34px rgba(167, 139, 250, 0.14)'
-      },
-      backgroundImage: {
-        'star-grid': 'radial-gradient(circle at 1px 1px, rgba(148,163,184,.22) 1px, transparent 0)',
-        'archive-radial': 'radial-gradient(circle at 20% 20%, rgba(103,232,249,.16), transparent 30%), radial-gradient(circle at 80% 0%, rgba(167,139,250,.14), transparent 28%), linear-gradient(135deg, #070A12 0%, #0D1324 55%, #080B14 100%)'
+        sm: '0.125rem',
+        DEFAULT: '0.1875rem',
+        md: '0.25rem',
+        lg: '0.25rem',
+        xl: '0.25rem',
+        '2xl': '0.25rem',
+        '3xl': '0.25rem'
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        serif: ['Literata', 'ui-serif', 'Georgia', 'serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace']
+        sans: ['Inter', 'Noto Sans SC', 'Segoe UI', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        serif: ['Source Han Serif SC', 'Noto Serif SC', 'Songti SC', 'ui-serif', 'Georgia', 'serif'],
+        mono: ['JetBrains Mono', 'Cascadia Code', 'ui-monospace', 'SFMono-Regular', 'monospace']
       }
     }
   },

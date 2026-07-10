@@ -17,8 +17,6 @@ type ToolStore interface {
 	ListEntities(projectID string) ([]domain.Entity, error)
 	ListPlotThreads(projectID string) ([]domain.PlotThread, error)
 	ExpandGraph(projectID string, entityIDs []string, depth int) (domain.GraphExpansion, error)
-	EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error)
-	GetChapter(id string) (domain.Chapter, error)
 	ListChapters(projectID string) ([]domain.Chapter, error)
 	ListChapterVersions(projectID, chapterID string) ([]domain.ChapterVersion, error)
 }

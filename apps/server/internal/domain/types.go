@@ -101,6 +101,16 @@ const (
 	AgentRoleGraphCurator     AgentRole = "graph-curator"
 )
 
+// Valid reports whether the role is part of the supported agent role contract.
+func (r AgentRole) Valid() bool {
+	switch r {
+	case AgentRoleGenesisOptimizer, AgentRolePlotArchitect, AgentRoleWorldBuilder, AgentRoleCharacterKeeper, AgentRoleContinuityAudit, AgentRoleWriter, AgentRoleEditor, AgentRoleFactExtractor, AgentRoleGraphCurator:
+		return true
+	default:
+		return false
+	}
+}
+
 // SkillSourceType identifies how skill material is supplied to the catalog.
 type SkillSourceType string
 
@@ -637,26 +647,55 @@ type PlotThread struct {
 	UpdatedAt        time.Time         `json:"updated_at"`
 }
 
+// ChapterStatus is the canonical lifecycle state shared by chapter plans and persisted chapters.
+type ChapterStatus string
+
+const (
+	ChapterStatusPlanned   ChapterStatus = "planned"
+	ChapterStatusDrafting  ChapterStatus = "drafting"
+	ChapterStatusReviewing ChapterStatus = "reviewing"
+	ChapterStatusLocked    ChapterStatus = "locked"
+)
+
+// Valid reports whether the status is part of the supported chapter lifecycle contract.
+func (s ChapterStatus) Valid() bool {
+	switch s {
+	case ChapterStatusPlanned, ChapterStatusDrafting, ChapterStatusReviewing, ChapterStatusLocked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Chapter is a stable chapter identity; versions carry mutable content.
 type Chapter struct {
 	ID        string            `json:"id"`
 	ProjectID string            `json:"project_id"`
 	Number    int               `json:"number"`
 	Title     string            `json:"title"`
-	Status    string            `json:"status"`
+	Status    ChapterStatus     `json:"status"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
 	UpdatedAt time.Time         `json:"updated_at"`
 }
 
-// ChapterEnsureRequest describes the stable chapter identity a tool or HTTP caller needs.
-type ChapterEnsureRequest struct {
+// CreateChapterRequest describes an explicit stable chapter identity creation.
+type CreateChapterRequest struct {
 	ProjectID string            `json:"project_id"`
-	ChapterID string            `json:"chapter_id,omitempty"`
 	Number    int               `json:"number,omitempty"`
-	Title     string            `json:"title,omitempty"`
-	Status    string            `json:"status,omitempty"`
+	Title     string            `json:"title"`
+	Status    ChapterStatus     `json:"status,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
+}
+
+// UpdateChapterRequest describes changes to an existing project-owned chapter.
+type UpdateChapterRequest struct {
+	ProjectID string             `json:"project_id"`
+	ChapterID string             `json:"chapter_id"`
+	Number    *int               `json:"number,omitempty"`
+	Title     *string            `json:"title,omitempty"`
+	Status    *ChapterStatus     `json:"status,omitempty"`
+	Metadata  *map[string]string `json:"metadata,omitempty"`
 }
 
 // ChapterVersion is immutable content saved after a user or AI write.
@@ -664,6 +703,7 @@ type ChapterVersion struct {
 	ID               string            `json:"id"`
 	ProjectID        string            `json:"project_id"`
 	ChapterID        string            `json:"chapter_id"`
+	ParentVersionID  string            `json:"parent_version_id,omitempty"`
 	Version          int               `json:"version"`
 	Title            string            `json:"title"`
 	Content          string            `json:"content"`
@@ -817,9 +857,10 @@ type ContextPack struct {
 
 // GraphExpansion is returned by novel graph expansion tools.
 type GraphExpansion struct {
-	ProjectID string      `json:"project_id"`
-	Depth     int         `json:"depth"`
-	Entities  []Entity    `json:"entities"`
-	Edges     []GraphEdge `json:"edges"`
-	Facts     []Fact      `json:"facts"`
+	ProjectID   string      `json:"project_id"`
+	Depth       int         `json:"depth"`
+	Entities    []Entity    `json:"entities"`
+	Edges       []GraphEdge `json:"edges"`
+	Facts       []Fact      `json:"facts"`
+	GeneratedAt time.Time   `json:"generated_at"`
 }

@@ -3,6 +3,7 @@ package routes
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"aeonechoes/server/internal/infra/http/v1/dto"
 	"aeonechoes/server/internal/infra/http/v1/mappers"
@@ -19,11 +20,15 @@ func (s *Router) v1ListChapters(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Router) v1CreateChapter(w http.ResponseWriter, r *http.Request) {
-	var input dto.EnsureChapterRequestDTO
+	var input dto.CreateChapterRequestDTO
 	if !respond.Decode(w, r, &input) {
 		return
 	}
-	chapter, err := s.store.EnsureChapter(mappers.EnsureChapterRequestToDomain(r.PathValue("projectID"), input))
+	if strings.TrimSpace(input.Title) == "" {
+		respond.Error(w, r, http.StatusBadRequest, "bad_request", "chapter title must not be empty", nil)
+		return
+	}
+	chapter, err := s.store.CreateChapter(mappers.CreateChapterRequestToDomain(r.PathValue("projectID"), input))
 	if err != nil {
 		respond.ErrorFromErr(w, r, http.StatusBadRequest, err)
 		return
@@ -45,12 +50,15 @@ func (s *Router) v1GetChapter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Router) v1UpdateChapter(w http.ResponseWriter, r *http.Request) {
-	var input dto.EnsureChapterRequestDTO
+	var input dto.UpdateChapterRequestDTO
 	if !respond.Decode(w, r, &input) {
 		return
 	}
-	input.ChapterID = r.PathValue("chapterID")
-	chapter, err := s.store.EnsureChapter(mappers.EnsureChapterRequestToDomain(r.PathValue("projectID"), input))
+	if !input.HasChanges() {
+		respond.Error(w, r, http.StatusBadRequest, "bad_request", "chapter update must include at least one field", nil)
+		return
+	}
+	chapter, err := s.store.UpdateChapter(mappers.UpdateChapterRequestToDomain(r.PathValue("projectID"), r.PathValue("chapterID"), input))
 	if err != nil {
 		respond.ErrorFromErr(w, r, http.StatusBadRequest, err)
 		return
@@ -70,6 +78,18 @@ func (s *Router) v1ListChapterVersions(w http.ResponseWriter, r *http.Request) {
 func (s *Router) v1CreateChapterVersion(w http.ResponseWriter, r *http.Request) {
 	var input dto.ChapterVersionRequestDTO
 	if !respond.Decode(w, r, &input) {
+		return
+	}
+	if strings.TrimSpace(input.Title) == "" {
+		respond.Error(w, r, http.StatusBadRequest, "bad_request", "chapter version title must not be empty", nil)
+		return
+	}
+	if strings.TrimSpace(input.Content) == "" {
+		respond.Error(w, r, http.StatusBadRequest, "bad_request", "chapter version content must not be empty", nil)
+		return
+	}
+	if !input.AuthorRole.Valid() {
+		respond.Error(w, r, http.StatusBadRequest, "bad_request", fmt.Sprintf("chapter version author_role %q is invalid", input.AuthorRole), nil)
 		return
 	}
 	created, job, err := s.store.SaveChapterVersion(mappers.ChapterVersionRequestToDomain(r.PathValue("projectID"), r.PathValue("chapterID"), input))

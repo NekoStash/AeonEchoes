@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aeonechoes/server/internal/domain"
+	"aeonechoes/server/internal/repository"
 )
 
 func (s *Store) SaveWorldline(item domain.Worldline) (domain.Worldline, error) {
@@ -273,14 +274,12 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 	if err := requireStore(s); err != nil {
 		return domain.GraphExpansion{}, err
 	}
-	if strings.TrimSpace(projectID) == "" {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
 		return domain.GraphExpansion{}, fmt.Errorf("project_id must not be empty")
 	}
-	if depth < 0 {
-		return domain.GraphExpansion{}, fmt.Errorf("graph expansion depth must not be negative")
-	}
-	if depth == 0 {
-		depth = 1
+	if depth < 1 || depth > 4 {
+		return domain.GraphExpansion{}, fmt.Errorf("graph expansion depth must be between 1 and 4")
 	}
 	if _, err := s.GetProject(projectID); err != nil {
 		return domain.GraphExpansion{}, err
@@ -310,9 +309,13 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 	} else {
 		for _, id := range entityIDs {
 			id = strings.TrimSpace(id)
-			if id != "" {
-				frontier[id] = true
+			if id == "" {
+				return domain.GraphExpansion{}, fmt.Errorf("graph expansion entity_ids must not contain empty values")
 			}
+			if _, ok := entityByID[id]; !ok {
+				return domain.GraphExpansion{}, repository.NotFound("entity", id)
+			}
+			frontier[id] = true
 		}
 	}
 	selectedEdges := map[string]bool{}
@@ -325,11 +328,14 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 			selected[id] = true
 			for _, edge := range allEdges {
 				if edge.SourceEntityID == id || edge.TargetEntityID == id {
-					selectedEdges[edge.ID] = true
 					other := edge.TargetEntityID
 					if other == id {
 						other = edge.SourceEntityID
 					}
+					if _, ok := entityByID[other]; !ok {
+						return domain.GraphExpansion{}, fmt.Errorf("graph edge %q references missing entity %q", edge.ID, other)
+					}
+					selectedEdges[edge.ID] = true
 					if !selected[other] {
 						next[other] = true
 					}
@@ -337,6 +343,12 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 			}
 		}
 		frontier = next
+	}
+	for id := range frontier {
+		if _, ok := entityByID[id]; !ok {
+			return domain.GraphExpansion{}, fmt.Errorf("graph expansion references missing entity %q", id)
+		}
+		selected[id] = true
 	}
 	entities := make([]domain.Entity, 0, len(selected))
 	for id := range selected {
@@ -363,7 +375,7 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 	sort.Slice(entities, func(i, j int) bool { return entities[i].Name < entities[j].Name })
 	sort.Slice(edges, func(i, j int) bool { return edges[i].ID < edges[j].ID })
 	sort.Slice(facts, func(i, j int) bool { return facts[i].CreatedAt.Before(facts[j].CreatedAt) })
-	return domain.GraphExpansion{ProjectID: projectID, Depth: depth, Entities: entities, Edges: edges, Facts: facts}, nil
+	return domain.GraphExpansion{ProjectID: projectID, Depth: depth, Entities: entities, Edges: edges, Facts: facts, GeneratedAt: now()}, nil
 }
 
 func (s *Store) listGraphEdges(projectID string) ([]domain.GraphEdge, error) {

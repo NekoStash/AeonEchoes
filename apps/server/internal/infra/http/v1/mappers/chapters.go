@@ -20,19 +20,44 @@ func ChapterDTOsFromDomain(chapters []domain.Chapter) []dto.ChapterDTO {
 	return items
 }
 
-func EnsureChapterRequestToDomain(projectID string, input dto.EnsureChapterRequestDTO) domain.ChapterEnsureRequest {
-	metadata := CopyStringMapV1(input.Metadata)
-	if strings.TrimSpace(input.Summary) != "" {
+func CreateChapterRequestToDomain(projectID string, input dto.CreateChapterRequestDTO) domain.CreateChapterRequest {
+	return domain.CreateChapterRequest{ProjectID: projectID, Number: input.Number, Title: input.Title, Status: input.Status, Metadata: chapterRequestMetadata(input.Summary, input.Metadata)}
+}
+
+func UpdateChapterRequestToDomain(projectID, chapterID string, input dto.UpdateChapterRequestDTO) domain.UpdateChapterRequest {
+	return domain.UpdateChapterRequest{ProjectID: projectID, ChapterID: chapterID, Number: input.Number, Title: input.Title, Status: input.Status, Metadata: chapterUpdateMetadata(input.Summary, input.Metadata)}
+}
+
+func chapterRequestMetadata(summary string, input map[string]string) map[string]string {
+	metadata := CopyStringMapV1(input)
+	if strings.TrimSpace(summary) != "" {
 		if metadata == nil {
 			metadata = map[string]string{}
 		}
-		metadata["summary"] = strings.TrimSpace(input.Summary)
+		metadata["summary"] = strings.TrimSpace(summary)
 	}
-	return domain.ChapterEnsureRequest{ProjectID: projectID, ChapterID: input.ChapterID, Number: input.Number, Title: input.Title, Status: input.Status, Metadata: metadata}
+	return metadata
+}
+
+func chapterUpdateMetadata(summary *string, input *map[string]string) *map[string]string {
+	if summary == nil && input == nil {
+		return nil
+	}
+	metadata := map[string]string{}
+	if input != nil {
+		metadata = CopyStringMapV1(*input)
+		if metadata == nil {
+			metadata = map[string]string{}
+		}
+	}
+	if summary != nil {
+		metadata["summary"] = strings.TrimSpace(*summary)
+	}
+	return &metadata
 }
 
 func ChapterVersionDTOFromDomain(version domain.ChapterVersion) dto.ChapterVersionDTO {
-	return dto.ChapterVersionDTO{ID: version.ID, ProjectID: version.ProjectID, ChapterID: version.ChapterID, Version: version.Version, Title: version.Title, Content: version.Content, Summary: version.Summary, AuthorRole: version.AuthorRole, SourceWorkflowID: version.SourceWorkflowID, IndexStatus: version.IndexStatus, Metadata: CopyStringMapV1(version.Metadata), CreatedAt: version.CreatedAt}
+	return dto.ChapterVersionDTO{ID: version.ID, ProjectID: version.ProjectID, ChapterID: version.ChapterID, ParentVersionID: version.ParentVersionID, Version: version.Version, Title: version.Title, Content: version.Content, Summary: version.Summary, AuthorRole: version.AuthorRole, SourceWorkflowID: version.SourceWorkflowID, IndexStatus: version.IndexStatus, Metadata: CopyStringMapV1(version.Metadata), CreatedAt: version.CreatedAt}
 }
 
 func ChapterVersionDTOsFromDomain(versions []domain.ChapterVersion) []dto.ChapterVersionDTO {
@@ -44,5 +69,15 @@ func ChapterVersionDTOsFromDomain(versions []domain.ChapterVersion) []dto.Chapte
 }
 
 func ChapterVersionRequestToDomain(projectID, chapterID string, input dto.ChapterVersionRequestDTO) domain.ChapterVersion {
-	return domain.ChapterVersion{ID: input.ID, ProjectID: projectID, ChapterID: chapterID, Title: input.Title, Content: input.Content, Summary: input.Summary, AuthorRole: input.AuthorRole, SourceWorkflowID: input.SourceWorkflowID, IndexStatus: input.IndexStatus, Metadata: CopyStringMapV1(input.Metadata)}
+	metadata := CopyStringMapV1(input.Metadata)
+	if metadata != nil {
+		delete(metadata, "parent_version_id")
+	}
+	if changeNote := strings.TrimSpace(input.ChangeNote); changeNote != "" {
+		if metadata == nil {
+			metadata = map[string]string{}
+		}
+		metadata["change_note"] = changeNote
+	}
+	return domain.ChapterVersion{ProjectID: projectID, ChapterID: chapterID, ParentVersionID: strings.TrimSpace(input.ParentVersionID), Title: input.Title, Content: input.Content, Summary: input.Summary, AuthorRole: input.AuthorRole, Metadata: metadata}
 }

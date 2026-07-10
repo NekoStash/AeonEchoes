@@ -28,7 +28,14 @@ func TestProviderModelAndProjectLifecycle(t *testing.T) {
 	if project.ActiveStoryBibleID != bible.ID {
 		t.Fatalf("project active bible mismatch")
 	}
-	version, job, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, Title: "第一章", Content: "群星在船窗外燃烧。", AuthorRole: domain.AgentRoleWriter})
+	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: project.ID, Title: "第一章"})
+	if err != nil {
+		t.Fatalf("CreateChapter() error: %v", err)
+	}
+	if chapter.Status != domain.ChapterStatusDrafting {
+		t.Fatalf("default chapter status = %q, want %q", chapter.Status, domain.ChapterStatusDrafting)
+	}
+	version, job, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: chapter.ID, Title: "第一章", Content: "群星在船窗外燃烧。", AuthorRole: domain.AgentRoleWriter})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion() error: %v", err)
 	}
@@ -43,14 +50,18 @@ func TestSaveChapterVersionSupersedesOlderPendingJobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProject() error: %v", err)
 	}
-	firstVersion, firstJob, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: "chapter-1", Title: "第一版", Content: "内容 1"})
+	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: project.ID, Title: "第一章"})
+	if err != nil {
+		t.Fatalf("CreateChapter() error: %v", err)
+	}
+	firstVersion, firstJob, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: chapter.ID, Title: "第一版", Content: "内容 1", AuthorRole: domain.AgentRoleWriter})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion(first) error: %v", err)
 	}
 	if _, err := store.UpdateIndexJobStatus(firstJob.ID, "running", ""); err != nil {
 		t.Fatalf("UpdateIndexJobStatus(running) error: %v", err)
 	}
-	secondVersion, secondJob, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: "chapter-1", Title: "第二版", Content: "内容 2"})
+	secondVersion, secondJob, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: chapter.ID, Title: "第二版", Content: "内容 2", AuthorRole: domain.AgentRoleWriter})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion(second) error: %v", err)
 	}
@@ -74,7 +85,7 @@ func TestSaveChapterVersionSupersedesOlderPendingJobs(t *testing.T) {
 	if statusByID[secondJob.ID] != "pending" {
 		t.Fatalf("latest job status = %q, want pending", statusByID[secondJob.ID])
 	}
-	thirdVersion, thirdJob, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: "chapter-1", Title: "第三版", Content: "内容 3"})
+	thirdVersion, thirdJob, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: chapter.ID, Title: "第三版", Content: "内容 3", AuthorRole: domain.AgentRoleWriter})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion(third) error: %v", err)
 	}
@@ -101,6 +112,151 @@ func TestSaveChapterVersionSupersedesOlderPendingJobs(t *testing.T) {
 	}
 	if len(pendingJobs) != 1 || pendingJobs[0].ID != thirdJob.ID {
 		t.Fatalf("pending jobs = %+v, want only newest pending job", pendingJobs)
+	}
+}
+
+func TestSaveChapterVersionParentContracts(t *testing.T) {
+	store := NewStore()
+	projectA, _, err := store.CreateProject(domain.Project{Title: "父版本 A"}, domain.StoryBible{Title: "父版本 A", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject(A) error: %v", err)
+	}
+	projectB, _, err := store.CreateProject(domain.Project{Title: "父版本 B"}, domain.StoryBible{Title: "父版本 B", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject(B) error: %v", err)
+	}
+	chapterA1, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectA.ID, Title: "A 第一章"})
+	if err != nil {
+		t.Fatalf("CreateChapter(A1) error: %v", err)
+	}
+	chapterA2, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectA.ID, Title: "A 第二章"})
+	if err != nil {
+		t.Fatalf("CreateChapter(A2) error: %v", err)
+	}
+	chapterB, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectB.ID, Title: "B 第一章"})
+	if err != nil {
+		t.Fatalf("CreateChapter(B) error: %v", err)
+	}
+	first, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapterA1.ID, Title: "第一版", Content: "正文一", AuthorRole: domain.AgentRoleWriter})
+	if err != nil {
+		t.Fatalf("SaveChapterVersion(first) error: %v", err)
+	}
+	second, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapterA1.ID, ParentVersionID: first.ID, Title: "第二版", Content: "正文二", AuthorRole: domain.AgentRoleEditor})
+	if err != nil {
+		t.Fatalf("SaveChapterVersion(second) error: %v", err)
+	}
+	third, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapterA1.ID, ParentVersionID: second.ID, Title: "第三版", Content: "正文三", AuthorRole: domain.AgentRoleEditor})
+	if err != nil {
+		t.Fatalf("SaveChapterVersion(third) error: %v", err)
+	}
+	if second.ParentVersionID != first.ID || third.ParentVersionID != second.ID {
+		t.Fatalf("valid parent chain not preserved: first=%+v second=%+v third=%+v", first, second, third)
+	}
+	if _, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapterA1.ID, ParentVersionID: "missing", Title: "缺失父版本", Content: "正文", AuthorRole: domain.AgentRoleEditor}); !repository.IsKind(err, repository.ErrorKindNotFound) {
+		t.Fatalf("missing parent error = %v, want not found", err)
+	}
+	crossChapter, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapterA2.ID, Title: "另一章版本", Content: "正文", AuthorRole: domain.AgentRoleWriter})
+	if err != nil {
+		t.Fatalf("SaveChapterVersion(cross chapter seed) error: %v", err)
+	}
+	if _, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapterA1.ID, ParentVersionID: crossChapter.ID, Title: "跨章节", Content: "正文", AuthorRole: domain.AgentRoleEditor}); err == nil {
+		t.Fatalf("SaveChapterVersion(cross chapter parent) error = nil")
+	}
+	crossProject, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectB.ID, ChapterID: chapterB.ID, Title: "跨项目版本", Content: "正文", AuthorRole: domain.AgentRoleWriter})
+	if err != nil {
+		t.Fatalf("SaveChapterVersion(cross project seed) error: %v", err)
+	}
+	if _, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapterA1.ID, ParentVersionID: crossProject.ID, Title: "跨项目", Content: "正文", AuthorRole: domain.AgentRoleEditor}); err == nil {
+		t.Fatalf("SaveChapterVersion(cross project parent) error = nil")
+	}
+	if _, _, err := store.SaveChapterVersion(domain.ChapterVersion{ID: "self", ProjectID: projectA.ID, ChapterID: chapterA1.ID, ParentVersionID: "self", Title: "自指", Content: "正文", AuthorRole: domain.AgentRoleEditor}); err == nil {
+		t.Fatalf("SaveChapterVersion(self parent) error = nil")
+	}
+	corruptedFirst := first
+	corruptedFirst.ParentVersionID = second.ID
+	store.chapterVersions[first.ID] = corruptedFirst
+	if _, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapterA1.ID, ParentVersionID: second.ID, Title: "循环链", Content: "正文", AuthorRole: domain.AgentRoleEditor}); err == nil {
+		t.Fatalf("SaveChapterVersion(cyclic parent chain) error = nil")
+	}
+}
+
+func TestSaveChapterVersionRequiresExistingProjectChapter(t *testing.T) {
+	store := NewStore()
+	project, _, err := store.CreateProject(domain.Project{Title: "严格版本", Seed: domain.ProjectSeed{Title: "严格版本", Premise: "测试"}}, domain.StoryBible{Title: "严格版本", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+
+	if _, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, Title: "缺失章节", Content: "缺失章节 ID", AuthorRole: domain.AgentRoleWriter}); err == nil {
+		t.Fatalf("SaveChapterVersion() missing chapter_id error = nil")
+	}
+	if _, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: "missing", Title: "不存在章节", Content: "不存在章节", AuthorRole: domain.AgentRoleWriter}); err == nil {
+		t.Fatalf("SaveChapterVersion() missing chapter error = nil")
+	}
+	chapters, err := store.ListChapters(project.ID)
+	if err != nil {
+		t.Fatalf("ListChapters() error: %v", err)
+	}
+	if len(chapters) != 0 {
+		t.Fatalf("failed version saves created chapters: %+v", chapters)
+	}
+}
+
+func TestChapterStorageStrictContracts(t *testing.T) {
+	store := NewStore()
+	projectA, _, err := store.CreateProject(domain.Project{Title: "严格章节 A"}, domain.StoryBible{Title: "严格章节 A", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject(A) error: %v", err)
+	}
+	projectB, _, err := store.CreateProject(domain.Project{Title: "严格章节 B"}, domain.StoryBible{Title: "严格章节 B", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject(B) error: %v", err)
+	}
+	if _, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectA.ID, Title: "   "}); err == nil {
+		t.Fatalf("CreateChapter(blank title) error = nil")
+	}
+	if _, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectA.ID, Title: "非法状态", Status: "draft"}); err == nil {
+		t.Fatalf("CreateChapter(invalid status) error = nil")
+	}
+	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectA.ID, Title: "第一章"})
+	if err != nil {
+		t.Fatalf("CreateChapter() error: %v", err)
+	}
+	invalidStatus := domain.ChapterStatus("done")
+	if _, err := store.UpdateChapter(domain.UpdateChapterRequest{ProjectID: projectA.ID, ChapterID: chapter.ID, Status: &invalidStatus}); err == nil {
+		t.Fatalf("UpdateChapter(invalid status) error = nil")
+	}
+	if _, err := store.UpdateChapter(domain.UpdateChapterRequest{ProjectID: projectA.ID, ChapterID: chapter.ID}); err == nil {
+		t.Fatalf("UpdateChapter(empty) error = nil")
+	}
+	if _, err := store.ListChapters("missing"); !repository.IsKind(err, repository.ErrorKindNotFound) {
+		t.Fatalf("ListChapters(missing) error = %v, want not found", err)
+	}
+	if _, err := store.ListChapterVersions(projectB.ID, chapter.ID); !repository.IsKind(err, repository.ErrorKindNotFound) {
+		t.Fatalf("ListChapterVersions(wrong project) error = %v, want not found", err)
+	}
+	if _, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapter.ID, Title: "版本", Content: "正文", AuthorRole: "reader"}); err == nil {
+		t.Fatalf("SaveChapterVersion(invalid author role) error = nil")
+	}
+}
+
+func TestExpandGraphRejectsInvalidDepthAndEntityIDs(t *testing.T) {
+	store := NewStore()
+	project, _, err := store.CreateProject(domain.Project{Title: "严格图谱"}, domain.StoryBible{Title: "严格图谱", Logline: "测试"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	entity, err := store.SaveEntity(domain.Entity{ProjectID: project.ID, Name: "林烬", Type: "character"})
+	if err != nil {
+		t.Fatalf("SaveEntity() error: %v", err)
+	}
+	for _, depth := range []int{0, 5} {
+		if _, err := store.ExpandGraph(project.ID, []string{entity.ID}, depth); err == nil {
+			t.Fatalf("ExpandGraph(depth=%d) error = nil", depth)
+		}
+	}
+	if _, err := store.ExpandGraph(project.ID, []string{"missing"}, 1); !repository.IsKind(err, repository.ErrorKindNotFound) {
+		t.Fatalf("ExpandGraph(missing entity) error = %v, want not found", err)
 	}
 }
 

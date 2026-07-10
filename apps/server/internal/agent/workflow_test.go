@@ -73,10 +73,6 @@ func (s *fakeWorkflowStore) ExpandGraph(projectID string, entityIDs []string, de
 	return domain.GraphExpansion{ProjectID: projectID, Depth: depth}, nil
 }
 
-func (s *fakeWorkflowStore) EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error) {
-	return domain.Chapter{ID: firstText(req.ChapterID, "chapter-1"), ProjectID: req.ProjectID, Number: firstPositive(req.Number, 1), Title: req.Title, Status: firstText(req.Status, "draft")}, nil
-}
-
 func (s *fakeWorkflowStore) GetChapter(id string) (domain.Chapter, error) {
 	return domain.Chapter{ID: id, ProjectID: "project-1", Number: 1}, nil
 }
@@ -173,7 +169,7 @@ func (r fakeContextPackRepository) ListChapters(projectID string) ([]domain.Chap
 			continue
 		}
 		seen[version.ChapterID] = struct{}{}
-		chapters = append(chapters, domain.Chapter{ID: version.ChapterID, ProjectID: projectID, Number: len(chapters) + 1, Title: version.Title, Status: "draft"})
+		chapters = append(chapters, domain.Chapter{ID: version.ChapterID, ProjectID: projectID, Number: len(chapters) + 1, Title: version.Title, Status: domain.ChapterStatusDrafting})
 	}
 	return chapters, nil
 }
@@ -332,9 +328,12 @@ func TestContextPackBuilderAutoModeStillWorks(t *testing.T) {
 
 func TestWorkflowRunnerGenerateChapterIdeaUsesPlotArchitectBrief(t *testing.T) {
 	store, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
-	_ = store
+	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectID, Number: 7, Title: "第七章"})
+	if err != nil {
+		t.Fatalf("CreateChapter(第七章) error: %v", err)
+	}
 
-	result, err := runner.GenerateChapterIdea(context.Background(), ChapterIdeaRequest{ProjectID: projectID, ChapterID: "chapter-7", Title: "第七章", Brief: "让主角进入灰塔", MaxOutputTokens: 777})
+	result, err := runner.GenerateChapterIdea(context.Background(), ChapterIdeaRequest{ProjectID: projectID, ChapterID: chapter.ID, Title: "第七章", Brief: "让主角进入灰塔", MaxOutputTokens: 777})
 	if err != nil {
 		t.Fatalf("GenerateChapterIdea() error: %v", err)
 	}
@@ -367,8 +366,12 @@ func TestWorkflowRunnerGenerateChapterIdeaUsesPlotArchitectBrief(t *testing.T) {
 
 func TestWorkflowRunnerDraftChapterWithIdeaRoutesBothStagesAndPersistsLink(t *testing.T) {
 	store, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
+	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectID, Number: 8, Title: "第八章"})
+	if err != nil {
+		t.Fatalf("CreateChapter() error: %v", err)
+	}
 
-	result, err := runner.DraftChapterWithIdea(context.Background(), DraftWithIdeaRequest{ProjectID: projectID, ChapterID: "chapter-8", Title: "第八章", Brief: "灰塔钟声引发追捕"})
+	result, err := runner.DraftChapterWithIdea(context.Background(), DraftWithIdeaRequest{ProjectID: projectID, ChapterID: chapter.ID, Title: "第八章", Brief: "灰塔钟声引发追捕"})
 	if err != nil {
 		t.Fatalf("DraftChapterWithIdea() error: %v", err)
 	}
@@ -393,7 +396,7 @@ func TestWorkflowRunnerDraftChapterWithIdeaRoutesBothStagesAndPersistsLink(t *te
 	if result.Draft.Workflow.Input["chapter_idea_workflow_id"] != result.ChapterIdea.Workflow.ID {
 		t.Fatalf("DraftChapterWithIdea() workflow input idea link = %q, want %q", result.Draft.Workflow.Input["chapter_idea_workflow_id"], result.ChapterIdea.Workflow.ID)
 	}
-	versions, err := store.ListChapterVersions(projectID, "chapter-8")
+	versions, err := store.ListChapterVersions(projectID, chapter.ID)
 	if err != nil {
 		t.Fatalf("ListChapterVersions() error: %v", err)
 	}
@@ -532,17 +535,33 @@ func TestWorkflowRunnerDraftChapterRequiresIdeaWhenBriefIsOtherwiseEmpty(t *test
 
 	_, err := runner.DraftChapter(context.Background(), DraftRequest{ProjectID: projectID})
 	if err == nil {
-		t.Fatalf("DraftChapter() error = nil, want empty brief error")
+		t.Fatalf("DraftChapter() error = nil, want empty chapter_id error")
 	}
-	if !strings.Contains(err.Error(), "draft brief must not be empty") {
-		t.Fatalf("DraftChapter() error = %v, want empty brief validation", err)
+	if !strings.Contains(err.Error(), "draft chapter_id must not be empty") {
+		t.Fatalf("DraftChapter() error = %v, want empty chapter_id validation", err)
+	}
+}
+
+func TestWorkflowRunnerDraftChapterRejectsMissingChapterBeforeModelCall(t *testing.T) {
+	_, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
+
+	_, err := runner.DraftChapter(context.Background(), DraftRequest{ProjectID: projectID, ChapterID: "missing", Brief: "不应调用模型"})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("DraftChapter() error = %v, want missing chapter", err)
+	}
+	if len(textClient.requests) != 0 {
+		t.Fatalf("DraftChapter() called model before chapter validation: %d requests", len(textClient.requests))
 	}
 }
 
 func TestWorkflowRunnerDraftChapterReturnsContinuityAudit(t *testing.T) {
-	_, runner, _, projectID := newConfiguredWorkflowRunner(t)
+	store, runner, _, projectID := newConfiguredWorkflowRunner(t)
+	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectID, Title: "审计测试"})
+	if err != nil {
+		t.Fatalf("CreateChapter() error: %v", err)
+	}
 
-	result, err := runner.DraftChapter(context.Background(), DraftRequest{ProjectID: projectID, ChapterID: "chapter-audit", Title: "审计测试", Brief: "围绕林烬推进并处理钥匙伏笔"})
+	result, err := runner.DraftChapter(context.Background(), DraftRequest{ProjectID: projectID, ChapterID: chapter.ID, Title: "审计测试", Brief: "围绕林烬推进并处理钥匙伏笔"})
 	if err != nil {
 		t.Fatalf("DraftChapter() error: %v", err)
 	}
@@ -558,6 +577,18 @@ func TestWorkflowRunnerDraftChapterReturnsContinuityAudit(t *testing.T) {
 	}
 	if !hasContinuityAuditStep {
 		t.Fatalf("DraftChapter() workflow steps missing continuity_audit: %+v", result.Workflow.Steps)
+	}
+}
+
+func TestNarrativeToolSpecsDoNotExposeChapterCreation(t *testing.T) {
+	for _, spec := range NarrativeToolSpecs() {
+		if spec.Name == "chapter.ensure" || spec.Name == "chapter.create" {
+			t.Fatalf("agent tool %q must not expose chapter creation", spec.Name)
+		}
+	}
+	_, err := NewToolExecutor(memory.NewStore()).Execute(context.Background(), provider.ToolCall{Name: "chapter.ensure", Arguments: mustRawJSON(t, map[string]any{"project_id": "project"})})
+	if err == nil || !strings.Contains(err.Error(), "not whitelisted") {
+		t.Fatalf("chapter.ensure execution error = %v, want not whitelisted", err)
 	}
 }
 
@@ -637,9 +668,14 @@ func TestToolLoopExecutesGraphToolsAndReturnsResults(t *testing.T) {
 
 func TestWorkflowRunnerSelectionFlowsIntoContextPackAndMetadata(t *testing.T) {
 	store, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
-	selection := &ContextSelection{ChapterIDs: []string{"chapter-manual"}, CharacterNames: []string{"林烬"}}
+	chapters, err := store.ListChapters(projectID)
+	if err != nil || len(chapters) == 0 {
+		t.Fatalf("ListChapters() chapters=%+v err=%v", chapters, err)
+	}
+	chapterID := chapters[0].ID
+	selection := &ContextSelection{ChapterIDs: []string{chapterID}, CharacterNames: []string{"林烬"}}
 
-	result, err := runner.DraftChapter(context.Background(), DraftRequest{ProjectID: projectID, ChapterID: "chapter-manual", Title: "手动测试", Brief: "围绕林烬推进", ContextSelection: selection, ContextNodeIDs: []string{"legacy-node-a"}})
+	result, err := runner.DraftChapter(context.Background(), DraftRequest{ProjectID: projectID, ChapterID: chapterID, Title: "手动测试", Brief: "围绕林烬推进", ContextSelection: selection, ContextNodeIDs: []string{"legacy-node-a"}})
 	if err != nil {
 		t.Fatalf("DraftChapter() error: %v", err)
 	}
@@ -649,7 +685,7 @@ func TestWorkflowRunnerSelectionFlowsIntoContextPackAndMetadata(t *testing.T) {
 	if result.Workflow.Input["context_selection.character_names"] != "林烬" {
 		t.Fatalf("unexpected workflow selection input: %+v", result.Workflow.Input)
 	}
-	versions, err := store.ListChapterVersions(projectID, "chapter-manual")
+	versions, err := store.ListChapterVersions(projectID, chapterID)
 	if err != nil {
 		t.Fatalf("ListChapterVersions() error: %v", err)
 	}
@@ -723,11 +759,19 @@ func newConfiguredWorkflowRunner(t *testing.T) (*memory.Store, *WorkflowRunner, 
 	if err != nil {
 		t.Fatalf("SaveEntity(灰烬钥匙) error: %v", err)
 	}
-	chapterOne, _, err := store.SaveChapterVersion(domain.ChapterVersion{ID: "chapter_version_seed_1", ProjectID: project.ID, ChapterID: "chapter-manual", Title: "前章", Content: "林烬得到灰烬钥匙", Summary: "林烬得到灰烬钥匙", AuthorRole: domain.AgentRoleWriter, SourceWorkflowID: seedWorkflow.ID, IndexStatus: "indexed"})
+	chapterManual, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: project.ID, Number: 1, Title: "前章"})
+	if err != nil {
+		t.Fatalf("CreateChapter(前章) error: %v", err)
+	}
+	chapterOther, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: project.ID, Number: 2, Title: "旁章"})
+	if err != nil {
+		t.Fatalf("CreateChapter(旁章) error: %v", err)
+	}
+	chapterOne, _, err := store.SaveChapterVersion(domain.ChapterVersion{ID: "chapter_version_seed_1", ProjectID: project.ID, ChapterID: chapterManual.ID, Title: "前章", Content: "林烬得到灰烬钥匙", Summary: "林烬得到灰烬钥匙", AuthorRole: domain.AgentRoleWriter, SourceWorkflowID: seedWorkflow.ID, IndexStatus: "indexed"})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion(前章) error: %v", err)
 	}
-	chapterTwo, _, err := store.SaveChapterVersion(domain.ChapterVersion{ID: "chapter_version_seed_2", ProjectID: project.ID, ChapterID: "chapter-other", Title: "旁章", Content: "苏九调查灰塔", Summary: "苏九调查灰塔", AuthorRole: domain.AgentRoleWriter, SourceWorkflowID: seedWorkflow.ID, IndexStatus: "indexed"})
+	chapterTwo, _, err := store.SaveChapterVersion(domain.ChapterVersion{ID: "chapter_version_seed_2", ProjectID: project.ID, ChapterID: chapterOther.ID, Title: "旁章", Content: "苏九调查灰塔", Summary: "苏九调查灰塔", AuthorRole: domain.AgentRoleWriter, SourceWorkflowID: seedWorkflow.ID, IndexStatus: "indexed"})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion(旁章) error: %v", err)
 	}

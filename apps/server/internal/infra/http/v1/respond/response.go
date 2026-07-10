@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+
+	"aeonechoes/server/internal/repository"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -112,6 +114,11 @@ func ErrorFromErr(w http.ResponseWriter, r *http.Request, status int, err error)
 	message := "request failed"
 	if err != nil {
 		message = err.Error()
+	}
+	if repository.IsKind(err, repository.ErrorKindNotFound) {
+		status = http.StatusNotFound
+	} else if repository.IsKind(err, repository.ErrorKindConflict) {
+		status = http.StatusConflict
 	}
 	Error(w, r, status, ErrorCodeForStatus(status), message, nil)
 }

@@ -22,7 +22,6 @@ type WorkflowStore interface {
 	ListEntities(projectID string) ([]domain.Entity, error)
 	ListPlotThreads(projectID string) ([]domain.PlotThread, error)
 	ExpandGraph(projectID string, entityIDs []string, depth int) (domain.GraphExpansion, error)
-	EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error)
 	GetChapter(id string) (domain.Chapter, error)
 	ListChapters(projectID string) ([]domain.Chapter, error)
 	SaveChapterVersion(version domain.ChapterVersion) (domain.ChapterVersion, domain.IndexJob, error)
@@ -402,6 +401,17 @@ func (r *WorkflowRunner) DraftChapter(ctx context.Context, req DraftRequest) (Dr
 	}
 	if strings.TrimSpace(req.ProjectID) == "" {
 		return DraftResult{}, fmt.Errorf("draft project_id must not be empty")
+	}
+	req.ChapterID = strings.TrimSpace(req.ChapterID)
+	if req.ChapterID == "" {
+		return DraftResult{}, fmt.Errorf("draft chapter_id must not be empty")
+	}
+	chapter, err := r.store.GetChapter(req.ChapterID)
+	if err != nil {
+		return DraftResult{}, err
+	}
+	if chapter.ProjectID != req.ProjectID {
+		return DraftResult{}, fmt.Errorf("chapter %q not found in project %q", req.ChapterID, req.ProjectID)
 	}
 	req.Brief = normalizeDraftBrief(req)
 	if strings.TrimSpace(req.Brief) == "" {

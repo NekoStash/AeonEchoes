@@ -2,6 +2,8 @@ package dto
 
 import (
 	"time"
+
+	"aeonechoes/server/internal/domain"
 )
 
 type StoryBibleCharacterDTO struct {
@@ -27,10 +29,10 @@ type StoryBibleForeshadowDTO struct {
 }
 
 type StoryBibleChapterPlanDTO struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Status  string `json:"status"`
-	Summary string `json:"summary"`
+	ID      string               `json:"id"`
+	Title   string               `json:"title"`
+	Status  domain.ChapterStatus `json:"status"`
+	Summary string               `json:"summary"`
 }
 
 type StoryBibleDTO struct {
@@ -57,7 +59,6 @@ type StoryBibleDTO struct {
 	Characters        []StoryBibleCharacterDTO   `json:"characters"`
 	Foreshadows       []StoryBibleForeshadowDTO  `json:"foreshadows"`
 	ChapterPlan       []StoryBibleChapterPlanDTO `json:"chapter_plan"`
-	Chapters          []StoryBibleChapterPlanDTO `json:"chapters,omitempty"`
 	SourceSeed        ProjectSeedDTO             `json:"source_seed"`
 }
 

@@ -4,54 +4,54 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --surface: 0 0% 100%;
-    --surface-foreground: 222 47% 11%;
-    --surface-muted: 210 40% 97%;
-    --surface-elevated: 0 0% 100%;
-    --surface-raised: 210 40% 99%;
-    --surface-sunken: 214 32% 95%;
+    --background: 42 20% 96%;
+    --foreground: 220 15% 12%;
+    --surface: 42 24% 98%;
+    --surface-foreground: 220 15% 12%;
+    --surface-muted: 40 14% 92%;
+    --surface-elevated: 42 30% 99%;
+    --surface-raised: 42 18% 97%;
+    --surface-sunken: 38 12% 89%;
     --card: var(--surface);
     --card-foreground: var(--surface-foreground);
     --popover: var(--surface-elevated);
     --popover-foreground: var(--surface-foreground);
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 215 20% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 221 83% 96%;
-    --accent-foreground: 221 83% 35%;
-    --state-info: 199 89% 48%;
-    --state-info-foreground: 201 96% 14%;
-    --state-info-surface: 199 95% 94%;
-    --state-info-border: 199 89% 82%;
-    --state-success: 158 64% 40%;
-    --state-success-foreground: 160 84% 12%;
-    --state-success-surface: 152 81% 94%;
-    --state-success-border: 152 76% 80%;
-    --state-warning: 38 92% 50%;
-    --state-warning-foreground: 28 73% 15%;
-    --state-warning-surface: 48 96% 92%;
-    --state-warning-border: 43 96% 76%;
-    --state-danger: 0 72% 51%;
-    --state-danger-foreground: 0 74% 16%;
-    --state-danger-surface: 0 86% 97%;
-    --state-danger-border: 0 91% 84%;
+    --primary: 220 15% 12%;
+    --primary-foreground: 42 24% 98%;
+    --secondary: 40 12% 89%;
+    --secondary-foreground: 220 15% 12%;
+    --muted: 40 14% 92%;
+    --muted-foreground: 218 9% 40%;
+    --accent: 38 18% 88%;
+    --accent-foreground: 220 15% 12%;
+    --state-info: 211 58% 36%;
+    --state-info-foreground: 211 66% 22%;
+    --state-info-surface: 210 35% 92%;
+    --state-info-border: 211 28% 68%;
+    --state-success: 151 43% 31%;
+    --state-success-foreground: 151 49% 20%;
+    --state-success-surface: 146 24% 91%;
+    --state-success-border: 149 22% 63%;
+    --state-warning: 35 68% 38%;
+    --state-warning-foreground: 31 71% 21%;
+    --state-warning-surface: 40 47% 90%;
+    --state-warning-border: 37 39% 62%;
+    --state-danger: 3 57% 43%;
+    --state-danger-foreground: 3 63% 25%;
+    --state-danger-surface: 5 36% 92%;
+    --state-danger-border: 4 34% 67%;
     --destructive: var(--state-danger);
-    --destructive-foreground: 210 40% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
-    --layout-width-sidebar: 18rem;
-    --layout-width-sidebar-collapsed: 4.5rem;
-    --layout-width-page: 100rem;
+    --destructive-foreground: 0 0% 100%;
+    --border: 38 10% 75%;
+    --input: 38 10% 67%;
+    --ring: 220 15% 12%;
+    --layout-width-sidebar: 17rem;
+    --layout-width-sidebar-collapsed: 4rem;
+    --layout-width-page: 96rem;
     --layout-width-readable: 48rem;
     --layout-width-panel: 72rem;
-    --layout-height-topbar: 4rem;
-    --layout-gutter: clamp(1rem, 2vw, 2.5rem);
+    --layout-height-topbar: 3.5rem;
+    --layout-gutter: clamp(1rem, 2vw, 2.25rem);
     --density-xs: 0.25rem;
     --density-sm: 0.5rem;
     --density-md: 0.75rem;
@@ -60,47 +60,47 @@
   }
 
   .dark {
-    --background: 222 47% 7%;
-    --foreground: 210 40% 98%;
-    --surface: 222 47% 9%;
-    --surface-foreground: 210 40% 98%;
-    --surface-muted: 217 33% 12%;
-    --surface-elevated: 222 47% 10%;
-    --surface-raised: 219 40% 13%;
-    --surface-sunken: 224 50% 6%;
+    --background: 220 13% 8%;
+    --foreground: 42 18% 88%;
+    --surface: 220 12% 10%;
+    --surface-foreground: 42 18% 88%;
+    --surface-muted: 220 10% 14%;
+    --surface-elevated: 220 12% 12%;
+    --surface-raised: 220 11% 13%;
+    --surface-sunken: 220 14% 6%;
     --card: var(--surface);
     --card-foreground: var(--surface-foreground);
     --popover: var(--surface-elevated);
     --popover-foreground: var(--surface-foreground);
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 7%;
-    --secondary: 217 33% 15%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 14%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 16%;
-    --accent-foreground: 210 40% 98%;
-    --state-info: 190 95% 70%;
-    --state-info-foreground: 192 95% 88%;
-    --state-info-surface: 190 95% 12%;
-    --state-info-border: 190 95% 34%;
-    --state-success: 152 76% 52%;
-    --state-success-foreground: 152 81% 88%;
-    --state-success-surface: 158 64% 11%;
-    --state-success-border: 152 76% 32%;
-    --state-warning: 43 96% 60%;
-    --state-warning-foreground: 48 96% 88%;
-    --state-warning-surface: 35 92% 12%;
-    --state-warning-border: 38 92% 36%;
-    --state-danger: 0 82% 65%;
-    --state-danger-foreground: 0 86% 92%;
-    --state-danger-surface: 0 63% 13%;
-    --state-danger-border: 0 72% 38%;
+    --primary: 42 18% 88%;
+    --primary-foreground: 220 15% 10%;
+    --secondary: 220 9% 17%;
+    --secondary-foreground: 42 18% 88%;
+    --muted: 220 10% 14%;
+    --muted-foreground: 40 8% 64%;
+    --accent: 220 8% 19%;
+    --accent-foreground: 42 18% 90%;
+    --state-info: 207 51% 66%;
+    --state-info-foreground: 207 58% 84%;
+    --state-info-surface: 211 30% 15%;
+    --state-info-border: 209 34% 38%;
+    --state-success: 145 35% 58%;
+    --state-success-foreground: 143 38% 82%;
+    --state-success-surface: 149 27% 14%;
+    --state-success-border: 147 28% 35%;
+    --state-warning: 38 62% 62%;
+    --state-warning-foreground: 40 72% 82%;
+    --state-warning-surface: 34 37% 15%;
+    --state-warning-border: 36 36% 38%;
+    --state-danger: 4 60% 67%;
+    --state-danger-foreground: 5 70% 86%;
+    --state-danger-surface: 2 35% 16%;
+    --state-danger-border: 3 38% 42%;
     --destructive: var(--state-danger);
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 18%;
-    --input: 217 33% 18%;
-    --ring: 217 91% 60%;
+    --destructive-foreground: 220 15% 9%;
+    --border: 220 7% 27%;
+    --input: 220 7% 36%;
+    --ring: 42 18% 88%;
   }
 
   * {
@@ -110,6 +110,7 @@
   html {
     @apply bg-background;
     color-scheme: light;
+    scroll-behavior: smooth;
   }
 
   .dark {
@@ -122,34 +123,46 @@
     text-rendering: optimizeLegibility;
   }
 
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
   ::selection {
-    @apply bg-primary/20 text-primary;
+    @apply bg-foreground text-background;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
   }
 }
 
 @layer components {
-  .app-surface {
-    @apply border border-border bg-surface text-surface-foreground shadow-sm;
-  }
-
+  .app-surface,
   .surface-panel {
-    @apply border border-border bg-surface text-surface-foreground shadow-sm;
+    @apply border border-border bg-surface text-surface-foreground;
   }
 
-  .surface-muted {
+  .surface-muted,
+  .panel-muted {
     @apply border border-border bg-surface-muted text-surface-foreground;
   }
 
   .surface-elevated {
-    @apply border border-border bg-surface-elevated text-surface-foreground shadow-lg shadow-black/5 dark:shadow-black/25;
+    @apply border border-border bg-surface-elevated text-surface-foreground;
   }
 
   .surface-sunken {
     @apply border border-border bg-surface-sunken text-surface-foreground;
-  }
-
-  .panel-muted {
-    @apply border border-border bg-surface-muted;
   }
 
   .state-info {
@@ -169,19 +182,19 @@
   }
 
   .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
 
   .subtle-scrollbar {
-    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.5) transparent;
     scrollbar-width: thin;
   }
 
   .reading-panel {
-    @apply rounded-2xl border border-border bg-muted/25 p-4 leading-7 sm:p-5;
+    @apply rounded-md border border-border bg-surface-muted p-4 leading-7 sm:p-5;
   }
 
   .field-label {
-    @apply inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground;
+    @apply inline-flex items-center gap-1.5 text-sm font-semibold text-foreground;
   }
 }

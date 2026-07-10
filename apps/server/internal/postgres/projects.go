@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aeonechoes/server/internal/domain"
+	"aeonechoes/server/internal/repository"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -86,7 +87,7 @@ func (s *Store) GetProject(id string) (domain.Project, error) {
 	item, err := scanProject(row)
 	if err != nil {
 		if isNoRows(err) {
-			return domain.Project{}, fmt.Errorf("project %q not found", id)
+			return domain.Project{}, repository.NotFound("project", id)
 		}
 		return domain.Project{}, fmt.Errorf("get project %q: %w", id, err)
 	}

@@ -3,12 +3,15 @@ export default defineNuxtConfig({
   ssr: false,
   modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt', '@nuxtjs/i18n', '@nuxtjs/color-mode'],
   css: ['~/assets/css/tailwind.css'],
+  imports: {
+    dirs: ['shared/composables']
+  },
   app: {
     head: {
-      title: 'Aeon Echoes | Writing Workspace',
+      htmlAttrs: { lang: 'zh-CN' },
       meta: [
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: 'A professional workspace for long-form AI-assisted fiction writing.' }
+        { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
+        { name: 'theme-color', content: '#1a1b1e' }
       ]
     }
   },

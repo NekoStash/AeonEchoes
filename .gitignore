@@ -10,6 +10,9 @@ infra/fake-provider/node_modules/
 apps/web/.nuxt/
 apps/web/.output/
 apps/web/dist/
+apps/web/coverage/
+apps/web/playwright-report/
+apps/web/test-results/
 
 # Go build/test artifacts
 *.exe

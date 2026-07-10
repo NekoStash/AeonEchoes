@@ -7,10 +7,20 @@
     "dev": "nuxt dev --host 0.0.0.0",
     "build": "nuxt build",
     "generate": "nuxt generate",
+    "openapi:generate": "openapi-ts -f openapi-ts.config.ts && node scripts/patch-openapi-sdk.mjs",
     "preview": "nuxt preview",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:components": "vitest run tests/components",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test --grep-invert @visual",
+    "test:e2e:settings": "playwright test tests/e2e/settings-graph.spec.ts",
+    "test:visual": "playwright test --grep @visual"
   },
   "dependencies": {
+    "@hey-api/client-fetch": "^0.13.1",
     "@lucide/vue": "^1.20.0",
     "@nuxtjs/color-mode": "^4.0.1",
     "@nuxtjs/i18n": "^10.4.0",
@@ -26,8 +36,19 @@
     "vue": "^3.5.38"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "^0.99.0",
+    "@playwright/test": "^1.58.2",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/user-event": "^14.6.1",
+    "@testing-library/vue": "^8.1.0",
     "@types/node": "^25.9.3",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vitest/coverage-v8": "^3.2.4",
+    "happy-dom": "^20.8.3",
     "typescript": "^6.0.3",
+    "vite": "^7.3.5",
+    "vitest": "^3.2.4",
     "vue-tsc": "^3.3.5"
   }
 }

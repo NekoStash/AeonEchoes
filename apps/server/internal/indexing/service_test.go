@@ -74,7 +74,11 @@ func TestServiceRunJobExtractsKnowledgeAndIndexesVector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateModel() error: %v", err)
 	}
-	version, job, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: "chapter_1", Title: "空白目录", Content: "[[人物:林烬]] 拿起 [[物品:灰烬钥匙]]。[[关系:林烬->灰烬钥匙:持有]] [[伏笔:第三见证人|未来回收]]", IndexStatus: "pending"})
+	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: project.ID, Title: "空白目录"})
+	if err != nil {
+		t.Fatalf("CreateChapter() error: %v", err)
+	}
+	version, job, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: project.ID, ChapterID: chapter.ID, Title: "空白目录", Content: "[[人物:林烬]] 拿起 [[物品:灰烬钥匙]]。[[关系:林烬->灰烬钥匙:持有]] [[伏笔:第三见证人|未来回收]]", AuthorRole: domain.AgentRoleWriter, IndexStatus: "pending"})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion() error: %v", err)
 	}
@@ -137,11 +141,19 @@ func TestServiceRebuildVectorsRecreatesCollectionAndRequeuesAllChapterVersions(t
 	if err != nil {
 		t.Fatalf("CreateProject(B) error: %v", err)
 	}
-	versionA, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: "chapter_a", Title: "A1", Content: "内容 A1", IndexStatus: "indexed"})
+	chapterA, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectA.ID, Title: "A1"})
+	if err != nil {
+		t.Fatalf("CreateChapter(A) error: %v", err)
+	}
+	chapterB, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectB.ID, Title: "B1"})
+	if err != nil {
+		t.Fatalf("CreateChapter(B) error: %v", err)
+	}
+	versionA, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectA.ID, ChapterID: chapterA.ID, Title: "A1", Content: "内容 A1", AuthorRole: domain.AgentRoleWriter, IndexStatus: "indexed"})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion(A) error: %v", err)
 	}
-	versionB, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectB.ID, ChapterID: "chapter_b", Title: "B1", Content: "内容 B1", IndexStatus: "failed"})
+	versionB, _, err := store.SaveChapterVersion(domain.ChapterVersion{ProjectID: projectB.ID, ChapterID: chapterB.ID, Title: "B1", Content: "内容 B1", AuthorRole: domain.AgentRoleWriter, IndexStatus: "failed"})
 	if err != nil {
 		t.Fatalf("SaveChapterVersion(B) error: %v", err)
 	}

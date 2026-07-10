@@ -109,7 +109,8 @@ type AppStore interface {
 	ListPlotThreads(projectID string) ([]domain.PlotThread, error)
 	ExpandGraph(projectID string, entityIDs []string, depth int) (domain.GraphExpansion, error)
 
-	EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error)
+	CreateChapter(req domain.CreateChapterRequest) (domain.Chapter, error)
+	UpdateChapter(req domain.UpdateChapterRequest) (domain.Chapter, error)
 	GetChapter(id string) (domain.Chapter, error)
 	ListChapters(projectID string) ([]domain.Chapter, error)
 	SaveChapterVersion(version domain.ChapterVersion) (domain.ChapterVersion, domain.IndexJob, error)

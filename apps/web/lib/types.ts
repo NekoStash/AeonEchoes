@@ -1,3 +1,8 @@
+import type { ChapterStatus as GeneratedChapterStatus, ChapterVersion as GeneratedChapterVersion, ChapterVersionRequest as GeneratedChapterVersionRequest, UpdateChapterRequest as GeneratedUpdateChapterRequest } from '~/lib/generated/api/types.gen'
+import type { ApiErrorState } from '~/shared/api'
+
+export type { ApiErrorState } from '~/shared/api'
+
 export type ProviderType = 'openai-responses' | 'openai' | 'anthropic' | 'gemini'
 export type ModelKind = 'text' | 'embedding'
 export type AgentRole =
@@ -18,13 +23,6 @@ export interface AppSetting {
   key: string
   value: Record<string, unknown>
   updated_at?: string
-}
-
-export interface ApiErrorState {
-  message: string
-  endpoint: string
-  status?: number
-  cause?: unknown
 }
 
 export interface HealthStatus {
@@ -86,6 +84,8 @@ export interface ModelConfig {
   supports_tools?: boolean
   supports_streaming?: boolean
   default_for_kind?: boolean
+  cost_input_per_mtok?: number
+  cost_output_per_mtok?: number
   routing_weight?: number
   allowed_agent_roles?: AgentRole[]
   metadata?: Record<string, string>
@@ -131,7 +131,8 @@ export interface Project {
   updated_at: string
 }
 
-export type ChapterStatus = 'planned' | 'drafting' | 'reviewing' | 'locked' | string
+export type ChapterStatus = GeneratedChapterStatus
+export const CHAPTER_STATUS_VALUES = ['planned', 'drafting', 'reviewing', 'locked'] as const satisfies readonly ChapterStatus[]
 
 export interface StoryBibleChapter {
   id: string
@@ -148,19 +149,10 @@ export interface Chapter extends StoryBibleChapter {
   updated_at?: string
 }
 
-export interface EnsureChapterRequest {
-  chapter_id?: string
-  number?: number
-  title?: string
-  status?: ChapterStatus
-  summary?: string
-  metadata?: Record<string, string>
-}
+export type ChapterWriteRequest = GeneratedUpdateChapterRequest
 
-export interface EnsureChapterResponse {
-  chapter: Chapter
-  created: boolean
-  requested_chapter_id?: string
+export interface ChapterVersionWriteRequest extends GeneratedChapterVersionRequest {
+  chapter_id: string
 }
 
 export interface StoryBible {
@@ -205,8 +197,7 @@ export interface StoryBible {
     payoff_hint: string
     status: 'planted' | 'active' | 'paid_off'
   }>
-  chapters: StoryBibleChapter[]
-  chapter_plan?: StoryBibleChapter[]
+  chapter_plan: StoryBibleChapter[]
 }
 
 export interface ProjectSummary {
@@ -221,7 +212,7 @@ export interface ProjectSummary {
   created_at?: string
   updated_at: string
   bible_status: 'missing' | 'draft' | 'ready'
-  chapter_count: number
+  chapter_count?: number | null
   target_chapters?: number
 }
 
@@ -270,7 +261,7 @@ export interface GraphNode {
 
 export interface GraphEdge {
   id: string
-  project_id?: string
+  project_id: string
   worldline_id?: string
   source: string
   target: string
@@ -304,11 +295,8 @@ export interface PlotThread {
 
 export interface GraphExpandRequest {
   project_id: string
-  root?: string
-  depth: number
-  timeline?: number
-  filters?: string[]
   entity_ids?: string[]
+  depth: number
 }
 
 export interface GraphExpansion {
@@ -317,12 +305,15 @@ export interface GraphExpansion {
   entities: Entity[]
   edges: GraphEdge[]
   facts: Fact[]
+  generated_at: string
 }
 
 export interface GraphExpandResponse {
+  project_id: string
+  depth: number
   nodes: GraphNode[]
   edges: GraphEdge[]
-  facts?: Fact[]
+  facts: Fact[]
   generated_at: string
 }
 
@@ -348,6 +339,7 @@ export interface ChapterVersion {
   id: string
   project_id: string
   chapter_id: string
+  parent_version_id?: NonNullable<GeneratedChapterVersion['parent_version_id']>
   version: number
   title: string
   content: string
@@ -357,8 +349,8 @@ export interface ChapterVersion {
   index_status?: string
   metadata?: Record<string, string>
   created_at: string
-  author: 'human' | 'ai'
-  change_note: string
+  author?: 'human' | 'ai'
+  change_note?: string
   metrics?: {
     word_count?: number
   }
@@ -411,10 +403,10 @@ export type ToolTrace = string | {
 }
 
 export interface AIWorkflowStep {
-  id: string
+  id?: string
   name: string
   status: 'idle' | 'running' | 'succeeded' | 'failed' | 'completed' | string
-  message: string
+  message?: string
   updated_at?: string
   started_at?: string
   ended_at?: string
@@ -439,6 +431,19 @@ export interface AIWorkflow {
   error?: ApiErrorState | string
   created_at?: string
   updated_at?: string
+}
+
+export interface AgentListOptions {
+  projectId?: string
+  enabled?: boolean
+  limit?: number
+}
+
+export interface AgentRunListOptions {
+  agentId?: string
+  projectId?: string
+  status?: AgentRun['status']
+  limit?: number
 }
 
 export interface AgentConfig {

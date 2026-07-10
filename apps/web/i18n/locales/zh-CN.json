@@ -1,7 +1,9 @@
 {
   "product": {
     "name": "Aeon Echoes",
-    "tagline": "长篇创作工作台"
+    "tagline": "长篇创作工作台",
+    "pageTitle": "Aeon Echoes｜长篇创作工作台",
+    "description": "面向长篇小说创作的项目、故事设定集与写作工作台。"
   },
   "common": {
     "emptyValue": "—",
@@ -16,12 +18,23 @@
   "nav": {
     "dashboard": "工作台",
     "projects": "项目",
+    "providers": "提供商",
     "models": "模型",
     "agents": "智能体管理",
+    "indexMaintenance": "索引维护",
     "newProject": "新建项目",
     "project": "项目概览",
     "editor": "编辑器",
     "graph": "关系图谱",
+    "creation": "创作",
+    "settings": "设置",
+    "currentProject": "当前项目",
+    "primaryNavigation": "主导航",
+    "mobileNavigation": "移动端导航",
+    "navigation": "导航",
+    "projectSwitcher": "切换已打开项目",
+    "openSettingsNavigation": "打开设置导航",
+    "mobileMenuDescription": "创作入口、当前项目工具与设置入口。",
     "openedProjects": "已打开项目",
     "emptyOpenedProjects": "从项目列表打开项目后，会显示在这里。",
     "openMenu": "打开导航菜单",
@@ -49,9 +62,13 @@
     "edit": "编辑",
     "delete": "删除",
     "cancel": "取消",
+    "confirm": "确认",
+    "dismiss": "关闭通知",
+    "skipToContent": "跳到主要内容",
     "close": "关闭"
   },
   "theme": {
+    "label": "主题",
     "system": "跟随系统",
     "light": "浅色",
     "dark": "深色"
@@ -66,29 +83,15 @@
     "sheet": {
       "label": "侧边面板"
     },
+    "field": {
+      "required": "必填"
+    },
+    "toast": {
+      "region": "通知"
+    },
     "select": {
       "noResults": "没有匹配结果",
       "search": "搜索选项"
-    },
-    "search": {
-      "label": "搜索",
-      "placeholder": "搜索",
-      "clear": "清空搜索"
-    },
-    "sort": {
-      "placeholder": "排序方式"
-    },
-    "viewMode": {
-      "label": "视图模式",
-      "table": "表格视图",
-      "grid": "卡片视图",
-      "list": "列表视图"
-    },
-    "density": {
-      "label": "显示密度",
-      "compact": "紧凑",
-      "comfortable": "标准",
-      "relaxed": "宽松"
     },
     "states": {
       "emptyTitle": "暂无数据",
@@ -99,13 +102,6 @@
       "errorDescription": "请求未能完成，请检查网络或稍后重试。",
       "noResultsTitle": "没有匹配结果",
       "noResultsDescription": "调整搜索关键词或筛选条件后再试。"
-    },
-    "editableList": {
-      "add": "新增一项",
-      "remove": "移除这一项",
-      "empty": "列表为空，可以新增一项。",
-      "itemPlaceholder": "输入内容",
-      "itemLabel": "列表项 {index}"
     }
   },
   "status": {
@@ -177,54 +173,125 @@
       "deep": "深度"
     }
   },
-  "apiError": {
-    "title": "后端请求失败",
-    "saveFailed": "保存请求失败"
+  "home": {
+    "eyebrow": "作品入口",
+    "title": "回到正在生长的故事。",
+    "description": "从最近创作继续，或建立一个新作品。这里不展示虚构进度，只给出基于真实项目状态的下一步。",
+    "newProjectTitle": "开始一个新作品",
+    "newProjectDescription": "先写清故事核心、人物冲突与风格边界，再创建故事设定集。",
+    "loadErrorTitle": "作品入口加载失败"
   },
-  "dashboard": {
-    "title": "工作台",
-    "description": "查看项目、模型和索引任务的当前状态。",
-    "tabs": {
-      "continue": "继续创作",
-      "flow": "创作流程",
-      "system": "系统状态"
+  "recentWork": {
+    "eyebrow": "最近创作",
+    "title": "从上次停下的地方继续",
+    "nextAction": "真实下一步",
+    "moreRecent": "其他最近作品",
+    "noMoreRecent": "还没有其他最近打开的作品。",
+    "emptyTitle": "还没有最近创作",
+    "emptyDescription": "创建第一个作品，或从项目库打开已有作品。",
+    "actions": {
+      "completeStoryBible": "完善故事设定集",
+      "completeStoryBibleDescription": "补全故事前提、世界规则与角色，让后续写作有明确依据。",
+      "createFirstChapter": "新建章节",
+      "createFirstChapterDescription": "当前真实章节为 0，从一个全新的章节开始。",
+      "continueProject": "打开作品",
+      "continueProjectDescription": "章节数量未知或已有真实章节，先进入作品查看当前状态。"
+    }
+  },
+  "projectOverviewWidget": {
+    "eyebrow": "作品概况",
+    "title": "把注意力放在可推进的工作上",
+    "description": "故事设定集与真实章节分开统计。未知章节数不会被当作 0。",
+    "totalProjects": "作品总数",
+    "readyStoryBibles": "已就绪故事设定集",
+    "knownChapters": "已知真实章节",
+    "unknownChapterProjects": "另有 {count} 个作品章节数未知",
+    "setupQueue": "待完善设定",
+    "setupQueueDescription": "这些作品的故事设定集尚未就绪。",
+    "setupQueueEmpty": "当前没有待完善的故事设定集。",
+    "firstChapterQueue": "可以新建首章",
+    "firstChapterQueueDescription": "这里只列出后端明确返回真实章节数为 0 的作品。",
+    "firstChapterQueueEmpty": "当前没有明确为 0 章的作品。",
+    "openLibrary": "打开项目库"
+  },
+  "projectLibrary": {
+    "pageEyebrow": "全部作品",
+    "pageTitle": "项目库",
+    "pageDescription": "按正文优先的纵向目录浏览作品；搜索始终可用，高级筛选只在需要时展开。",
+    "eyebrow": "作品目录",
+    "title": "选择要继续的作品",
+    "description": "每个作品只展示可验证的状态与行动，不依赖横向表格。",
+    "resultCount": "显示 {visible} / {total}",
+    "searchPlaceholder": "搜索标题、简介、标签或项目 ID",
+    "advancedFilters": "高级筛选",
+    "openProject": "打开作品",
+    "missingLogline": "暂无作品简介。",
+    "filters": {
+      "allProjectStatuses": "全部项目状态",
+      "allStoryBibleStatuses": "全部故事设定集状态",
+      "allRecentStates": "全部最近状态",
+      "projectStatus": "项目状态",
+      "storyBibleStatus": "故事设定集状态",
+      "recent": "最近打开状态",
+      "sort": "排序"
     },
-    "systemStatusDescription": "集中查看后端健康、模型提供商和索引任务状态。",
-    "systemHealth": "服务健康",
-    "activeIndexJobs": "等待中或运行中的索引任务",
-    "quickStart": "快速开始",
-    "systemStatus": "系统状态",
-    "projects": "项目",
-    "openedProjects": "已打开项目",
-    "providers": "模型提供商",
-    "models": "模型",
-    "indexQueue": "索引队列",
-    "emptyProjects": "暂无项目。创建一个项目后会在这里显示。",
-    "recentProjects": "最近打开",
-    "recentProjectsDescription": "继续处理已打开的项目。",
-    "emptyRecentProjects": "暂无已打开项目。前往项目页打开一个项目。",
-    "primaryFlowEyebrow": "主要流程",
-    "primaryFlowTitle": "从设定到正文的创作路径",
-    "primaryFlowDescription": "先创建项目并整理 Story Bible，再确认章节准备情况，最后进入编辑器生成方案或续写正文。",
-    "flow": {
-      "create": {
-        "title": "创建项目",
-        "description": "写下故事核心、类型标签和基本约束。"
+    "sort": {
+      "updated": "最近更新优先",
+      "created": "最近创建优先",
+      "title": "标题 A → Z"
+    }
+  },
+  "projectCreateFlow": {
+    "pageEyebrow": "新作品",
+    "pageTitle": "从故事意图开始",
+    "pageDescription": "分四步写清作品方向。创建项目会生成可维护的故事设定集，但不会自动创建、补齐或伪装任何真实章节。",
+    "progressLabel": "新建作品步骤",
+    "stepCounter": "第 {current} / {total} 步",
+    "next": "下一步",
+    "incompleteTitle": "请先完成当前步骤",
+    "reviewIncomplete": "仍有必填内容未完成，请返回对应步骤补充。",
+    "createErrorTitle": "创建作品失败",
+    "organizerTitle": "整理当前设定",
+    "organizerDescription": "可选操作。只整理你已填写的项目种子，不创建章节。",
+    "realChapterTitle": "创建后的真实章节数为 0",
+    "realChapterDescription": "故事设定集中的章节计划不是章节记录。创建完成后，只有你主动新建并保存的章节才计入真实章节数。",
+    "createdEyebrow": "作品已创建",
+    "createdDescription": "项目与故事设定集已创建，当前真实章节为 0。请选择一个明确的下一步。",
+    "completeStoryBible": "完善故事设定集",
+    "completeStoryBibleDescription": "继续编辑故事前提、规则、角色与章节规划。",
+    "createChapter": "新建章节",
+    "createChapterDescription": "进入空白章节流程；页面不会预先创建章节记录。",
+    "steps": {
+      "core": {
+        "title": "故事核心",
+        "description": "确定作品名称、一句话核心和便于检索的标签。",
+        "error": "作品名称和一句话核心不能为空。"
       },
-      "prepare": {
-        "title": "整理设定",
-        "description": "检查故事前提、世界规则、角色和章节规划。"
+      "world": {
+        "title": "人物与冲突",
+        "description": "写清世界背景、主角和推动故事的核心矛盾。",
+        "error": "世界背景、主角和核心冲突都需要填写。"
       },
-      "write": {
-        "title": "进入写作",
-        "description": "选择章节，预览上下文，再生成方案或正文。"
+      "voice": {
+        "title": "文风与边界",
+        "description": "明确叙述风格与必须避免的内容。",
+        "error": "写作风格和避免事项都需要填写。"
+      },
+      "review": {
+        "title": "确认并创建",
+        "description": "核对将要创建的作品，确认真实章节仍从 0 开始。",
+        "error": "请先完成前三个步骤。"
       }
     },
-    "metricHints": {
-      "readyProjects": "{count} 个设定已就绪",
-      "openedProjectsHint": "共 {count} 个项目",
-      "enabledProviders": "共 {count} 个 模型提供商",
-      "totalJobs": "共 {count} 个任务"
+    "fields": {
+      "titleDescription": "这是项目库和创作入口中显示的作品名称。",
+      "briefDescription": "用一句话说明主角、目标或核心异常。",
+      "tagsDescription": "使用逗号分隔，便于后续搜索。",
+      "worldDescription": "只写会影响人物选择和情节成立的背景。",
+      "protagonistDescription": "说明主角是谁，以及他为什么必须行动。",
+      "conflictDescription": "说明阻力、代价与不可回避的矛盾。",
+      "styleDescription": "描述句式、视角、节奏和情绪质地。",
+      "avoidDescription": "列出不希望出现的叙事捷径或内容边界。"
     }
   },
   "projects": {
@@ -242,9 +309,9 @@
     "chapterCountValue": "{count} 章",
     "targetChapters": "目标章节",
     "targetChapterCountValue": "{count} 章",
-    "storyBibleStatus": "Story Bible 状态",
-    "activeStoryBible": "Active Story Bible",
-    "missingActiveStoryBible": "暂无 Active Story Bible",
+    "storyBibleStatus": "故事设定集状态",
+    "activeStoryBible": "当前故事设定集",
+    "missingActiveStoryBible": "暂无当前故事设定集",
     "projectStatus": "项目状态",
     "projectId": "项目 ID",
     "slug": "Slug",
@@ -254,8 +321,6 @@
     "seedGenre": "类型",
     "seedTone": "语气",
     "seedAudience": "受众",
-    "viewModeLabel": "项目库视图",
-    "densityLabel": "项目库密度",
     "actions": {
       "overview": "概览",
       "editor": "编辑器",
@@ -263,25 +328,25 @@
     },
     "stats": {
       "total": "项目总数",
-      "activeBible": "Active Bible",
+      "activeBible": "当前故事设定集",
       "recentlyOpened": "最近打开",
       "targetChapters": "目标章节",
-      "readyBibleHint": "{count} 个 Story Bible 已就绪",
+      "readyBibleHint": "{count} 个故事设定集已就绪",
       "activeBibleHint": "共 {count} 个项目",
       "openedHint": "当前显示 {count} 个项目",
       "targetChaptersHint": "平均 {count} 章"
     },
     "search": {
       "label": "搜索项目库",
-      "placeholder": "搜索 title、id、slug、status、前提、类型、语气、受众、标签或 Active Bible ID",
+      "placeholder": "搜索标题、ID、别名、状态、前提、类型、语气、受众、标签或当前故事设定集 ID",
       "empty": "没有匹配项目"
     },
     "filters": {
       "allStatuses": "全部项目状态",
-      "allBibleStatuses": "全部 Story Bible 状态",
-      "allActiveBible": "全部 Active Bible",
-      "withActiveBible": "已有 Active Bible",
-      "withoutActiveBible": "无 Active Bible",
+      "allBibleStatuses": "全部故事设定集状态",
+      "allActiveBible": "全部当前故事设定集",
+      "withActiveBible": "已有当前故事设定集",
+      "withoutActiveBible": "无当前故事设定集",
       "allRecent": "全部打开状态",
       "recentlyOpened": "最近打开",
       "notRecentlyOpened": "未打开",
@@ -299,7 +364,7 @@
       "caption": "项目库列表",
       "project": "项目",
       "status": "状态",
-      "storyBible": "Story Bible",
+      "storyBible": "故事设定集",
       "targetChapters": "目标章节",
       "updatedAt": "时间",
       "actions": "操作"
@@ -311,7 +376,7 @@
       "emptyDescription": "创建第一个项目后，项目库会显示搜索、筛选和入口操作。",
       "errorTitle": "项目加载失败",
       "noResultsTitle": "没有匹配项目",
-      "noResultsDescription": "调整搜索关键词、状态或 Story Bible 筛选后再试。"
+      "noResultsDescription": "调整搜索关键词、状态或故事设定集筛选后再试。"
     },
     "statuses": {
       "active": "活跃",
@@ -325,7 +390,7 @@
   },
   "projectNew": {
     "title": "创建项目",
-    "description": "先写下故事的基本方向，系统会整理成可维护的故事设定。",
+    "description": "先写下故事的基本方向，系统会整理成可维护的故事设定集。",
     "tabs": {
       "core": "故事核心",
       "world": "世界人物",
@@ -355,7 +420,7 @@
     },
     "createdDescription": "项目已创建并加入已打开项目，可以进入工作区继续整理设定和章节。",
     "finalizeTitle": "创建工作区",
-    "finalizeDescription": "确认关键信息后创建项目，系统会生成初始 Story Bible 供后续维护。",
+    "finalizeDescription": "确认关键信息后创建项目，系统会生成初始故事设定集供后续维护。",
     "openWorkspace": "打开工作区",
     "pending": "待补充",
     "pendingHint": "仍有必要信息未填写完整，建议补齐后再创建项目。",
@@ -398,60 +463,32 @@
   },
   "projectOverview": {
     "loadingDescription": "正在加载项目详情。",
-    "storyBible": "故事设定",
+    "storyBible": "故事设定集",
     "worldRules": "世界规则",
     "characters": "角色",
     "foreshadowing": "伏笔",
     "chapters": "章节",
-    "saveStoryBible": "保存 Story Bible",
+    "saveStoryBible": "保存故事设定集",
     "openChapter": "在编辑器打开",
     "summary": {
-      "premise": "故事前提",
-      "themes": "主题",
-      "worldRules": "世界规则"
+      "title": "项目总览",
+      "eyebrow": "项目档案",
+      "plans": "章节规划",
+      "realChapters": "真实章节"
     },
-    "workspaceEyebrow": "工作区",
-    "workspaceTitle": "项目设定概览",
-    "nextActionEyebrow": "下一步",
-    "nextActionTitle": "继续推进章节",
-    "chapterSummary": "已推进 {active} / {total} 章",
-    "continueWriting": "继续写作",
-    "reviewChapters": "检查章节",
-    "prepTitle": "写作准备",
-    "prepDescription": "在进入正文前，确认关键设定、角色和伏笔已经可用。",
-    "prepCount": "{count} 项",
-    "prep": {
-      "rules": {
-        "title": "世界规则",
-        "description": "维护会影响连续性判断的规则、限制和设定约束。"
-      },
-      "characters": {
-        "title": "角色档案",
-        "description": "检查角色目标、创伤、秘密和当前定位。"
-      },
-      "foreshadows": {
-        "title": "伏笔线索",
-        "description": "确认已埋设内容、回收提示和当前状态。"
-      }
+    "storyBibleSections": {
+      "foundationEyebrow": "故事根基",
+      "foundationTitle": "前提与主题",
+      "foundationDescription": "在这里维护可长期引用的故事根基；不会在后台生成角色或章节。",
+      "worldEyebrow": "世界约束",
+      "charactersEyebrow": "角色档案",
+      "foreshadowEyebrow": "线索账本"
     },
-    "sections": {
-      "overview": "概览",
-      "story": "故事设定",
-      "characters": "角色",
-      "chapters": "章节"
-    },
-    "sectionDescriptions": {
-      "story": "编辑故事前提、主题、世界规则和伏笔线索。",
-      "characters": "维护角色清单和每个角色的创作约束。"
-    },
-    "openStorySetup": "打开故事设定",
-    "openCharacters": "打开角色",
-    "quickActions": "快捷操作",
-    "editStoryBible": "编辑 Story Bible",
-    "planChapters": "规划章节",
     "fields": {
       "premise": "故事前提",
       "themes": "主题",
+      "themeNumber": "主题 {number}",
+      "worldRuleNumber": "世界规则 {number}",
       "characterName": "姓名",
       "characterRole": "角色定位",
       "characterDesire": "欲望/目标",
@@ -467,57 +504,62 @@
       "chapterSummary": "章节摘要"
     },
     "placeholders": {
+      "premise": "写下故事不可替代的核心前提。",
       "theme": "主题关键词",
       "worldRule": "写下一条世界规则或设定约束。"
     },
-    "resultScopes": {
-      "storyBibleSave": "Story Bible 保存",
-      "characterSync": "角色同步",
-      "characterGeneration": "角色生成",
-      "chapterEnsure": "章节创建/确认"
+    "saveState": {
+      "dirty": "未保存",
+      "saving": "保存中",
+      "saved": "已保存",
+      "failed": "保存失败",
+      "conflict": "版本冲突",
+      "conflictDescription": "服务端故事设定集已更新，请加载服务端版本后继续。"
+    },
+    "leaveProtection": {
+      "title": "放弃未保存更改？",
+      "message": "故事设定集有未保存更改，离开后这些更改会丢失。确定离开吗？",
+      "loadServer": "加载服务端版本"
     },
     "characterSync": {
+      "eyebrow": "显式副作用",
+      "title": "同步为真实角色",
+      "description": "{syncable} 个角色资料完整，{pending} 个尚未关联真实角色。同步会先请求角色接口，再显式保存返回映射。",
+      "action": "同步角色",
       "syncing": "正在同步角色",
-      "synced": "角色已同步",
+      "synced": "角色已同步并保存",
       "failed": "角色同步失败",
       "pending": "待同步真实角色",
       "realCharacter": "真实角色"
     },
-    "characterGenerator": {
-      "eyebrow": "角色生成器",
-      "title": "生成可同步的角色设定",
-      "description": "生成主角完整设定或新增关键角色，结果会写入当前 Story Bible，并在保存后同步为后端真实角色。",
-      "generateProtagonist": "生成主角设定",
-      "generateCharacter": "生成角色",
-      "latestResult": "最近生成结果",
-      "failed": "角色草案生成失败，请检查当前 Story Bible。",
-      "prompts": {
-        "protagonist": "请生成或补全主角完整设定，必须包含姓名、角色定位、欲望/目标、创伤/缺口和秘密，并与当前故事前提强绑定。",
-        "character": "请生成一个适合当前故事下一阶段使用的关键角色，必须包含姓名、角色定位、欲望/目标、创伤/缺口和秘密。"
-      },
-      "localFallback": {
-        "theme": "核心主题",
-        "rule": "现有世界规则",
-        "protagonistName": "未命名主角",
-        "protagonistRole": "主角",
-        "protagonistDesire": "围绕“{premise}”主动推进真相。",
-        "protagonistWound": "曾因“{rule}”付出代价，因此抗拒再次信任系统。",
-        "protagonistSecret": "与“{theme}”相关的关键信息尚未公开。",
-        "supportingName": "关键角色 {count}",
-        "supportingRole": "关键配角",
-        "supportingDesire": "想利用“{premise}”改变自身处境。",
-        "supportingWound": "受“{rule}”影响而形成偏执立场。",
-        "supportingSecret": "掌握与“{theme}”相关的隐秘线索。"
-      }
+    "chapterPlan": {
+      "eyebrow": "故事设定集字段 · chapter_plan",
+      "title": "章节规划",
+      "description": "新增规划只修改故事设定集，不会创建任何真实章节。",
+      "add": "新增规划",
+      "empty": "暂无章节规划。点击“新增规划”只会添加一条可编辑规划。"
     },
-    "metrics": {
-      "themes": "主题",
-      "rules": "规则",
-      "rulesHint": "设定约束",
-      "characters": "角色",
-      "charactersHint": "初始角色",
-      "progress": "进度",
-      "chapterCount": "{count} 个章节"
+    "chapterCreate": {
+      "eyebrow": "真实章节操作",
+      "sectionTitle": "从零开始创建章节",
+      "sectionDescription": "真实章节默认数量为 0。只有打开对话框、填写并确认后才会发送创建请求；取消或失败不会写入章节列表。",
+      "action": "新建章节",
+      "title": "新建真实章节",
+      "description": "确认后才会创建真实章节。可以引用一条章节规划作为初始内容。",
+      "fromPlan": "引用章节规划",
+      "noPlan": "不引用规划",
+      "untitledPlan": "未命名规划 {number}",
+      "confirm": "确认新建章节",
+      "creating": "正在新建章节",
+      "titleRequired": "章节标题不能为空。",
+      "failed": "新建章节失败，请检查输入后重试。"
+    },
+    "realChapters": {
+      "eyebrow": "Chapter Store · 只读列表",
+      "title": "真实章节",
+      "description": "此列表只读取 Chapter Store，不从故事设定集补齐或推断章节。",
+      "emptyTitle": "真实章节为 0",
+      "emptyDescription": "点击“新建章节”并确认后，首个真实章节才会出现在这里。"
     },
     "empty": {
       "themes": "暂无主题。",
@@ -525,45 +567,31 @@
       "characters": "暂无角色。",
       "foreshadowing": "暂无伏笔。",
       "chapters": "暂无章节。"
-    }
-  },
-  "taskBoard": {
-    "tabs": {
-      "all": "全部",
-      "pending": "等待中",
-      "running": "运行中",
-      "failed": "失败",
-      "completed": "已完成"
     },
-    "stats": {
-      "all": "全部",
-      "pending": "等待中",
-      "running": "运行中",
-      "completed": "已完成",
-      "failed": "失败"
+    "confirmRemove": {
+      "theme": "确定删除主题 {number} 吗？",
+      "worldRule": "确定删除世界规则 {number} 吗？",
+      "character": "确定删除角色“{name}”吗？",
+      "foreshadow": "确定删除伏笔“{name}”吗？",
+      "chapterPlan": "确定删除章节规划“{name}”吗？"
     },
-    "empty": "暂无索引任务。",
-    "emptyProject": "当前项目暂无索引任务。",
-    "details": "展开原始详情",
-    "fields": {
-      "id": "原始 ID",
-      "kind": "索引任务类型",
-      "scope": "任务范围",
-      "project": "项目",
-      "chapter": "章节",
-      "chapterVersion": "章节版本",
-      "attempts": "尝试次数",
-      "createdAt": "创建时间",
-      "updatedAt": "更新时间",
-      "startedAt": "开始时间",
-      "completedAt": "完成时间",
-      "scheduledAt": "计划时间",
-      "payload": "Payload",
-      "error": "失败原因"
+    "actions": {
+      "addWorldRule": "新增世界规则",
+      "addCharacter": "新增角色",
+      "addForeshadow": "新增伏笔",
+      "removeThemeNumber": "删除主题 {number}",
+      "removeWorldRuleNumber": "删除世界规则 {number}",
+      "removeForeshadowNamed": "删除伏笔 {name}",
+      "removeCharacterNamed": "删除角色 {name}",
+      "removeChapterPlanNamed": "删除章节规划 {name}"
+    },
+    "errors": {
+      "loadFailed": "项目工作台加载失败。",
+      "saveFailed": "故事设定集保存失败。"
     }
   },
   "tooltips": {
-    "providerType": "模型提供商类型决定使用哪一种上游协议和请求格式。API Key、Base URL 与模型刷新接口必须匹配该协议。",
+    "providerType": "提供商类型决定使用哪一种上游协议和请求格式。API Key、Base URL 与模型刷新接口必须匹配该协议。",
     "baseUrl": "上游服务的 API 入口地址。错误的 Base URL 可能表现为鉴权失败或模型刷新失败。",
     "apiKey": "仅保存 API Key。编辑时留空会保留已保存 Key；输入新 Key 才会替换。",
     "streaming": "流式输出会边生成边返回内容；不支持流式的上游或模型应关闭。",
@@ -579,36 +607,27 @@
     "roleRoute": "为当前 Agent 角色指定模型；留空时使用默认模型路由。",
     "embeddingRoute": "向量嵌入路由会影响索引任务生成的向量维度，切换后通常需要重建向量集合。",
     "indexJobs": "索引任务用于把章节版本、事实和图谱信息写入检索/向量系统。",
-    "indexJobKind": "索引任务类型说明本任务要处理的对象或流程。",
-    "indexJobScope": "项目、章节和章节版本标识用于定位本次索引任务的影响范围。",
-    "indexJobAttempts": "后端尝试运行该索引任务的次数。",
-    "indexJobCreatedAt": "索引任务入队时间。",
-    "indexJobUpdatedAt": "索引任务最近状态更新时间。",
-    "indexJobError": "索引任务失败时后端返回的错误信息。",
-    "indexJobRawId": "后端索引任务原始 ID，排查日志时使用。",
-    "indexJobPayload": "索引任务附带的原始参数。",
     "editorVersions": "章节版本记录保存过的正文、作者角色、字数和索引状态。",
-    "runLog": "运行记录集中展示模型提供商、模型、Token 相关上下文、工具调用轨迹、索引 freshness 和索引任务。",
-    "modelResolution": "本次请求最终解析到的模型提供商、模型和路由来源。",
+    "runLog": "运行记录集中展示提供商、模型、Token 相关上下文、工具调用轨迹、索引 freshness 和索引任务。",
+    "modelResolution": "本次请求最终解析到的提供商、模型和路由来源。",
     "indexFreshness": "索引 freshness 表示当前章节最新版本是否已被索引。",
     "toolTrace": "工具调用轨迹记录生成过程中调用过的上下文、图谱、事实或章节工具。"
   },
   "models": {
     "title": "模型设置",
-    "description": "管理模型提供商连接、真实模型目录和实际生效的路由设置。",
+    "description": "管理提供商连接、真实模型目录和实际生效的路由设置。",
     "tabs": {
-      "providers": "模型提供商",
+      "providers": "提供商",
       "models": "模型",
       "routing": "模型路由",
       "indexJobs": "索引任务"
     },
-    "providerDialogDescription": "在弹窗中新增或编辑模型提供商连接。API Key 留空时会保留已保存密钥。",
+    "providerDialogDescription": "在弹窗中新增或编辑提供商连接。API Key 留空时会保留已保存密钥。",
     "modelDialogDescription": "在弹窗中维护模型的上下文、输出、向量和路由能力。",
     "apiKeyBlankKeepsExisting": "编辑时留空会保留已保存 API Key；仅在输入新 API Key 时替换。",
     "apiKeySavedConfigured": "已配置 API Key",
     "confirmDeleteTitle": "确认删除",
     "confirmDeleteWarning": "删除操作不可撤销，请确认当前对象不再被路由或项目使用。",
-    "indexJobsTitle": "索引任务看板",
     "routeGroups": {
       "writing": {
         "title": "写作与编辑",
@@ -616,24 +635,24 @@
       },
       "canon": {
         "title": "设定与连续性",
-        "description": "用于 Story Bible、世界规则、角色和连续性审计的模型路由。"
+        "description": "用于故事设定集、世界规则、角色和连续性审计的模型路由。"
       },
       "knowledge": {
         "title": "知识与索引",
         "description": "用于事实提取、图谱维护和向量嵌入的模型路由。"
       }
     },
-    "providers": "模型提供商",
+    "providers": "提供商",
     "providersEyebrow": "提供商",
-    "providerConfig": "模型提供商 配置",
-    "newProvider": "新增 模型提供商",
+    "providerConfig": "提供商配置",
+    "newProvider": "新增提供商",
     "configurationEyebrow": "配置",
-    "providerConnectionEyebrow": "模型提供商 连接",
-    "providerConnectionTitle": "模型提供商 连接",
-    "providerConnectionDescription": "这里只配置真实连接信息与模型发现入口，不再把 模型提供商 级默认模型当成主路由配置。",
-    "providerConnectionNoteTitle": "关于 模型提供商 默认模型",
-    "providerConnectionNoteDescription": "模型提供商.default_model_id 会继续保存在配置里，但它不参与当前真实后端路由优先级，因此这里只作为备注信息展示。",
-    "providerDraftDescription": "创建一个新的上游 模型提供商 连接。",
+    "providerConnectionEyebrow": "提供商连接",
+    "providerConnectionTitle": "提供商连接",
+    "providerConnectionDescription": "这里只配置真实连接信息与模型发现入口，不再把提供商级默认模型当成主路由配置。",
+    "providerConnectionNoteTitle": "关于提供商默认模型",
+    "providerConnectionNoteDescription": "提供商.default_model_id 会继续保存在配置里，但它不参与当前真实后端路由优先级，因此这里只作为备注信息展示。",
+    "providerDraftDescription": "创建一个新的上游提供商连接。",
     "modelCatalogEyebrow": "模型目录",
     "modelCatalogTitle": "模型目录",
     "modelCatalogDescription": "只展示和编辑后端真实使用的模型字段：类型、窗口、输出上限、维度、路由权重、角色限制等。",
@@ -645,27 +664,27 @@
     "routingDescription": "明确配置真实生效的路由入口，并把向量重建维护动作放在这里。",
     "refreshModels": "刷新模型",
     "addProvider": "新增",
-    "addAnotherProvider": "继续新增 模型提供商",
-    "allProviders": "全部 模型提供商",
-    "allProvidersDescription": "查看并管理所有 模型提供商 的模型。",
+    "addAnotherProvider": "继续新增提供商",
+    "allProviders": "全部提供商",
+    "allProvidersDescription": "查看并管理所有提供商的模型。",
     "name": "提供商名称",
     "type": "接口类型",
     "baseUrl": "Base URL",
     "apiKey": "API Key",
     "apiKeyPlaceholder": "留空以保留已保存密钥；输入新密钥才会覆盖",
     "apiKeySavedUnverified": "已保存密钥线索：{hint}（未验证；协议或 Base URL 错误也可能表现为凭证错误）",
-    "protocolCompatibilityHint": "模型提供商 类型代表上游协议。API Key、Base URL 与模型刷新接口必须匹配该协议；例如 Anthropic Key 不能配 OpenAI Chat 协议，协议选错时常会表现为凭证错误。",
+    "protocolCompatibilityHint": "提供商类型代表上游协议。API Key、Base URL 与模型刷新接口必须匹配该协议；例如 Anthropic Key 不能配 OpenAI Chat 协议，协议选错时常会表现为凭证错误。",
     "streaming": "流式输出",
     "enabled": "启用",
-    "providerId": "模型提供商 ID",
+    "providerId": "提供商ID",
     "displayName": "显示名称",
-    "providerType": "模型提供商 类型",
+    "providerType": "提供商类型",
     "defaultModelId": "默认模型 ID",
     "defaultModelIdStored": "已保存但不参与当前路由：",
     "apiKeyHint": "密钥配置状态",
     "apiKeyHintPlaceholder": "sk-... 尾号或密钥位置",
     "noApiKeyHint": "未配置 API Key", 
-    "enableProvider": "启用 模型提供商",
+    "enableProvider": "启用提供商",
     "lastCheckedAt": "最后探测时间",
     "notChecked": "尚未探测",
     "saveFailed": "保存请求失败",
@@ -676,15 +695,15 @@
     "routingWeight": "路由权重",
     "streamingOn": "流式输出开启",
     "streamingOff": "流式输出关闭",
-    "emptyProviders": "暂无 模型提供商 配置。可以点击新增创建多个 模型提供商。",
-    "emptyModels": "暂无模型。可手动新增，或选择 模型提供商 后刷新模型。",
+    "emptyProviders": "暂无提供商配置。可以点击新增创建多个提供商。",
+    "emptyModels": "暂无模型。可手动新增，或选择提供商后刷新模型。",
     "addModel": "新增模型",
     "editModel": "编辑模型",
     "newModel": "新建模型",
     "saveModel": "保存模型",
     "modelId": "模型记录 ID",
-    "modelProvider": "所属 模型提供商",
-    "selectProvider": "选择 模型提供商",
+    "modelProvider": "所属提供商",
+    "selectProvider": "选择提供商",
     "kind": "模型类型",
     "upstreamModelId": "上游模型 ID",
     "defaultForKind": "类型默认",
@@ -710,9 +729,9 @@
     "disabledModelReason": "该模型已停用，不能作为显式路由使用。",
     "editingBadge": "正在编辑",
     "confirmDeleteModel": "确定删除模型“{name}”吗？",
-    "confirmDeleteProvider": "确定删除 模型提供商“{name}”吗？关联模型也会一起删除。",
+    "confirmDeleteProvider": "确定删除提供商“{name}”吗？关联模型也会一起删除。",
     "defaults": {
-      "providerName": "新 模型提供商"
+      "providerName": "新提供商"
     },
     "placeholders": {
       "providers": {
@@ -822,7 +841,7 @@
       }
     },
     "summary": {
-      "providers": "模型提供商",
+      "providers": "提供商",
       "enabledProviders": "已启用 {count} 个",
       "models": "模型",
       "enabledModels": "已启用 {count} 个",
@@ -830,10 +849,10 @@
       "embeddingModels": "向量模型"
     },
     "search": {
-      "provider": "搜索 模型提供商 名称或类型",
-      "model": "搜索模型名称、模型提供商 或 ID",
+      "provider": "搜索提供商名称或类型",
+      "model": "搜索模型名称、提供商或 ID",
       "modelCatalogLabel": "搜索模型目录",
-      "modelCatalog": "搜索名称、ID、Provider、类型或角色",
+      "modelCatalog": "搜索名称、ID、提供商、类型或角色",
       "empty": "没有匹配结果"
     },
     "filters": {
@@ -853,8 +872,8 @@
     "sort": {
       "nameAsc": "名称 A → Z",
       "nameDesc": "名称 Z → A",
-      "providerAsc": "Provider A → Z",
-      "providerDesc": "Provider Z → A",
+      "providerAsc": "提供商A → Z",
+      "providerDesc": "提供商Z → A",
       "contextDesc": "上下文从大到小",
       "contextAsc": "上下文从小到大",
       "weightDesc": "权重从高到低",
@@ -865,7 +884,7 @@
     "table": {
       "caption": "模型目录列表",
       "model": "模型",
-      "provider": "Provider",
+      "provider": "提供商",
       "kind": "类型",
       "status": "状态",
       "context": "上下文",
@@ -877,9 +896,9 @@
     },
     "states": {
       "loadingTitle": "正在加载模型目录",
-      "loadingDescription": "正在读取 Provider 与模型配置。",
+      "loadingDescription": "正在读取提供商与模型配置。",
       "emptyTitle": "暂无模型",
-      "emptyDescription": "可手动新增模型，或刷新 Provider 后同步上游模型。",
+      "emptyDescription": "可手动新增模型，或刷新提供商后同步上游模型。",
       "noResultsTitle": "没有匹配模型",
       "noResultsDescription": "调整搜索关键词或清空筛选后再试。"
     },
@@ -887,8 +906,6 @@
       "streaming": "流式",
       "tools": "工具"
     },
-    "viewModeLabel": "模型目录视图",
-    "densityLabel": "模型目录密度",
     "outputShort": "输出",
     "dimensionShort": "维度",
     "updatedAt": "更新时间",
@@ -914,8 +931,8 @@
       "failed": "维护任务失败，请查看错误信息。"
     },
     "resultScopes": {
-      "providerSave": "模型提供商 保存",
-      "providerDelete": "模型提供商 删除",
+      "providerSave": "提供商保存",
+      "providerDelete": "提供商删除",
       "modelSave": "模型保存",
       "modelDelete": "模型删除",
       "settingsLoad": "功能模型设置加载",
@@ -948,22 +965,80 @@
       "embedding": "向量嵌入"
     },
     "errors": {
-      "providerRequired": "请先选择模型所属 模型提供商。",
+      "providerRequired": "请先选择模型所属提供商。",
       "modelNameRequired": "上游模型 ID 不能为空。",
       "invalidNumber": "{field} 必须是大于等于 0 的数字。",
-      "providerNameRequired": "模型提供商 名称不能为空。",
-      "baseUrlRequired": "模型提供商 Base URL 不能为空。"
+      "providerNameRequired": "提供商名称不能为空。",
+      "baseUrlRequired": "提供商Base URL 不能为空。"
     }
   },
   "editor": {
     "eyebrow": "写作工作台",
     "title": "章节",
-    "description": "编辑正文，保存版本，并查看真实上下文命中与执行诊断。",
+    "description": "只编辑真实章节；草稿保存在本地，正文仅在手动创建版本后写入后端。",
+    "actions": {
+      "openAssistant": "AI 助手",
+      "fullscreen": "正文全屏",
+      "exitFullscreen": "退出全屏",
+      "createVersion": "创建版本",
+      "runAgent": "运行 Agent"
+    },
+    "fields": {
+      "title": "章节标题",
+      "titlePlaceholder": "输入章节标题",
+      "contentPlaceholder": "从这里开始写作……"
+    },
+    "assistant": {
+      "title": "AI 提案",
+      "description": "Generic Agent Run 的结果只进入提案区，不会自动修改正文或创建版本。",
+      "agentLabel": "选择 Agent",
+      "agentPlaceholder": "选择已启用 Agent",
+      "promptPlaceholder": "说明你希望 Agent 提供什么写作提案……",
+      "defaultPrompt": "为《{title}》提供可审阅的写作提案。",
+      "sheetTitle": "AI 助手",
+      "sheetDescription": "选择上下文并运行 Agent；结果必须由你决定如何应用。"
+    },
+    "proposals": {
+      "title": "提案区",
+      "description": "提案不会自动进入正文。可在光标处插入、替换有效选区、追加或拒绝。",
+      "emptyTitle": "暂无提案",
+      "emptyDescription": "运行 Agent 后，结果会先出现在这里。",
+      "received": "Agent 提案已收到",
+      "insert": "插入",
+      "replace": "替换选区",
+      "append": "追加",
+      "reject": "拒绝",
+      "status": {
+        "pending": "待处理",
+        "applied": "已应用",
+        "rejected": "已拒绝"
+      }
+    },
+    "recovery": {
+      "title": "发现本地恢复草稿",
+      "description": "此浏览器在 {time} 保存了不同于后端版本的草稿。",
+      "viewDiff": "查看差异",
+      "keepBackend": "保留后端版本",
+      "restore": "恢复本地草稿",
+      "restored": "已恢复本地草稿",
+      "backendKept": "已保留后端版本",
+      "diffTitle": "本地草稿与后端版本差异",
+      "diffDescription": "加号是本地新增，减号是后端中存在但本地已删除的行。"
+    },
+    "emptyProject": {
+      "title": "项目还没有真实章节",
+      "description": "章节规划不等于真实章节。请返回项目章节区域显式创建章节后再进入写作；这里不会自动创建或确保章节。",
+      "back": "返回项目章节"
+    },
+    "invalidChapter": {
+      "title": "无法打开这个章节",
+      "description": "章节 {id} 不在当前项目的真实章节列表中。编辑器不会创建、确保或替换它。",
+      "openFirst": "打开第一个真实章节"
+    },
     "reference": "参考资料",
-    "context": "上下文",
     "runLog": "运行记录",
     "runLogTitle": "模型、Token、工具调用与索引记录",
-    "runLogDescription": "集中查看本次生成使用的模型提供商、模型路由、Token 相关上下文、工具调用轨迹和索引 freshness。",
+    "runLogDescription": "集中查看本次生成使用的提供商、模型路由、Token 相关上下文、工具调用轨迹和索引 freshness。",
     "referenceDescription": "这里展示本章可用的真实参考资料，并按你本次勾选的重点参考范围高亮显示。",
     "emptyReference": "当前还没有可展示的参考资料。",
     "referenceFocusEyebrow": "高级参考范围",
@@ -972,7 +1047,7 @@
     "referenceFocusDefault": "默认参考当前项目上下文",
     "referenceFocusSelected": "本次重点",
     "referenceFocusClear": "清空角色",
-    "referenceFocusEmptyCharacters": "Story Bible 中还没有可选角色。",
+    "referenceFocusEmptyCharacters": "故事设定集中还没有可选角色。",
     "referenceFocusLabels": {
       "chapterPlan": "当前章节方案",
       "chapterSummary": "当前章节摘要",
@@ -986,7 +1061,7 @@
       },
       "chapterSummary": {
         "label": "当前章节摘要",
-        "description": "把 Story Bible 中当前章节摘要作为重点参考。"
+        "description": "把故事设定集中当前章节摘要作为重点参考。"
       },
       "worldRules": {
         "label": "世界规则",
@@ -998,7 +1073,7 @@
       },
       "characters": {
         "label": "角色",
-        "description": "从 Story Bible 里选择本次重点参考的角色。"
+        "description": "从故事设定集里选择本次重点参考的角色。"
       }
     },
     "referenceSections": {
@@ -1028,7 +1103,7 @@
     },
     "unsyncedCharacters": {
       "badge": "未同步",
-      "message": "以下角色尚未同步为真实角色，AI 上下文请求不会引用它们：{names}。请先保存 Story Bible 并完成角色同步。"
+      "message": "以下角色尚未同步为真实角色，AI 上下文请求不会引用它们：{names}。请先保存故事设定集并完成角色同步。"
     },
     "characterAnchor": {
       "role": "定位：{value}",
@@ -1036,8 +1111,6 @@
       "wound": "创伤：{value}",
       "secret": "秘密：{value}"
     },
-    "invalidChapterLabel": "目标章节 {id} 尚未创建",
-    "invalidChapterNotice": "章节 {id} 不在当前章节列表中；点击生成/保存时会自动创建并切换到真实章节 ID。",
     "chapterFallbackTitle": "第 {number} 章",
     "chapterOptionDescription": "第 {number} 章 · {status}",
     "chapterSelector": {
@@ -1073,7 +1146,15 @@
       "completed": "后台索引已完成",
       "idle": "暂无后台索引动作"
     },
-    "context": "上下文",
+    "context": {
+      "title": "上下文选择",
+      "description": "仅控制真实 Agent Run 请求；页面不会模拟或展示后端上下文命中。",
+      "currentChapter": "包含当前章节",
+      "worldRules": "包含世界规则",
+      "previousChapters": "参考前 N 个真实章节",
+      "characters": "重点角色",
+      "noSyncedCharacters": "暂无已同步为真实实体的角色。"
+    },
     "plan": "想法/方案",
     "draft": "生成",
     "review": "检查",
@@ -1090,6 +1171,9 @@
       "runLog": "运行记录"
     },
     "workspace": {
+      "unsaved": "本地草稿未创建版本",
+      "savedLocally": "与后端版本一致",
+      "chapterNumber": "第 {number} 章",
       "ready": "工作台就绪",
       "busy": "处理中",
       "inspectorEyebrow": "Inspector",
@@ -1097,6 +1181,7 @@
       "inspectorDescription": "按上下文、生成、审阅、版本和运行记录组织辅助信息。"
     },
     "states": {
+      "loadingWorkspace": "正在读取真实章节与版本……",
       "versionsDescription": "查看并载入当前章节的历史版本。",
       "loadingVersionsTitle": "正在加载章节版本",
       "loadingVersionsDescription": "请稍候，正在读取当前章节的保存记录。",
@@ -1114,96 +1199,14 @@
     "chapterPlanLine": "可编辑章节方案：\n{plan}",
     "content": "正文",
     "noIndexJobs": "当前项目暂无索引任务。保存章节版本后，后端会创建重索引任务。",
-    "emptyVersions": "暂无章节版本。保存后会显示历史版本。",
+    "emptyVersions": "此真实章节还没有保存版本。只有点击“创建版本”才会生成版本。",
     "versionLabel": "v{version} · {title}",
     "jobAttempts": "{id} · 尝试 {count} 次",
     "feedback": {
       "planReady": "章节方案已更新",
       "draftAppended": "草稿已追加到正文",
-      "versionSaved": "章节版本已保存",
+      "versionSaved": "真实章节版本已创建",
       "versionLoaded": "已载入"
-    },
-    "preview": {
-      "eyebrow": "上下文预览",
-      "title": "本次实际命中",
-      "description": "预先查看当前 selection 在真实后端下会命中的 ContextPack、索引新鲜度与模型路由结果。",
-      "loadingTitle": "正在准备上下文",
-      "loading": "正在生成上下文预览……",
-      "emptyTitle": "暂无上下文预览",
-      "empty": "还没有预览结果。先选择重点参考范围，再预览方案或草稿上下文。",
-      "unavailableTitle": "上下文预览暂不可用",
-      "actualContext": "本次实际命中",
-      "structuredContextTitle": "结构化命中上下文",
-      "emptyStructuredContext": "这次预览没有返回可展示的结构化命中内容。",
-      "freshnessTitle": "索引 freshness",
-      "modelResolutionTitle": "模型解析结果",
-      "estimatedToken": "预计 {count} Token",
-      "estimatedTokens": "预计 {count} Token",
-      "summaryText": "章节摘要 {chapterSummaryCount} 条，实体 {entityCount} 个，事实 {factCount} 条，情节线 {plotThreadCount} 条，世界规则 {worldRuleCount} 条",
-      "targets": {
-        "chapter_idea": "方案生成上下文",
-        "draft": "草稿生成上下文"
-      },
-      "actions": {
-        "chapter_idea": "预览方案上下文",
-        "draft": "预览草稿上下文"
-      },
-      "sections": {
-        "chapterSummaries": "章节摘要",
-        "worldRules": "世界规则",
-        "entities": "实体",
-        "facts": "事实",
-        "plotThreads": "情节线"
-      },
-      "counts": {
-        "chapterSummaries": "章节摘要 {count}",
-        "entities": "实体 {count}",
-        "facts": "事实 {count}",
-        "plotThreads": "情节线 {count}",
-        "worldRules": "世界规则 {count}"
-      }
-    },
-    "continuityAudit": {
-      "title": "连续性审计",
-      "description": "展示后端返回的真实 continuity_audit 结果，不在前端生成或推断额外结论。",
-      "empty": "当前还没有连续性审计结果。生成草稿后会显示真实审计输出。",
-      "passed": "本次连续性审计未发现问题。",
-      "summary": {
-        "empty": "当前还没有连续性审计结果。生成草稿后会显示真实审计输出。",
-        "passed": "已返回连续性审计结果，当前没有发现问题。",
-        "hasIssues": "已返回连续性审计结果，发现 {count} 条问题。"
-      },
-      "issueCount": "问题 {count} 条",
-      "message": "问题说明",
-      "excerpt": "草稿摘录",
-      "suggestion": "修正建议",
-      "evidence": "证据",
-      "status": {
-        "passed": "通过",
-        "warning": "警告",
-        "failed": "失败"
-      },
-      "types": {
-        "hard_conflict": "硬冲突",
-        "soft_drift": "软偏移",
-        "missing_followup": "缺少跟进",
-        "unsupported_new_claim": "无依据新断言"
-      },
-      "severity": {
-        "error": "错误",
-        "warning": "警告"
-      },
-      "evidenceKinds": {
-        "world_rule": "世界规则",
-        "fact": "事实",
-        "entity": "实体",
-        "plot_thread": "情节线",
-        "chapter_summary": "章节摘要",
-        "chapter_idea": "章节方案",
-        "brief": "章节简报",
-        "draft_observation": "草稿观察"
-      }
-
     },
     "diagnostics": {
       "eyebrow": "执行诊断",
@@ -1216,7 +1219,7 @@
       "emptyModelResolution": "还没有模型解析结果。",
       "emptyFreshness": "还没有 freshness 结果。",
       "emptyIndexJobs": "当前没有最近索引任务。",
-      "provider": "实际 模型提供商",
+      "provider": "实际提供商",
       "model": "实际模型",
       "route": "实际路由",
       "routeSource": "路由来源",
@@ -1294,20 +1297,27 @@
       "aiPlan": "AI 章节方案",
       "aiDraft": "AI 章节草稿",
       "saveVersion": "章节版本保存",
-      "previewContext": "上下文预览",
       "agentRuns": "智能体运行"
     },
     "changeNotes": {
-      "manualSave": "人工保存"
+      "manualSave": "用户手动创建版本"
     },
     "errors": {
+      "title": "写作操作失败",
+      "draftTitle": "本地草稿不可用",
+      "loadWorkspaceFailed": "写作工作区加载失败",
+      "chapterDoesNotExist": "章节 {id} 不存在于当前项目。",
+      "realChapterRequired": "必须先选择真实存在的章节。",
+      "draftReadFailed": "读取本地草稿失败；请检查浏览器存储权限。",
+      "draftWriteFailed": "本地草稿写入失败；当前修改可能无法自动恢复。",
+      "draftRemoveFailed": "无法清理本地草稿；请检查浏览器存储权限。",
+      "agentRunFailed": "Agent Run 失败",
+      "proposalApplyFailed": "应用提案失败",
       "loadVersionsFailed": "章节版本加载失败",
       "loadIndexJobsFailed": "索引任务加载失败",
       "generatePlanFailed": "章节方案生成失败",
       "generateDraftFailed": "AI 草稿生成失败",
       "saveVersionFailed": "章节版本保存失败",
-      "previewContextFailed": "上下文预览失败",
-      "previewContextRemoved": "上下文预览暂不可用。请直接生成方案或续写；生成完成后，本页会展示实际模型路由、工具调用与索引状态。",
       "loadAgentsFailed": "智能体配置加载失败",
       "noAgentConfigured": "没有可用的启用智能体。请先在智能体管理中创建并启用写作或剧情智能体。"
     }
@@ -1583,14 +1593,118 @@
     },
     "confirmDeleteTitle": "确认删除资源",
     "confirmDeleteDescription": "确定删除“{name}”吗？",
-    "confirmDeleteWarning": "删除操作不可撤销，请确认该资源不再被当前项目或其他资源引用。",
-    "viewModeLabel": "资源视图",
-    "densityLabel": "资源显示密度"
+    "confirmDeleteWarning": "删除操作不可撤销，请确认该资源不再被当前项目或其他资源引用。"
+  },
+  "settings": {
+    "eyebrow": "系统设置",
+    "navigation": "设置导航",
+    "formError": "请修正配置",
+    "stringMapHelp": "填写 JSON 对象；此字段的每个值都必须是字符串。",
+    "nav": {
+      "providers": "提供商",
+      "models": "模型与路由",
+      "agents": "智能体资源",
+      "indexMaintenance": "索引维护"
+    },
+    "navDescriptions": {
+      "providers": "连接、密钥和运行策略",
+      "models": "模型能力、成本与用途路由",
+      "agents": "Agent、Skill、MCP 与 Tool",
+      "indexMaintenance": "向量重建与索引任务"
+    },
+    "fields": {
+      "name": "名称",
+      "description": "描述",
+      "enabled": "启用"
+    },
+    "providers": {
+      "title": "提供商连接",
+      "description": "维护真实上游连接、密钥与运行策略。模型同步只调用提供商模型刷新接口，不在前端伪造模型。",
+      "search": "查找提供商",
+      "searchPlaceholder": "搜索名称、ID、类型、地址或状态",
+      "add": "新增提供商",
+      "refreshModels": "刷新模型",
+      "emptyTitle": "暂无提供商",
+      "emptyDescription": "新增提供商后，才能配置模型并建立用途路由。",
+      "noSecret": "未返回密钥提示",
+      "secretHelp": "编辑时留空会保留后端已存密钥；后端不会返回原始密钥。",
+      "deleteTitle": "删除提供商",
+      "deleteDescription": "确认删除提供商“{name}”？关联资源可能无法继续路由。",
+      "sections": { "identity": "连接身份", "runtime": "运行策略" },
+      "fields": { "type": "协议类型", "streaming": "流式响应", "traceEnabled": "请求追踪", "traceRetention": "追踪保留天数", "timeout": "默认超时（秒）", "defaultModel": "默认模型 ID" },
+      "placeholders": { "id": "provider-openai", "keepSecret": "留空以保留已存密钥" },
+      "dialog": { "createTitle": "新增提供商", "editTitle": "编辑提供商", "description": "表单字段与提供商写入契约一致；不会展示后端不支持的测试连接或模拟成功。" },
+      "errors": { "invalidForm": "提供商表单无效。" },
+      "messages": { "loading": "正在加载提供商", "loadFailed": "提供商加载失败", "saved": "提供商已保存", "saveFailed": "提供商保存失败", "modelsRefreshed": "模型刷新完成", "modelsRefreshedDescription": "后端返回 {count} 个模型。", "refreshFailed": "模型刷新失败", "deleted": "提供商已删除", "deleteFailed": "提供商删除失败" }
+    },
+    "models": {
+      "title": "模型与用途路由",
+      "description": "维护真实模型契约字段，并把各智能体角色与向量用途路由到明确模型。",
+      "catalogEyebrow": "模型目录",
+      "catalogTitle": "模型能力与成本",
+      "searchPlaceholder": "搜索名称、ID、提供商、类型或角色",
+      "allProviders": "全部提供商",
+      "add": "新增模型",
+      "emptyTitle": "暂无模型",
+      "emptyDescription": "先新增提供商，再手动新增模型或从提供商刷新模型。",
+      "routingEyebrow": "用途路由",
+      "routingTitle": "角色与向量模型",
+      "routingDescription": "保存后调用真实 model routing 接口；空值表示继承后端回退策略。",
+      "saveRouting": "保存路由",
+      "inheritRouting": "继承后端路由",
+      "deleteTitle": "删除模型",
+      "deleteDescription": "确认删除模型“{name}”？已显式引用此模型的路由或智能体可能失效。",
+      "sections": { "identity": "模型身份", "limits": "上下文、输出与成本", "capabilities": "能力与状态" },
+      "fields": { "provider": "提供商", "upstreamId": "上游模型 ID", "kind": "模型类型" },
+      "dialog": { "createTitle": "新增模型", "editTitle": "编辑模型", "description": "覆盖 ModelRequest 中的身份、限制、成本、能力、路由权重、角色限制与 metadata。" },
+      "errors": { "invalidForm": "模型表单无效。" },
+      "messages": { "loading": "正在加载模型配置", "loadFailed": "模型配置加载失败", "saved": "模型已保存", "saveFailed": "模型保存失败", "routingSaved": "用途路由已保存", "routingSaveFailed": "用途路由保存失败", "deleted": "模型已删除", "deleteFailed": "模型删除失败" }
+    },
+    "agents": {
+      "title": "智能体资源",
+      "description": "按任务管理 Agent、Skill、MCP Server 与 Tool。只展示契约中真实存在的保存、启停、扫描、测试与刷新操作。",
+      "search": "查找当前资源",
+      "searchPlaceholder": "搜索名称、ID、来源、角色、状态或绑定关系",
+      "addAgent": "新增 Agent",
+      "addSkill": "新增 Skill",
+      "addMCP": "新增 MCP Server",
+      "scanSkills": "扫描默认技能",
+      "enable": "启用",
+      "disable": "停用",
+      "test": "测试",
+      "refreshTools": "刷新工具",
+      "noDescription": "暂无描述",
+      "noResults": "没有匹配资源。",
+      "inheritModel": "继承角色路由",
+      "deleteTitle": "删除资源",
+      "deleteDescription": "确认删除“{name}”？该操作不可撤销。",
+      "secretBlankHelp": "留空不会覆盖后端已存密钥；这里只提交新值。",
+      "jsonHelp": "memory_policy 和 runtime_options 接受任意 JSON 对象；metadata 的值必须是字符串。",
+      "resources": { "agents": "Agents", "skills": "Skills", "mcp": "MCP Servers", "tools": "Tools" },
+      "resourceDescriptions": { "agents": "角色、模型、提示词与绑定", "skills": "内联内容、来源与扫描结果", "mcp": "连接、密钥、环境与工具刷新", "tools": "只读目录与启停状态" },
+      "sections": { "identity": "身份与执行", "bindings": "资源绑定", "runtime": "内存与运行选项", "environment": "请求头与环境变量" },
+      "dialog": { "createTitle": "新增 Agent", "editTitle": "编辑 Agent", "description": "维护 Agent 契约中的项目、角色、模型、提示词、绑定、内存策略和运行参数。" },
+      "skillDialog": { "createTitle": "新增 Skill", "editTitle": "编辑 Skill", "description": "维护 Skill 的来源、项目、路径、内容、状态与 metadata。" },
+      "mcpDialog": { "createTitle": "新增 MCP Server", "editTitle": "编辑 MCP Server", "description": "维护 MCP transport、端点、参数、请求头、密钥、环境变量、超时与 metadata。" },
+      "errors": { "invalidForm": "资源表单无效。" },
+      "messages": { "loading": "正在加载智能体资源", "loadFailed": "智能体资源加载失败", "agentSaved": "Agent 已保存", "agentSaveFailed": "Agent 保存失败", "skillSaved": "Skill 已保存", "skillSaveFailed": "Skill 保存失败", "mcpSaved": "MCP Server 已保存", "mcpSaveFailed": "MCP Server 保存失败", "toggleFailed": "资源启停失败", "scanComplete": "技能扫描完成", "scanSummary": "新增 {created}，更新 {updated}，删除 {deleted}，未变化 {unchanged}。", "scanFailed": "技能扫描失败", "testPassed": "MCP 连接测试通过", "testFailed": "MCP 连接测试失败", "toolsRefreshed": "MCP 工具刷新完成", "toolsRefreshSummary": "当前 {count} 个工具，{unavailable} 个不可用。", "toolsRefreshFailed": "MCP 工具刷新失败", "deleted": "资源已删除", "deleteFailed": "资源删除失败" }
+    },
+    "index": {
+      "title": "索引维护",
+      "description": "所有维护操作都需要确认，并展示真实执行阶段、响应结果、任务状态与错误。",
+      "allProjects": "全部项目",
+      "rebuild": { "eyebrow": "全局维护", "title": "重建向量索引", "description": "调用全局 rebuild-vector-index。后端会按当前 embedding 路由创建需要处理的索引任务。", "action": "确认重建向量", "result": "最近一次重建响应" },
+      "pending": { "eyebrow": "任务执行", "title": "运行待处理索引", "description": "可按 project_id 和 limit 调用待处理索引执行入口。留空 project_id 表示后端允许的全局范围。", "action": "运行待处理任务" },
+      "jobs": { "eyebrow": "真实任务状态", "title": "索引任务", "allStatuses": "全部状态", "empty": "没有符合条件的索引任务。", "run": "运行此任务" },
+      "phases": { "idle": "未执行", "running": "维护操作执行中", "succeeded": "维护操作已完成", "failed": "维护操作失败" },
+      "confirm": { "rebuildTitle": "确认重建向量索引", "rebuildDescription": "此操作会基于当前向量模型和已有章节版本创建重建任务。确认继续？", "pendingTitle": "确认运行待处理索引", "pendingDescription": "范围：{project}；最多处理 {limit} 个任务。确认继续？", "jobTitle": "确认运行索引任务", "jobDescription": "确认立即运行任务 {id}？" },
+      "messages": { "loading": "正在加载索引任务", "loadFailed": "索引任务加载失败", "running": "后端请求正在执行，请勿重复触发。", "rebuildCompleted": "向量重建响应已返回，创建 {count} 个任务。", "pendingCompleted": "待处理索引执行完成，处理 {count} 个任务。", "jobCompleted": "任务 {id} 已返回最新状态。", "operationSucceeded": "维护操作成功", "operationFailed": "维护操作失败" }
+    }
   },
   "graph": {
     "eyebrow": "图谱工作台",
     "title": "关系图谱",
-    "description": "集中查看人物、事件、章节与设定之间的关系，并用搜索、筛选和排序快速定位节点。",
+    "description": "以任务方式探索真实图谱扩展结果。移动端默认节点/边列表；画布按需加载 Cytoscape，二者使用同一数据与详情。",
     "tabs": {
       "graph": "关系图",
       "nodes": "节点列表",
@@ -1635,13 +1749,12 @@
     "timelineControlHint": "降低时间线会隐藏更晚发生的节点和关系；提高后如需更多数据请重新加载。",
     "depthControlHint": "降低深度会收窄本地可见范围；提高后如需更深扩展请重新加载。",
     "openDetails": "查看详情",
-    "viewModeLabel": "图谱集合视图",
-    "densityLabel": "图谱集合密度",
     "placeholders": {
       "root": "story_start"
     },
     "filterControls": {
       "allStatuses": "全部状态",
+      "allNodeTypes": "全部节点类型",
       "allEdgeTypes": "全部关系类型",
       "includedTypes": "参与扩展的节点类型",
       "selectedTypeCount": "已选 {count} 类",
@@ -1718,6 +1831,37 @@
     "errors": {
       "loadFailed": "关系图谱加载失败",
       "cytoscapeFailed": "Cytoscape 未能加载，已显示列表视图。"
+    },
+    "metrics": {
+      "nodes": "返回节点",
+      "edges": "返回边"
+    },
+    "query": {
+      "title": "后端查询",
+      "description": "只有 entity_ids 与 depth 会发送到图谱扩展接口。",
+      "entityIdsPlaceholder": "entity-1, entity-2",
+      "entityIdsHelp": "可留空获取项目图谱范围，或用逗号/换行填写实体 ID。",
+      "depthHelp": "服务端扩展深度，允许 1–4。",
+      "run": "执行查询",
+      "contractTitle": "真实请求契约"
+    },
+    "localFilters": {
+      "title": "本地视图筛选",
+      "description": "搜索、类型、状态、关系类型和时间线上限只过滤已返回数据，不会发送到后端。",
+      "timeline": "本地时间线上限",
+      "allTimeline": "全部",
+      "clearTimeline": "不限制时间线",
+      "badge": "仅本地视图"
+    },
+    "views": {
+      "list": "列表",
+      "canvas": "画布",
+      "openList": "打开等价列表"
+    },
+    "canvas": {
+      "zoomIn": "放大图谱",
+      "zoomOut": "缩小图谱",
+      "fit": "适配全部节点"
     },
     "nodeTypes": {
       "story_start": "故事起点",

@@ -1,22 +1,22 @@
 import type {
   AgentConfig,
+  AgentListOptions,
   AgentRun,
+  AgentRunListOptions,
   AgentRunRequest,
   AgentRunResult,
   CharacterSyncResponse,
   Chapter,
-  EnsureChapterRequest,
-  EnsureChapterResponse,
+  ChapterWriteRequest,
   AIWorkflow,
-  ApiErrorState,
   AppSetting,
   ChapterVersion,
+  ChapterVersionWriteRequest,
   Entity,
   Fact,
   GraphEdge,
   GraphExpandRequest,
   GraphExpandResponse,
-  GraphExpansion,
   GraphNode,
   HealthStatus,
   IndexJob,
@@ -43,27 +43,35 @@ import type {
   ToolDefinition,
   ToolInvocation
 } from './types'
+import { CHAPTER_STATUS_VALUES } from './types'
 
-export class ApiClientError extends Error {
-  readonly state: ApiErrorState
+import * as apiSdk from './generated/api/sdk.gen'
+import type * as GeneratedApi from './generated/api/types.gen'
+import type { AgentApi } from '~/entities/agent'
+import type { ChapterApi } from '~/entities/chapter'
+import type { CreateChapterRequest, UpdateChapterRequest } from '~/entities/chapter'
+import type { GraphApi } from '~/entities/graph'
+import type { IndexJobApi } from '~/entities/index-job'
+import type { ModelApi } from '~/entities/model'
+import type { ProjectApi } from '~/entities/project'
+import type { StoryBibleApi } from '~/entities/story-bible'
+import {
+  ApiClientError,
+  callGeneratedApi,
+  configureGeneratedClient,
+  DEFAULT_API_BASE,
+  isRecord,
+  optionalApiArray,
+  optionalStringRecord,
+  requireApiArray,
+  requireApiNumber,
+  requireApiRecord,
+  requireApiString
+} from '~/shared/api'
+import type { ApiResult } from '~/shared/api'
 
-  constructor(state: ApiErrorState) {
-    super(state.message)
-    this.name = 'ApiClientError'
-    this.state = state
-  }
-}
-
-export interface ApiResult<T> {
-  data: T
-  error?: ApiErrorState
-}
-
-type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-  body?: unknown
-  query?: Record<string, string | number | boolean | undefined | null>
-}
+export { ApiClientError, DEFAULT_API_BASE }
+export type { ApiResult }
 
 type LocaleCode = 'zh-CN' | 'en-US'
 
@@ -72,15 +80,6 @@ type ApiCopy = {
   defaultGenre: string
   defaultTone: string
   defaultAudience: string
-  chapterTitle(index: number): string
-  defaultChapterSummary: string
-  plannedChapterSummary: string
-  storyBiblePendingSummary: string
-  protagonistRole: string
-  supportingRole: string
-  characterDesire: string
-  characterWound: string
-  indexStatus(status?: string): string
   healthWarnings: {
     qdrant: string
     postgres: string
@@ -94,51 +93,26 @@ type ApiCopy = {
   }
 }
 
-type HealthResponse = {
-  status: string
-  time: string
-  qdrant_configured: boolean
-  postgres_configured: boolean
-}
+type HealthResponse = GeneratedApi.Health
 
-type RefreshModelsResponse = {
-  models: ModelConfig[]
-  count: number
-  provider?: ProviderConfig
-}
-
-type ModelRoutingResponse = {
-  routes: Partial<ModelUsageSettings>
-}
-
-type V1Envelope<T> = {
+type ApiSuccessEnvelope<T> = {
   data?: T
-  meta?: {
-    request_id?: string
-  }
-  page?: {
-    count: number
-    limit?: number
-  }
-  error?: V1ErrorPayload
+  meta?: GeneratedApi.Meta
+  page?: GeneratedApi.Page
 }
 
-type V1ErrorPayload = {
-  code?: string
-  message?: string
-  status?: number
-  request_id?: string
-  details?: unknown
+type GeneratedFieldsResult<TEnvelope> = {
+  data?: TEnvelope
+  error?: unknown
+  request?: unknown
+  response?: unknown
 }
 
-type BackendContextSelection = {
-  chapter_ids?: string[]
-  character_ids?: string[]
-  character_names?: string[]
-  include_world_rules?: boolean
-}
+type ApiOperationResult<TEnvelope> = TEnvelope | GeneratedFieldsResult<TEnvelope>
 
-export const DEFAULT_API_BASE = 'http://localhost:8080/api/v1'
+type ApiEnvelopeData<TEnvelope> = TEnvelope extends ApiSuccessEnvelope<infer TData> ? NonNullable<TData> : never
+
+type BackendContextSelection = GeneratedApi.ContextSelection
 
 const modelUsageKeys: Array<keyof ModelUsageSettings> = [
   'writer',
@@ -153,147 +127,25 @@ const modelUsageKeys: Array<keyof ModelUsageSettings> = [
   'embedding'
 ]
 
-type ProviderSaveRequest = {
-  id?: string
-  name: string
-  type: ProviderConfig['provider_type']
-  base_url: string
-  api_key?: string
-  enabled: boolean
-  trace_enabled?: boolean
-  trace_retention_days?: number
-  default_request_timeout_sec?: number
-  metadata?: Record<string, string>
-}
+type ProviderSaveRequest = GeneratedApi.ProviderRequestWritable
 
 export type ProviderDeleteResponse = {
   status: string
 }
 
-type ModelSaveRequest = {
-  id?: string
-  provider_id: string
-  name: string
-  display_name: string
-  kind: ModelConfig['kind']
-  context_window: number
-  max_output_tokens: number
-  dimension?: number
-  supports_tools: boolean
-  supports_streaming: boolean
-  default_for_kind: boolean
-  enabled: boolean
-  routing_weight: number
-  allowed_agent_roles?: ModelConfig['allowed_agent_roles']
-  metadata?: Record<string, string>
-}
+type ModelSaveRequest = GeneratedApi.ModelRequest
 
-type BackendProjectSeedRequest = {
-  title: string
-  premise: string
-  genre: string
-  tone: string
-  audience: string
-  language: string
-  setting: string
-  themes?: string[]
-  main_characters?: string[]
-  constraints?: string[]
-  target_chapters: number
-  metadata?: Record<string, string>
-}
+type BackendProjectSeedRequest = GeneratedApi.ProjectSeed
 
-type BackendStoryBibleRequest = {
-  id: string
-  project_id: string
-  version: number
-  title: string
-  logline: string
-  synopsis: string
-  genre: string
-  tone: string
-  audience: string
-  language: string
-  themes: string[]
-  rules?: Record<string, string>
-  worldline_ids?: string[]
-  entity_ids?: string[]
-  plot_thread_ids?: string[]
-  source_seed: BackendProjectSeedRequest
-  genesis_workflow_id?: string
-  approved: boolean
-  premise: string
-  world_rules: string[]
-  characters: StoryBible['characters']
-  foreshadows: StoryBible['foreshadows']
-  chapter_plan: StoryBible['chapters']
-}
+type BackendStoryBibleRequest = GeneratedApi.StoryBible
 
-type BackendCharacterSyncRequest = {
-  story_bible_id?: string
-  characters: Array<{
-    name: string
-    role: string
-    desire: string
-    wound: string
-    secret?: string
-    summary?: string
-  }>
-}
+type BackendCharacterSyncRequest = GeneratedApi.CharacterSyncRequest
 
-type SkillSaveRequest = {
-  id?: string
-  project_id?: string
-  source_id?: string
-  name: string
-  description?: string
-  content?: string
-  path?: string
-  enabled: boolean
-  metadata?: Record<string, string>
-}
+type SkillSaveRequest = GeneratedApi.SkillRequest & { id?: string }
 
-type MCPServerSaveRequest = {
-  id?: string
-  project_id?: string
-  name: string
-  transport: MCPServerConfig['transport']
-  status?: MCPServerConfig['status']
-  enabled: boolean
-  command?: string
-  args?: string[]
-  url?: string
-  headers?: Record<string, string>
-  secret_headers?: Record<string, string>
-  env?: Record<string, string>
-  secret_env?: Record<string, string>
-  timeout_sec?: number
-  metadata?: Record<string, string>
-}
+type MCPServerSaveRequest = GeneratedApi.McpServerRequest
 
-type BackendChapterVersionRequest = {
-  id?: string
-  title: string
-  content: string
-  summary?: string
-  author_role: NonNullable<ChapterVersion['author_role']>
-  source_workflow_id?: string
-  index_status: string
-  metadata?: Record<string, string>
-}
-
-export type AgentListOptions = {
-  projectId?: string
-  enabled?: boolean
-  limit?: number
-}
-
-export type AgentRunListOptions = {
-  agentId?: string
-  projectId?: string
-  status?: AgentRun['status']
-  limit?: number
-}
+type BackendChapterVersionRequest = GeneratedApi.ChapterVersionRequest & Pick<ChapterVersionWriteRequest, 'change_note' | 'parent_version_id'>
 
 export type SkillSourceListOptions = {
   projectId?: string
@@ -334,7 +186,17 @@ export type ToolInvocationListOptions = {
   limit?: number
 }
 
-export interface ApiClient {
+export interface ApiDomains {
+  project: ProjectApi
+  storyBible: StoryBibleApi
+  chapter: ChapterApi
+  graph: GraphApi
+  model: ModelApi
+  agent: AgentApi
+  indexJob: IndexJobApi
+}
+
+export interface ApiClient extends ApiDomains {
   health(): Promise<ApiResult<HealthStatus>>
   systemStatus(): Promise<ApiResult<SystemStatus>>
   listProviders(): Promise<ApiResult<ProviderConfig[]>>
@@ -357,9 +219,10 @@ export interface ApiClient {
   expandGraph(request: GraphExpandRequest): Promise<ApiResult<GraphExpandResponse>>
   semanticSearch(projectId: string, request: SemanticSearchRequest): Promise<ApiResult<SemanticSearchResponse>>
   listChapters(projectId: string): Promise<ApiResult<Chapter[]>>
-  ensureChapter(projectId: string, request: EnsureChapterRequest): Promise<ApiResult<EnsureChapterResponse>>
+  createChapter(projectId: string, request: CreateChapterRequest): Promise<ApiResult<Chapter>>
+  updateChapter(projectId: string, request: UpdateChapterRequest): Promise<ApiResult<Chapter>>
   listChapterVersions(projectId: string, chapterId: string): Promise<ApiResult<ChapterVersion[]>>
-  saveChapterVersion(projectId: string, version: Partial<ChapterVersion>): Promise<ApiResult<SaveChapterVersionResponse>>
+  saveChapterVersion(projectId: string, version: ChapterVersionWriteRequest): Promise<ApiResult<SaveChapterVersionResponse>>
   listAgents(options?: AgentListOptions): Promise<ApiResult<AgentConfig[]>>
   saveAgent(agent: AgentConfig, mode?: 'create' | 'edit'): Promise<ApiResult<AgentConfig>>
   deleteAgent(id: string): Promise<ApiResult<{ status: string }>>
@@ -400,15 +263,6 @@ function getApiCopy(locale: LocaleCode): ApiCopy {
       defaultGenre: 'Long-form fiction',
       defaultTone: 'Clear and grounded',
       defaultAudience: 'General readers',
-      chapterTitle: (index) => (index === 0 ? 'Chapter 1' : `Chapter ${index + 1}`),
-      defaultChapterSummary: 'Open the story through the central conflict.',
-      plannedChapterSummary: 'Chapter outline pending.',
-      storyBiblePendingSummary: 'Story bible created. Synopsis is pending review.',
-      protagonistRole: 'Protagonist',
-      supportingRole: 'Key character',
-      characterDesire: 'Advance the central conflict',
-      characterWound: 'To be developed in later chapters',
-      indexStatus: (status) => `Index status: ${status || 'unknown'}`,
       healthWarnings: {
         qdrant: 'Qdrant is not configured. Index operations will fail until vector storage is available.',
         postgres: 'Postgres is not configured. The service may be using volatile storage.'
@@ -428,15 +282,6 @@ function getApiCopy(locale: LocaleCode): ApiCopy {
     defaultGenre: '长篇小说',
     defaultTone: '稳健、清晰',
     defaultAudience: '通用读者',
-    chapterTitle: (index) => (index === 0 ? '第一章' : `第 ${index + 1} 章`),
-    defaultChapterSummary: '从核心冲突切入故事。',
-    plannedChapterSummary: '章节大纲待补充。',
-    storyBiblePendingSummary: 'Story Bible 已创建，摘要待确认。',
-    protagonistRole: '主角',
-    supportingRole: '关键角色',
-    characterDesire: '推动故事核心冲突',
-    characterWound: '将在后续章节中细化',
-    indexStatus: (status) => `索引状态：${status || 'unknown'}`,
     healthWarnings: {
       qdrant: 'Qdrant 未配置：索引任务会在向量存储可用前失败。',
       postgres: 'Postgres 未配置：服务可能正在使用临时存储。'
@@ -451,62 +296,51 @@ function getApiCopy(locale: LocaleCode): ApiCopy {
   }
 }
 
-function pathSegment(value: string): string {
-  return encodeURIComponent(value)
+function normalizeProviderType(value?: string): ProviderConfig['provider_type'] {
+  if (value === 'openai' || value === 'anthropic' || value === 'gemini' || value === 'openai-responses') return value
+  return 'openai-responses'
 }
 
-function normalizeApiBase(baseUrl?: string): string {
-  const trimmed = (baseUrl || DEFAULT_API_BASE).trim().replace(/\/+$/, '')
-  if (!trimmed) return DEFAULT_API_BASE
-  if (/\/api$/i.test(trimmed)) return `${trimmed}/v1`
-  if (/\/api\/v1$/i.test(trimmed) || /\/v1$/i.test(trimmed)) return trimmed
+function normalizeProviderStatus(value: string | undefined, enabled?: boolean): ProviderConfig['status'] {
+  if (value === 'online' || value === 'degraded' || value === 'offline' || value === 'unknown') return value
+  return enabled ? 'online' : 'unknown'
+}
 
-  try {
-    const parsed = new URL(trimmed)
-    if (parsed.pathname === '' || parsed.pathname === '/') {
-      parsed.pathname = '/api/v1'
-      return parsed.toString().replace(/\/+$/, '')
-    }
-  } catch (error) {
-    if (trimmed === '' || trimmed === '/') return '/api/v1'
-    console.warn('Using custom API base that does not end with /api/v1', { baseUrl: trimmed, error })
+function normalizeModelKind(value?: string): NonNullable<ModelConfig['kind']> {
+  return value === 'embedding' ? 'embedding' : 'text'
+}
+
+function normalizeAgentRole(value?: string): NonNullable<ModelConfig['allowed_agent_roles']>[number] | undefined {
+  if (
+    value === 'genesis-optimizer'
+    || value === 'plot-architect'
+    || value === 'world-builder'
+    || value === 'character-keeper'
+    || value === 'continuity-auditor'
+    || value === 'writer'
+    || value === 'editor'
+    || value === 'fact-extractor'
+    || value === 'graph-curator'
+  ) {
+    return value
   }
+  return undefined
+}
 
-  return trimmed
+function normalizeAgentRoles(values?: string[]): ModelConfig['allowed_agent_roles'] {
+  return (values || []).map(normalizeAgentRole).filter((value): value is NonNullable<ModelConfig['allowed_agent_roles']>[number] => Boolean(value))
 }
 
 function requirePathId(value: string | undefined, label: string): string {
-  const trimmed = value?.trim()
-  if (!trimmed) {
-    throw new ApiClientError({ endpoint: label, message: `${label} is required` })
-  }
-  return trimmed
+  return requireApiString(value, label, label).trim()
 }
 
-function buildQuery(query?: RequestOptions['query']) {
-  if (!query) return ''
-  const search = new URLSearchParams()
-  Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) search.set(key, String(value))
-  })
-  const value = search.toString()
-  return value ? `?${value}` : ''
-}
-
-function createErrorState(endpoint: string, cause: unknown): ApiErrorState {
-  if (cause instanceof ApiClientError) return cause.state
-  if (cause instanceof Error) {
-    return {
-      endpoint,
-      message: cause.message,
-      cause
-    }
-  }
-  return {
-    endpoint,
-    message: `API request failed for ${endpoint}`,
-    cause
-  }
+async function mapApi<TEnvelope extends ApiSuccessEnvelope<unknown>, TData>(
+  operationName: string,
+  operation: () => Promise<ApiOperationResult<TEnvelope>>,
+  mapData: (raw: ApiEnvelopeData<TEnvelope>) => TData
+): Promise<ApiResult<TData>> {
+  return callGeneratedApi(operationName, operation, (raw) => mapData(raw as ApiEnvelopeData<TEnvelope>))
 }
 
 function projectSeedToBackend(seed: ProjectSeed, copy: ApiCopy): BackendProjectSeedRequest {
@@ -528,7 +362,7 @@ function projectSeedToBackend(seed: ProjectSeed, copy: ApiCopy): BackendProjectS
     themes: seed.themes?.length ? seed.themes : seed.tags,
     main_characters: mainCharacters,
     constraints,
-    target_chapters: seed.target_chapters || 12,
+    target_chapters: seed.target_chapters,
     metadata: {
       ...(seed.metadata || {}),
       one_sentence_core: seed.one_sentence_core,
@@ -542,18 +376,22 @@ function projectSeedToBackend(seed: ProjectSeed, copy: ApiCopy): BackendProjectS
   }
 }
 
-function normalizeProvider(provider: ProviderConfig): ProviderConfig {
-  const providerType = provider.provider_type || provider.type || 'openai-responses'
+function normalizeProvider(provider: GeneratedApi.Provider): ProviderConfig {
+  const providerType = normalizeProviderType(provider.type)
+  const enabled = provider.enabled ?? true
   return {
     ...provider,
+    id: provider.id || '',
+    name: provider.name || '',
     provider_type: providerType,
-    type: provider.type || providerType,
+    type: providerType,
+    base_url: provider.base_url || '',
     streaming: provider.streaming ?? provider.metadata?.streaming === 'true',
-    enabled: provider.enabled ?? true,
+    enabled,
     api_key_hint: provider.api_key_hint,
     default_model_id: provider.default_model_id || provider.metadata?.default_model_id,
     last_checked_at: provider.last_checked_at || provider.last_model_refresh_at || provider.updated_at,
-    status: provider.status || (provider.enabled ? 'online' : 'unknown')
+    status: normalizeProviderStatus(provider.status, enabled)
   }
 }
 
@@ -571,6 +409,7 @@ function providerToBackend(provider: ProviderConfig): ProviderSaveRequest {
     type: provider.provider_type || provider.type || 'openai-responses',
     base_url: provider.base_url.trim(),
     enabled: provider.enabled,
+    streaming: provider.streaming,
     trace_enabled: provider.trace_enabled,
     trace_retention_days: provider.trace_retention_days,
     default_request_timeout_sec: provider.default_request_timeout_sec,
@@ -619,12 +458,17 @@ function mcpServerToBackend(server: MCPServerConfig, includeId: boolean): MCPSer
   return body
 }
 
-function normalizeModel(model: ModelConfig): ModelConfig {
+function normalizeModel(model: GeneratedApi.Model): ModelConfig {
+  const name = model.name || ''
+  const providerId = model.provider_id || ''
   return {
     ...model,
-    id: model.id || (model.provider_id && model.name ? `${model.provider_id}:${model.name}` : model.name),
-    display_name: model.display_name || model.name,
-    kind: model.kind || 'text',
+    id: model.id || (providerId && name ? `${providerId}:${name}` : name),
+    provider_id: providerId,
+    provider_type: normalizeProviderType(model.provider_type),
+    name,
+    display_name: model.display_name || name,
+    kind: normalizeModelKind(model.kind),
     enabled: model.enabled ?? true,
     context_window: model.context_window || 0,
     max_output_tokens: model.max_output_tokens || 0,
@@ -632,8 +476,10 @@ function normalizeModel(model: ModelConfig): ModelConfig {
     supports_streaming: model.supports_streaming ?? false,
     supports_tools: model.supports_tools ?? false,
     default_for_kind: model.default_for_kind ?? false,
+    cost_input_per_mtok: model.cost_input_per_mtok || 0,
+    cost_output_per_mtok: model.cost_output_per_mtok || 0,
     routing_weight: model.routing_weight || 100,
-    allowed_agent_roles: model.allowed_agent_roles || []
+    allowed_agent_roles: normalizeAgentRoles(model.allowed_agent_roles)
   }
 }
 
@@ -650,6 +496,8 @@ function modelToBackend(model: ModelConfig): ModelSaveRequest {
     supports_streaming: Boolean(model.supports_streaming),
     default_for_kind: Boolean(model.default_for_kind),
     enabled: Boolean(model.enabled),
+    cost_input_per_mtok: Number(model.cost_input_per_mtok || 0),
+    cost_output_per_mtok: Number(model.cost_output_per_mtok || 0),
     routing_weight: Number(model.routing_weight || 0),
     allowed_agent_roles: model.allowed_agent_roles || [],
     metadata: model.metadata
@@ -683,31 +531,68 @@ function normalizeModelUsageSettings(routes: Partial<ModelUsageSettings> = {}): 
   return settings
 }
 
-function normalizeModelResolution(modelResolution: ModelResolution): ModelResolution {
+function normalizeModelResolution(value: unknown, endpoint: string, field = 'model_resolution'): ModelResolution {
+  const resolution = requireApiRecord(value, endpoint, field)
+  const providerType = requireApiString(resolution.provider_type, endpoint, `${field}.provider_type`)
+  const modelKind = requireApiString(resolution.model_kind, endpoint, `${field}.model_kind`)
+  if (providerType !== 'openai-responses' && providerType !== 'openai' && providerType !== 'anthropic' && providerType !== 'gemini') {
+    throw new ApiClientError({ endpoint, field: `${field}.provider_type`, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: unsupported provider type ${providerType}`, cause: value })
+  }
+  if (modelKind !== 'text' && modelKind !== 'embedding') {
+    throw new ApiClientError({ endpoint, field: `${field}.model_kind`, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: unsupported model kind ${modelKind}`, cause: value })
+  }
   return {
-    ...modelResolution,
-    route_key: modelResolution.route_key || '',
-    resolution_source: modelResolution.resolution_source || '',
-    provider_id: modelResolution.provider_id || '',
-    provider_name: modelResolution.provider_name || '',
-    provider_type: modelResolution.provider_type || 'openai-responses',
-    model_id: modelResolution.model_id || '',
-    model_name: modelResolution.model_name || '',
-    model_kind: modelResolution.model_kind || 'text'
+    route_key: requireApiString(resolution.route_key, endpoint, `${field}.route_key`, { allowEmpty: true }),
+    resolution_source: requireApiString(resolution.resolution_source, endpoint, `${field}.resolution_source`),
+    provider_id: requireApiString(resolution.provider_id, endpoint, `${field}.provider_id`),
+    provider_name: requireApiString(resolution.provider_name, endpoint, `${field}.provider_name`, { allowEmpty: true }),
+    provider_type: providerType,
+    model_id: requireApiString(resolution.model_id, endpoint, `${field}.model_id`),
+    model_name: requireApiString(resolution.model_name, endpoint, `${field}.model_name`, { allowEmpty: true }),
+    model_kind: modelKind
   }
 }
 
-function normalizeWorkflow(workflow: AIWorkflow): AIWorkflow {
+function normalizeProjectEntity(value: unknown, endpoint: string): Project {
+  const project = requireApiRecord(value, endpoint, 'project')
   return {
-    ...workflow,
-    intent: workflow.intent || workflow.kind || 'draft_chapter',
-    model_resolution: workflow.model_resolution ? normalizeModelResolution(workflow.model_resolution) : undefined,
-    steps: (workflow.steps || []).map((step, index) => ({
-      ...step,
-      id: step.id || `${step.name || 'step'}-${index}`,
-      status: step.status === 'completed' ? 'succeeded' : step.status,
-      message: step.message || step.error || step.metadata?.message || step.name
-    }))
+    ...(project as unknown as Partial<Project>),
+    id: requireApiString(project.id, endpoint, 'project.id'),
+    title: requireApiString(project.title, endpoint, 'project.title', { allowEmpty: true }),
+    slug: requireApiString(project.slug, endpoint, 'project.slug', { allowEmpty: true }),
+    status: requireApiString(project.status, endpoint, 'project.status'),
+    seed: requireApiRecord(project.seed, endpoint, 'project.seed') as unknown as ProjectSeed,
+    created_at: requireApiString(project.created_at, endpoint, 'project.created_at'),
+    updated_at: requireApiString(project.updated_at, endpoint, 'project.updated_at'),
+    metadata: optionalStringRecord(project.metadata, endpoint, 'project.metadata')
+  }
+}
+
+function normalizeWorkflowStep(value: unknown, index: number, endpoint: string): AIWorkflow['steps'][number] {
+  const step = requireApiRecord(value, endpoint, `workflow.steps[${index}]`)
+  return {
+    id: typeof step.id === 'string' ? step.id : undefined,
+    name: requireApiString(step.name, endpoint, `workflow.steps[${index}].name`),
+    status: requireApiString(step.status, endpoint, `workflow.steps[${index}].status`),
+    message: typeof step.message === 'string' ? step.message : undefined,
+    updated_at: typeof step.updated_at === 'string' ? step.updated_at : undefined,
+    started_at: typeof step.started_at === 'string' ? step.started_at : undefined,
+    ended_at: typeof step.ended_at === 'string' ? step.ended_at : undefined,
+    error: typeof step.error === 'string' ? step.error : undefined,
+    metadata: optionalStringRecord(step.metadata, endpoint, `workflow.steps[${index}].metadata`)
+  }
+}
+
+function normalizeWorkflow(value: unknown, endpoint = 'workflow'): AIWorkflow {
+  const workflow = requireApiRecord(value, endpoint, 'workflow')
+  return {
+    ...(workflow as unknown as Partial<AIWorkflow>),
+    id: requireApiString(workflow.id, endpoint, 'workflow.id'),
+    project_id: requireApiString(workflow.project_id, endpoint, 'workflow.project_id'),
+    intent: requireApiString(workflow.intent ?? workflow.kind, endpoint, 'workflow.intent'),
+    status: requireApiString(workflow.status, endpoint, 'workflow.status'),
+    steps: requireApiArray(workflow.steps, endpoint, 'workflow.steps', (step, index) => normalizeWorkflowStep(step, index, endpoint)),
+    model_resolution: workflow.model_resolution === undefined ? undefined : normalizeModelResolution(workflow.model_resolution, endpoint)
   }
 }
 
@@ -716,8 +601,7 @@ const STORY_BIBLE_METADATA_KEYS = new Set([
   'story_bible_world_rules',
   'story_bible_characters',
   'story_bible_foreshadows',
-  'story_bible_chapter_plan',
-  'story_bible_chapters'
+  'story_bible_chapter_plan'
 ])
 
 function stripStoryBibleMetadata(metadata?: Record<string, string>): Record<string, string> | undefined {
@@ -729,13 +613,12 @@ function stripStoryBibleMetadata(metadata?: Record<string, string>): Record<stri
   return Object.keys(next).length > 0 ? next : undefined
 }
 
-function sanitizeStoryBibleChapterPlan(bible: StoryBible): StoryBible['chapters'] {
-  const source = bible.chapter_plan?.length ? bible.chapter_plan : bible.chapters
-  return (source || []).map((chapter, index) => ({
-    id: chapter.id?.trim() || `chapter-${index + 1}`,
-    title: chapter.title?.trim() || '',
-    status: chapter.status || 'planned',
-    summary: chapter.summary?.trim() || ''
+function sanitizeStoryBibleChapterPlan(bible: StoryBible): StoryBible['chapter_plan'] {
+  return bible.chapter_plan.map((chapter, index) => ({
+    id: requireApiString(chapter.id, 'updateStoryBible', `chapter_plan[${index}].id`).trim(),
+    title: chapter.title.trim(),
+    status: requireChapterStatus(chapter.status, 'updateStoryBible', `chapter_plan[${index}].status`),
+    summary: chapter.summary.trim()
   }))
 }
 
@@ -743,7 +626,7 @@ function storyBibleToBackend(bible: StoryBible): BackendStoryBibleRequest {
   const worldRules = (bible.world_rules || []).map((rule) => rule.trim()).filter(Boolean)
   const characters = (bible.characters || []).map((character, index) => ({
     ...character,
-    id: character.id?.trim() || `character-${index + 1}`,
+    id: requireApiString(character.id, 'updateStoryBible', `characters[${index}].id`).trim(),
     name: character.name.trim(),
     role: character.role.trim(),
     desire: character.desire.trim(),
@@ -754,11 +637,11 @@ function storyBibleToBackend(bible: StoryBible): BackendStoryBibleRequest {
   }))
   const foreshadows = (bible.foreshadows || []).map((item, index) => ({
     ...item,
-    id: item.id?.trim() || `foreshadow-${index + 1}`,
+    id: requireApiString(item.id, 'updateStoryBible', `foreshadows[${index}].id`).trim(),
     title: item.title.trim(),
     planted_in: item.planted_in.trim(),
     payoff_hint: item.payoff_hint.trim(),
-    status: item.status || 'planted'
+    status: requireForeshadowStatus(item.status, 'updateStoryBible', `foreshadows[${index}].status`, item)
   }))
   const chapterPlan = sanitizeStoryBibleChapterPlan(bible)
   const sourceSeed = bible.source_seed
@@ -781,7 +664,7 @@ function storyBibleToBackend(bible: StoryBible): BackendStoryBibleRequest {
     themes,
     main_characters: characters.map((character) => character.name).filter(Boolean),
     constraints: sourceSeed?.constraints?.length ? sourceSeed.constraints.map((item) => item.trim()).filter(Boolean) : worldRules,
-    target_chapters: chapterPlan.length || sourceSeed?.target_chapters || 1,
+    target_chapters: sourceSeed?.target_chapters || chapterPlan.length || undefined,
     metadata: sourceMetadata
   }
 
@@ -812,62 +695,84 @@ function storyBibleToBackend(bible: StoryBible): BackendStoryBibleRequest {
   }
 }
 
-function parseStoryBibleMetadata<T>(sourceSeed: ProjectSeed | undefined, key: string, fallback: T): T {
-  const raw = sourceSeed?.metadata?.[key]
-  if (!raw) return fallback
-  try {
-    return JSON.parse(raw) as T
-  } catch (error) {
-    console.error(`Failed to parse story bible metadata ${key}`, error)
-    return fallback
-  }
-}
-
-function normalizeStoryBible(bible: StoryBible, copy: ApiCopy): StoryBible {
-  const rules = bible.rules || {}
-  const sourceSeed = bible.source_seed
-  const generatedChapters = Array.from({ length: Math.max(sourceSeed?.target_chapters || 3, 1) }).map((_, index) => ({
-    id: `chapter-${index + 1}`,
-    title: copy.chapterTitle(index),
-    status: index === 0 ? ('drafting' as const) : ('planned' as const),
-    summary: index === 0 ? bible.logline || bible.premise || copy.defaultChapterSummary : copy.plannedChapterSummary
-  }))
-  const mainCharacters = sourceSeed?.main_characters?.map((name) => name.trim()).filter(Boolean) || []
-  const fallbackWorldRules = Object.values(rules)
-  const fallbackCharacters = mainCharacters.map((name, index) => ({
-    id: `character-${index + 1}`,
-    name,
-    role: index === 0 ? copy.protagonistRole : copy.supportingRole,
-    desire: sourceSeed?.premise || copy.characterDesire,
-    wound: copy.characterWound
-  }))
-  const fallbackForeshadows = Object.entries(rules).slice(0, 3).map(([key, value]) => ({
-    id: `rule-${key}`,
-    title: key,
-    planted_in: 'Story Bible',
-    payoff_hint: value,
-    status: 'planted' as const
-  }))
-  const premise = bible.premise || sourceSeed?.metadata?.story_bible_premise || bible.logline || bible.synopsis || sourceSeed?.premise || copy.storyBiblePendingSummary
-  const chapterPlan = bible.chapter_plan?.length
-    ? bible.chapter_plan
-    : bible.chapters?.length
-      ? bible.chapters
-      : parseStoryBibleMetadata(sourceSeed, 'story_bible_chapter_plan', parseStoryBibleMetadata(sourceSeed, 'story_bible_chapters', generatedChapters))
+function normalizeStoryBibleCharacter(value: unknown, index: number, endpoint: string): StoryBible['characters'][number] {
+  const character = requireApiRecord(value, endpoint, `characters[${index}]`)
   return {
-    ...bible,
-    premise,
-    themes: bible.themes || sourceSeed?.themes || [],
-    world_rules: bible.world_rules || parseStoryBibleMetadata(sourceSeed, 'story_bible_world_rules', fallbackWorldRules),
-    characters: bible.characters || parseStoryBibleMetadata(sourceSeed, 'story_bible_characters', fallbackCharacters),
-    foreshadows: bible.foreshadows || parseStoryBibleMetadata(sourceSeed, 'story_bible_foreshadows', fallbackForeshadows),
-    chapter_plan: chapterPlan,
-    chapters: chapterPlan
+    id: requireApiString(character.id, endpoint, `characters[${index}].id`),
+    name: requireApiString(character.name, endpoint, `characters[${index}].name`),
+    role: requireApiString(character.role, endpoint, `characters[${index}].role`),
+    desire: requireApiString(character.desire, endpoint, `characters[${index}].desire`),
+    wound: requireApiString(character.wound, endpoint, `characters[${index}].wound`),
+    secret: typeof character.secret === 'string' ? character.secret : undefined,
+    summary: typeof character.summary === 'string' ? character.summary : undefined,
+    entity_id: typeof character.entity_id === 'string' ? character.entity_id : undefined,
+    sync_status: typeof character.sync_status === 'string' ? character.sync_status : undefined,
+    synced_at: typeof character.synced_at === 'string' ? character.synced_at : undefined,
+    metadata: optionalStringRecord(character.metadata, endpoint, `characters[${index}].metadata`)
   }
 }
 
-function normalizeProject(project: Project): ProjectSummary {
-  const targetChapters = project.seed?.target_chapters || 0
+function requireForeshadowStatus(status: string, endpoint: string, field: string, cause?: unknown): StoryBible['foreshadows'][number]['status'] {
+  if (status === 'planted' || status === 'active' || status === 'paid_off') return status
+  throw new ApiClientError({
+    endpoint,
+    field,
+    kind: 'validation',
+    code: 'invalid_api_response',
+    message: `invalid_api_response: unsupported foreshadow status ${status}`,
+    cause
+  })
+}
+
+function normalizeStoryBibleForeshadow(value: unknown, index: number, endpoint: string): StoryBible['foreshadows'][number] {
+  const item = requireApiRecord(value, endpoint, `foreshadows[${index}]`)
+  const status = requireForeshadowStatus(
+    requireApiString(item.status, endpoint, `foreshadows[${index}].status`),
+    endpoint,
+    `foreshadows[${index}].status`,
+    item
+  )
+  return {
+    id: requireApiString(item.id, endpoint, `foreshadows[${index}].id`),
+    title: requireApiString(item.title, endpoint, `foreshadows[${index}].title`, { allowEmpty: true }),
+    planted_in: requireApiString(item.planted_in, endpoint, `foreshadows[${index}].planted_in`, { allowEmpty: true }),
+    payoff_hint: requireApiString(item.payoff_hint, endpoint, `foreshadows[${index}].payoff_hint`, { allowEmpty: true }),
+    status
+  }
+}
+
+function normalizeStoryBibleChapter(value: unknown, index: number, endpoint: string): StoryBible['chapter_plan'][number] {
+  const chapter = requireApiRecord(value, endpoint, `chapter_plan[${index}]`)
+  return {
+    id: requireApiString(chapter.id, endpoint, `chapter_plan[${index}].id`),
+    title: requireApiString(chapter.title, endpoint, `chapter_plan[${index}].title`, { allowEmpty: true }),
+    status: requireChapterStatus(chapter.status, endpoint, `chapter_plan[${index}].status`),
+    summary: requireApiString(chapter.summary, endpoint, `chapter_plan[${index}].summary`, { allowEmpty: true })
+  }
+}
+
+function normalizeStoryBible(value: unknown, endpoint = 'storyBible'): StoryBible {
+  const bible = requireApiRecord(value, endpoint)
+  const sourceSeed = isRecord(bible.source_seed) ? bible.source_seed as unknown as ProjectSeed : undefined
+  const chapterPlan = optionalApiArray(bible.chapter_plan, endpoint, 'chapter_plan', (item, index) => normalizeStoryBibleChapter(item, index, endpoint))
+  const rules = optionalStringRecord(bible.rules, endpoint, 'rules')
+  return {
+    ...(bible as unknown as Partial<StoryBible>),
+    id: requireApiString(bible.id, endpoint, 'id'),
+    project_id: requireApiString(bible.project_id, endpoint, 'project_id'),
+    premise: requireApiString(bible.premise, endpoint, 'premise', { allowEmpty: true }),
+    themes: optionalApiArray(bible.themes, endpoint, 'themes', (item, index) => requireApiString(item, endpoint, `themes[${index}]`, { allowEmpty: true })),
+    world_rules: optionalApiArray(bible.world_rules, endpoint, 'world_rules', (item, index) => requireApiString(item, endpoint, `world_rules[${index}]`, { allowEmpty: true })),
+    characters: optionalApiArray(bible.characters, endpoint, 'characters', (item, index) => normalizeStoryBibleCharacter(item, index, endpoint)),
+    foreshadows: optionalApiArray(bible.foreshadows, endpoint, 'foreshadows', (item, index) => normalizeStoryBibleForeshadow(item, index, endpoint)),
+    chapter_plan: chapterPlan,
+    source_seed: sourceSeed,
+    rules
+  }
+}
+
+function normalizeProject(project: Project, endpoint = 'listProjects'): ProjectSummary {
+  const targetChapters = project.seed?.target_chapters
   const seedTags = project.seed?.themes?.length
     ? project.seed.themes
     : project.seed?.metadata?.tags
@@ -877,8 +782,8 @@ function normalizeProject(project: Project): ProjectSummary {
         : []
 
   return {
-    id: project.id,
-    title: project.title,
+    id: requireApiString(project.id, endpoint, 'project.id'),
+    title: requireApiString(project.title, endpoint, 'project.title', { allowEmpty: true }),
     slug: project.slug,
     status: project.status,
     logline: project.seed?.premise || project.seed?.metadata?.one_sentence_core || project.metadata?.logline || project.status,
@@ -886,74 +791,105 @@ function normalizeProject(project: Project): ProjectSummary {
     seed: project.seed,
     active_story_bible_id: project.active_story_bible_id,
     created_at: project.created_at,
-    updated_at: project.updated_at,
+    updated_at: requireApiString(project.updated_at, endpoint, 'project.updated_at'),
     bible_status: project.active_story_bible_id ? 'draft' : 'missing',
-    chapter_count: targetChapters,
+    chapter_count: undefined,
     target_chapters: targetChapters
   }
 }
 
-function normalizeChapter(chapter: Chapter, index: number): Chapter {
+function requireChapterStatus(value: unknown, endpoint: string, field: string): Chapter['status'] {
+  const status = requireApiString(value, endpoint, field)
+  if (CHAPTER_STATUS_VALUES.some((candidate) => candidate === status)) return status as Chapter['status']
+  throw new ApiClientError({ endpoint, field, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: unsupported chapter status ${status}`, cause: value })
+}
+
+function normalizeChapter(value: unknown, index: number, endpoint = 'chapter'): Chapter {
+  const chapter = requireApiRecord(value, endpoint, `chapters[${index}]`)
   return {
-    ...chapter,
-    id: chapter.id || `chapter-${chapter.number || index + 1}`,
-    project_id: chapter.project_id || '',
-    number: Number(chapter.number || index + 1),
-    title: chapter.title || '',
-    status: chapter.status || 'planned',
-    summary: chapter.summary || chapter.metadata?.summary || '',
-    metadata: chapter.metadata || {}
+    ...(chapter as unknown as Partial<Chapter>),
+    id: requireApiString(chapter.id, endpoint, `chapters[${index}].id`),
+    project_id: requireApiString(chapter.project_id, endpoint, `chapters[${index}].project_id`),
+    number: requireApiNumber(chapter.number, endpoint, `chapters[${index}].number`),
+    title: requireApiString(chapter.title, endpoint, `chapters[${index}].title`, { allowEmpty: true }),
+    status: requireChapterStatus(chapter.status, endpoint, `chapters[${index}].status`),
+    summary: requireApiString(chapter.summary, endpoint, `chapters[${index}].summary`, { allowEmpty: true }),
+    metadata: optionalStringRecord(chapter.metadata, endpoint, `chapters[${index}].metadata`) || {}
   }
 }
 
-function normalizeEnsureChapterResponse(response: EnsureChapterResponse | Chapter): EnsureChapterResponse {
-  const chapter = 'chapter' in response ? response.chapter : response
-  return {
-    ...('chapter' in response ? response : {}),
-    chapter: normalizeChapter(chapter, Math.max(Number(chapter?.number || 1) - 1, 0)),
-    created: 'created' in response ? Boolean(response.created) : false
+function normalizeChapterVersion(value: unknown, index = 0, endpoint = 'chapterVersion'): ChapterVersion {
+  const version = requireApiRecord(value, endpoint, `versions[${index}]`)
+  const authorRoleValue = typeof version.author_role === 'string' ? version.author_role : undefined
+  const authorRole = authorRoleValue === undefined ? undefined : normalizeAgentRole(authorRoleValue)
+  if (authorRoleValue !== undefined && authorRole === undefined) {
+    throw new ApiClientError({
+      endpoint,
+      field: `versions[${index}].author_role`,
+      kind: 'validation',
+      code: 'invalid_api_response',
+      message: `invalid_api_response: unsupported author role ${authorRoleValue}`,
+      cause: value
+    })
   }
-}
-
-function normalizeChapterVersion(version: ChapterVersion, copy: ApiCopy): ChapterVersion {
-  const authorRole = version.author_role || 'writer'
-  const wordCount = version.metrics?.word_count || version.content.replace(/\s/g, '').length
+  const content = requireApiString(version.content, endpoint, `versions[${index}].content`, { allowEmpty: true })
+  const metadata = optionalStringRecord(version.metadata, endpoint, `versions[${index}].metadata`)
   return {
-    ...version,
+    ...(version as unknown as Partial<ChapterVersion>),
+    id: requireApiString(version.id, endpoint, `versions[${index}].id`),
+    project_id: requireApiString(version.project_id, endpoint, `versions[${index}].project_id`),
+    chapter_id: requireApiString(version.chapter_id, endpoint, `versions[${index}].chapter_id`),
+    parent_version_id: typeof version.parent_version_id === 'string' ? version.parent_version_id : undefined,
+    version: requireApiNumber(version.version, endpoint, `versions[${index}].version`),
+    title: requireApiString(version.title, endpoint, `versions[${index}].title`, { allowEmpty: true }),
+    content,
+    created_at: requireApiString(version.created_at, endpoint, `versions[${index}].created_at`),
     author_role: authorRole,
-    author: version.author || (authorRole === 'writer' ? 'ai' : 'human'),
-    change_note: version.change_note || version.metadata?.change_note || version.summary || copy.indexStatus(version.index_status),
-    metrics: {
-      ...(version.metrics || {}),
-      word_count: wordCount
-    }
+    author: undefined,
+    change_note: metadata?.change_note,
+    metadata,
+    metrics: { word_count: content.replace(/\s/g, '').length }
   }
 }
 
-function normalizeGraphType(type: string): GraphNode['type'] {
+function normalizeGraphType(type: string, endpoint: string, field: string): GraphNode['type'] {
+  if (type === 'story_start') return 'story_start'
+  if (type === 'character') return 'character'
   if (type === 'place' || type === 'location') return 'location'
-  if (type === 'object' || type === 'clue') return 'clue'
+  if (type === 'object' || type === 'item' || type === 'clue') return 'clue'
   if (type === 'concept' || type === 'rule') return 'rule'
-  if (type === 'event') return 'event'
+  if (type === 'event' || type === 'time_node') return 'event'
   if (type === 'chapter') return 'chapter'
-  return 'character'
+  throw new ApiClientError({ endpoint, field, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: unsupported graph node type ${type}`, cause: type })
 }
 
-function normalizeGraphStatus(status: string): GraphNode['status'] {
+function normalizeGraphStatus(status: string, endpoint: string, field: string): GraphNode['status'] {
   if (status === 'conflict' || status === 'stable' || status === 'draft' || status === 'resolved') return status
   if (status === 'active' || status === 'canonical') return 'stable'
   if (status === 'deprecated') return 'conflict'
-  return 'draft'
+  throw new ApiClientError({ endpoint, field, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: unsupported graph node status ${status}`, cause: status })
 }
 
-function entityToNode(entity: Entity, index: number): GraphNode {
+function requireGraphMetadataNumber(metadata: Record<string, string> | undefined, endpoint: string, field: string): number {
+  const value = metadata?.[field]
+  if (value === undefined) {
+    throw new ApiClientError({ endpoint, field: `entities.metadata.${field}`, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: graph entity is missing ${field}`, cause: metadata })
+  }
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    throw new ApiClientError({ endpoint, field: `entities.metadata.${field}`, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: graph entity ${field} must be numeric`, cause: value })
+  }
+  return parsed
+}
+
+function entityToNode(entity: Entity, index: number, endpoint: string): GraphNode {
   return {
     id: entity.id,
     label: entity.name,
-    type: normalizeGraphType(entity.type),
-    depth: Number(entity.metadata?.depth || 1),
-    timeline: Number(entity.metadata?.timeline || 0),
-    status: normalizeGraphStatus(entity.status),
+    type: normalizeGraphType(entity.type, endpoint, `entities[${index}].type`),
+    depth: requireGraphMetadataNumber(entity.metadata, endpoint, 'depth'),
+    timeline: requireGraphMetadataNumber(entity.metadata, endpoint, 'timeline'),
+    status: normalizeGraphStatus(entity.status, endpoint, `entities[${index}].status`),
     metadata: {
       summary: entity.summary,
       importance: entity.importance,
@@ -963,29 +899,139 @@ function entityToNode(entity: Entity, index: number): GraphNode {
   }
 }
 
-function normalizeGraphEdge(edge: GraphEdge): GraphEdge {
+function normalizeGraphEdge(edge: GraphEdge, index: number, endpoint: string): GraphEdge {
+  const source = requireApiString(edge.source_entity_id, endpoint, `edges[${index}].source_entity_id`)
+  const target = requireApiString(edge.target_entity_id, endpoint, `edges[${index}].target_entity_id`)
+  const timelineValue = edge.metadata?.timeline
+  if (timelineValue === undefined) {
+    throw new ApiClientError({ endpoint, field: `edges[${index}].metadata.timeline`, kind: 'validation', code: 'invalid_api_response', message: 'invalid_api_response: graph edge is missing timeline', cause: edge })
+  }
+  const timeline = Number(timelineValue)
+  if (!Number.isFinite(timeline)) {
+    throw new ApiClientError({ endpoint, field: `edges[${index}].metadata.timeline`, kind: 'validation', code: 'invalid_api_response', message: 'invalid_api_response: graph edge timeline must be numeric', cause: timelineValue })
+  }
+  return { ...edge, source, target, timeline }
+}
+
+function normalizeEntity(value: unknown, index: number, endpoint: string): Entity {
+  const entity = requireApiRecord(value, endpoint, `entities[${index}]`)
   return {
-    ...edge,
-    source: edge.source || edge.source_entity_id || '',
-    target: edge.target || edge.target_entity_id || '',
-    timeline: edge.timeline || Number(edge.metadata?.timeline || 0)
+    ...(entity as unknown as Partial<Entity>),
+    id: requireApiString(entity.id, endpoint, `entities[${index}].id`),
+    project_id: requireApiString(entity.project_id, endpoint, `entities[${index}].project_id`),
+    name: requireApiString(entity.name, endpoint, `entities[${index}].name`, { allowEmpty: true }),
+    type: requireApiString(entity.type, endpoint, `entities[${index}].type`),
+    summary: requireApiString(entity.summary, endpoint, `entities[${index}].summary`, { allowEmpty: true }),
+    importance: requireApiNumber(entity.importance, endpoint, `entities[${index}].importance`),
+    status: requireApiString(entity.status, endpoint, `entities[${index}].status`),
+    created_at: requireApiString(entity.created_at, endpoint, `entities[${index}].created_at`),
+    updated_at: requireApiString(entity.updated_at, endpoint, `entities[${index}].updated_at`),
+    metadata: optionalStringRecord(entity.metadata, endpoint, `entities[${index}].metadata`),
+    traits: optionalStringRecord(entity.traits, endpoint, `entities[${index}].traits`)
   }
 }
 
-function normalizeGraphExpansion(expansion: GraphExpansion): GraphExpandResponse {
+function graphExpansionMismatch(field: string, expected: string | number, actual: string | number, cause: unknown): never {
+  const endpoint = 'expandGraph'
+  throw new ApiClientError({
+    endpoint,
+    field,
+    kind: 'validation',
+    code: 'invalid_api_response',
+    message: `invalid_api_response: ${field} ${String(actual)} does not match requested ${String(expected)}`,
+    cause
+  })
+}
+
+function normalizeGraphExpansion(value: unknown, expected?: Pick<GraphExpandRequest, 'project_id' | 'depth'>): GraphExpandResponse {
+  const endpoint = 'expandGraph'
+  const expansion = requireApiRecord(value, endpoint)
+  const projectId = requireApiString(expansion.project_id, endpoint, 'project_id')
+  const depth = requireApiNumber(expansion.depth, endpoint, 'depth')
+  const generatedAt = requireApiString(expansion.generated_at, endpoint, 'generated_at')
+  if (!Number.isInteger(depth) || depth < 1 || depth > 4) {
+    throw new ApiClientError({ endpoint, field: 'depth', kind: 'validation', code: 'invalid_api_response', message: 'invalid_api_response: graph expansion depth must be an integer between 1 and 4', cause: depth })
+  }
+  if (expected && projectId !== expected.project_id) graphExpansionMismatch('project_id', expected.project_id, projectId, expansion)
+  if (expected && depth !== expected.depth) graphExpansionMismatch('depth', expected.depth, depth, expansion)
+  const entities = requireApiArray(expansion.entities, endpoint, 'entities', (item, index) => normalizeEntity(item, index, endpoint))
+  entities.forEach((entity, index) => {
+    if (entity.project_id !== projectId) graphExpansionMismatch(`entities[${index}].project_id`, projectId, entity.project_id, entity)
+  })
+  const nodes = entities.map((entity, index) => entityToNode(entity, index, endpoint))
+  const nodeIDs = new Set(nodes.map((node) => node.id))
+  const edges = requireApiArray(expansion.edges, endpoint, 'edges', (item, index) => {
+    const edge = requireApiRecord(item, endpoint, `edges[${index}]`)
+    const normalized = normalizeGraphEdge({
+      ...(edge as unknown as Partial<GraphEdge>),
+      id: requireApiString(edge.id, endpoint, `edges[${index}].id`),
+      project_id: requireApiString(edge.project_id, endpoint, `edges[${index}].project_id`),
+      source: requireApiString(edge.source_entity_id, endpoint, `edges[${index}].source_entity_id`),
+      target: requireApiString(edge.target_entity_id, endpoint, `edges[${index}].target_entity_id`),
+      source_entity_id: requireApiString(edge.source_entity_id, endpoint, `edges[${index}].source_entity_id`),
+      target_entity_id: requireApiString(edge.target_entity_id, endpoint, `edges[${index}].target_entity_id`),
+      label: requireApiString(edge.label, endpoint, `edges[${index}].label`, { allowEmpty: true }),
+      type: requireApiString(edge.type, endpoint, `edges[${index}].type`),
+      weight: requireApiNumber(edge.weight, endpoint, `edges[${index}].weight`),
+      timeline: 0,
+      metadata: optionalStringRecord(edge.metadata, endpoint, `edges[${index}].metadata`) as Record<string, string | number | boolean> | undefined
+    } as GraphEdge, index, endpoint)
+    if (normalized.project_id !== projectId) graphExpansionMismatch(`edges[${index}].project_id`, projectId, normalized.project_id, edge)
+    if (!nodeIDs.has(normalized.source) || !nodeIDs.has(normalized.target)) {
+      throw new ApiClientError({ endpoint, field: `edges[${index}]`, kind: 'validation', code: 'invalid_api_response', message: 'invalid_api_response: graph edge endpoint is missing from entities', cause: edge })
+    }
+    return normalized
+  })
   return {
-    nodes: expansion.entities.map(entityToNode),
-    edges: expansion.edges.map(normalizeGraphEdge),
-    facts: expansion.facts,
-    generated_at: new Date().toISOString()
+    project_id: projectId,
+    depth,
+    nodes,
+    edges,
+    facts: requireApiArray(expansion.facts, endpoint, 'facts', (item) => item as Fact),
+    generated_at: generatedAt
   }
 }
 
-function normalizeSaveChapterVersionResponse(response: SaveChapterVersionResponse, copy: ApiCopy): SaveChapterVersionResponse {
+function normalizeIndexJob(value: unknown, index = 0, endpoint = 'indexJob'): IndexJob {
+  const job = requireApiRecord(value, endpoint, `jobs[${index}]`)
   return {
-    ...response,
-    chapter_version: normalizeChapterVersion(response.chapter_version, copy),
-    index_job: response.index_job
+    ...(job as unknown as Partial<IndexJob>),
+    id: requireApiString(job.id, endpoint, `jobs[${index}].id`),
+    project_id: requireApiString(job.project_id, endpoint, `jobs[${index}].project_id`),
+    kind: requireApiString(job.kind, endpoint, `jobs[${index}].kind`),
+    status: requireApiString(job.status, endpoint, `jobs[${index}].status`),
+    attempts: requireApiNumber(job.attempts, endpoint, `jobs[${index}].attempts`),
+    created_at: requireApiString(job.created_at, endpoint, `jobs[${index}].created_at`),
+    updated_at: requireApiString(job.updated_at, endpoint, `jobs[${index}].updated_at`),
+    payload: optionalStringRecord(job.payload, endpoint, `jobs[${index}].payload`)
+  }
+}
+
+function normalizeSaveChapterVersionResponse(value: unknown): SaveChapterVersionResponse {
+  const endpoint = 'createChapterVersion'
+  const response = requireApiRecord(value, endpoint)
+  return {
+    chapter_version: normalizeChapterVersion(response.chapter_version, 0, endpoint),
+    index_job: normalizeIndexJob(response.index_job, 0, endpoint)
+  }
+}
+
+function normalizeCharacterSyncResponse(value: unknown, endpoint = 'syncStoryBibleCharacters'): CharacterSyncResponse {
+  const response = requireApiRecord(value, endpoint)
+  const characters = requireApiArray(response.characters, endpoint, 'characters', (item, index) => normalizeEntity(item, index, endpoint))
+  const mappings = requireApiArray(response.mappings, endpoint, 'mappings', (item, index) => {
+    const mapping = requireApiRecord(item, endpoint, `mappings[${index}]`)
+    return {
+      name: requireApiString(mapping.name, endpoint, `mappings[${index}].name`),
+      entity_id: requireApiString(mapping.entity_id, endpoint, `mappings[${index}].entity_id`),
+      action: requireApiString(mapping.action, endpoint, `mappings[${index}].action`)
+    }
+  })
+  return {
+    project_id: requireApiString(response.project_id, endpoint, 'project_id'),
+    story_bible_id: requireApiString(response.story_bible_id, endpoint, 'story_bible_id'),
+    characters,
+    mappings
   }
 }
 
@@ -998,18 +1044,27 @@ function isSyncableCharacter(character: StoryBible['characters'][number]) {
   )
 }
 
-function chapterRequestToBackend(request: EnsureChapterRequest): EnsureChapterRequest {
+function chapterRequestFields(request: ChapterWriteRequest) {
   const metadata = { ...(request.metadata || {}) }
   delete metadata.summary
-  const body: EnsureChapterRequest = {
-    chapter_id: request.chapter_id,
+  return {
     number: request.number,
     title: request.title,
     status: request.status,
     summary: request.summary,
     metadata: Object.keys(metadata).length > 0 ? metadata : undefined
   }
-  return body
+}
+
+function createChapterRequestToBackend(request: CreateChapterRequest): GeneratedApi.CreateChapterRequest {
+  return {
+    ...chapterRequestFields(request),
+    title: requireApiString(request.title, 'createChapter', 'title')
+  }
+}
+
+function updateChapterRequestToBackend(request: UpdateChapterRequest): GeneratedApi.UpdateChapterRequest {
+  return chapterRequestFields(request)
 }
 
 function contextSelectionToBackend(selection: AgentRunRequest['context_selection']): BackendContextSelection | undefined {
@@ -1052,198 +1107,144 @@ function mapHealth(response: HealthResponse, copy: ApiCopy): HealthStatus {
   }
 }
 
-function errorMessageFromV1(endpoint: string, status: number, error?: V1ErrorPayload): ApiErrorState {
-  const code = error?.code || 'request_error'
-  const message = error?.message || 'request failed'
-  const responseStatus = error?.status || status
-  const requestId = error?.request_id ? ` request_id=${error.request_id}` : ''
-  return {
-    endpoint,
-    status: responseStatus,
-    message: `${code} (${responseStatus}): ${message}${requestId}`,
-    cause: error?.details
-  }
+export function decodeStoryBibleResponse(value: unknown, endpoint = 'storyBible'): StoryBible {
+  return normalizeStoryBible(value, endpoint)
 }
 
-async function parseV1Payload<T>(response: Response, endpoint: string): Promise<T> {
-  const payload = await response.json() as V1Envelope<T>
-  if (payload?.error) {
-    throw new ApiClientError(errorMessageFromV1(endpoint, response.status, payload.error))
-  }
-  if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
-    throw new ApiClientError({
-      endpoint,
-      status: response.status,
-      message: `invalid_v1_envelope (${response.status}): missing data`
-    })
-  }
-  return payload.data as T
+export function decodeProjectSummaryResponse(value: unknown, endpoint = 'project'): ProjectSummary {
+  return normalizeProject(value as Project, endpoint)
 }
 
-async function requestJson<T>(baseUrl: string, endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const url = `${baseUrl.replace(/\/$/, '')}${endpoint}${buildQuery(options.query)}`
-  try {
-    const response = await fetch(url, {
-      method: options.method || 'GET',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body)
-    })
-
-    if (!response.ok) {
-      try {
-        await parseV1Payload<T>(response, endpoint)
-      } catch (cause) {
-        if (cause instanceof ApiClientError) throw cause
-        console.error('Failed to parse v1 API error response', cause)
-      }
-      throw new ApiClientError(errorMessageFromV1(endpoint, response.status, {
-        code: 'request_error',
-        message: response.statusText || 'request failed',
-        status: response.status
-      }))
-    }
-
-    return await parseV1Payload<T>(response, endpoint)
-  } catch (cause) {
-    if (cause instanceof ApiClientError) throw cause
-    const error = createErrorState(endpoint, cause)
-    console.error(`[AeonEchoes API] ${error.message}`, error)
-    throw new ApiClientError(error)
-  }
+export function decodeWorkflowResponse(value: unknown, endpoint = 'workflow'): AIWorkflow {
+  return normalizeWorkflow(value, endpoint)
 }
 
-async function requestResult<T>(baseUrl: string, endpoint: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
-  return {
-    data: await requestJson<T>(baseUrl, endpoint, options)
-  }
+export function decodeChapterVersionResponse(value: unknown, endpoint = 'chapterVersion'): ChapterVersion {
+  return normalizeChapterVersion(value, 0, endpoint)
 }
 
-async function requestMapped<TRaw, TData>(
-  baseUrl: string,
-  endpoint: string,
-  options: RequestOptions,
-  mapData: (raw: TRaw) => TData
-): Promise<ApiResult<TData>> {
-  return {
-    data: mapData(await requestJson<TRaw>(baseUrl, endpoint, options))
-  }
+export function decodeGraphExpansionResponse(value: unknown): GraphExpandResponse {
+  return normalizeGraphExpansion(value)
 }
 
 export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient {
-  const baseUrl = normalizeApiBase(rawBaseUrl)
+  configureGeneratedClient(rawBaseUrl)
   const normalizedLocale = normalizeLocale(locale)
   const copy = getApiCopy(normalizedLocale)
 
-  return {
+  const client: Omit<ApiClient, keyof ApiDomains> = {
     health() {
-      return requestMapped<HealthResponse, HealthStatus>(baseUrl, '/health', {}, (response) => mapHealth(response, copy))
+      return mapApi('getHealth', () => apiSdk.getHealth(), (response) => mapHealth(response, copy))
     },
     systemStatus() {
-      return requestResult<SystemStatus>(baseUrl, '/system/status')
+      return mapApi('getSystemStatus', () => apiSdk.getSystemStatus(), (status) => ({
+        status: status.status || 'unknown',
+        postgres_configured: Boolean(status.postgres_configured),
+        qdrant_configured: Boolean(status.qdrant_configured),
+        provider_count: Number(status.provider_count || 0),
+        model_count: Number(status.model_count || 0),
+        pending_jobs_count: Number(status.pending_jobs_count || 0),
+        checked_at: status.checked_at || ''
+      }))
     },
     listProviders() {
-      return requestMapped<ProviderConfig[], ProviderConfig[]>(baseUrl, '/providers', {}, (items) => items.map(normalizeProvider))
+      return mapApi('listProviders', () => apiSdk.listProviders(), (items) => items.map(normalizeProvider))
     },
     saveProvider(provider, mode) {
       const request = providerToBackend(provider)
       const isExisting = mode === 'edit' || (!mode && Boolean(provider.id && provider.created_at))
-      const endpoint = isExisting ? `/providers/${pathSegment(request.id || provider.id.trim())}` : '/providers'
-      const method = isExisting ? 'PUT' : 'POST'
-      return requestMapped<ProviderConfig, ProviderConfig>(baseUrl, endpoint, { method, body: request }, normalizeProvider)
+      if (isExisting) {
+        return mapApi(
+          'updateProvider',
+          () => apiSdk.updateProvider({ path: { id: requirePathId(request.id || provider.id, 'provider_id') }, body: request }),
+          normalizeProvider
+        )
+      }
+      return mapApi('createProvider', () => apiSdk.createProvider({ body: request }), normalizeProvider)
     },
     deleteProvider(id) {
-      return requestResult<ProviderDeleteResponse>(baseUrl, `/providers/${pathSegment(id)}`, { method: 'DELETE' })
+      return mapApi('deleteProvider', () => apiSdk.deleteProvider({ path: { id } }), (status) => ({ status: status.status }))
     },
     listModels(kind) {
-      return requestMapped<ModelConfig[], ModelConfig[]>(baseUrl, '/models', { query: { 'filter[kind]': kind } }, (items) => items.map(normalizeModel))
+      return mapApi('listModels', () => apiSdk.listModels({ query: { kind } }), (items) => items.map(normalizeModel))
     },
     saveModel(model) {
       const isExisting = Boolean(model.id && model.created_at)
-      const endpoint = isExisting ? `/models/${pathSegment(model.id)}` : '/models'
-      const method = isExisting ? 'PUT' : 'POST'
-      return requestMapped<ModelConfig, ModelConfig>(baseUrl, endpoint, { method, body: modelToBackend(model) }, normalizeModel)
+      if (isExisting) {
+        return mapApi('updateModel', () => apiSdk.updateModel({ path: { id: requirePathId(model.id, 'model_id') }, body: modelToBackend(model) }), normalizeModel)
+      }
+      return mapApi('createModel', () => apiSdk.createModel({ body: modelToBackend(model) }), normalizeModel)
     },
     deleteModel(id) {
-      return requestResult<{ status: string }>(baseUrl, `/models/${pathSegment(id)}`, { method: 'DELETE' })
+      return mapApi('deleteModel', () => apiSdk.deleteModel({ path: { id } }), (status) => ({ status: status.status }))
     },
     refreshModels(providerId) {
-      return requestMapped<RefreshModelsResponse, ModelConfig[]>(
-        baseUrl,
-        `/providers/${pathSegment(providerId)}/model-refreshes`,
-        { method: 'POST' },
-        (response) => response.models.map(normalizeModel)
-      )
+      return mapApi('refreshProviderModels', () => apiSdk.refreshProviderModels({ path: { id: providerId } }), (response) => (response.models || []).map(normalizeModel))
     },
     listSettings(scope) {
-      return requestResult<AppSetting[]>(baseUrl, '/settings', { query: { scope } })
+      return mapApi('listSettings', () => apiSdk.listSettings({ query: { scope } }), (items) => items.map((item) => item as AppSetting))
     },
     saveSetting(setting) {
-      return requestResult<AppSetting>(baseUrl, `/settings/${pathSegment(setting.scope)}/${pathSegment(setting.key)}`, {
-        method: 'PUT',
-        body: setting
-      })
+      return mapApi(
+        'upsertSetting',
+        () => apiSdk.upsertSetting({ path: { scope: setting.scope, key: setting.key }, body: setting }),
+        (item) => item as AppSetting
+      )
     },
-    async getModelUsageSettings() {
-      const result = await requestResult<ModelRoutingResponse>(baseUrl, '/model-routing')
-      return {
-        data: normalizeModelUsageSettings(result.data.routes),
-        error: result.error
-      }
+    getModelUsageSettings() {
+      return mapApi('getModelRouting', () => apiSdk.getModelRouting(), (response) => normalizeModelUsageSettings(response.routes))
     },
-    async saveModelUsageSettings(settings) {
+    saveModelUsageSettings(settings) {
       const routes = modelUsageKeys.reduce<Partial<ModelUsageSettings>>((items, key) => {
         items[key] = settings[key].trim()
         return items
       }, {})
-      const result = await requestResult<ModelRoutingResponse>(baseUrl, '/model-routing', {
-        method: 'PUT',
-        body: { routes }
-      })
-      return {
-        data: normalizeModelUsageSettings(result.data.routes),
-        error: result.error
-      }
+      return mapApi('putModelRouting', () => apiSdk.putModelRouting({ body: { routes } }), (response) => normalizeModelUsageSettings(response.routes))
     },
     listProjects() {
-      return requestMapped<Project[], ProjectSummary[]>(baseUrl, '/projects', {}, (items) => items.map(normalizeProject))
+      return mapApi('listProjects', () => apiSdk.listProjects(), (items) => requireApiArray(items, 'listProjects', 'projects', (project) => normalizeProject(project as Project)))
     },
     initializeProject(seed) {
-      return requestMapped<InitializeProjectResponse, StoryBible>(
-        baseUrl,
-        '/projects',
-        { method: 'POST', body: projectSeedToBackend(seed, copy) },
-        (response) => normalizeStoryBible(response.story_bible, copy)
+      return mapApi(
+        'createProject',
+        () => apiSdk.createProject({ body: projectSeedToBackend(seed, copy) }),
+        (value) => {
+          const response = requireApiRecord(value, 'createProject')
+          return normalizeStoryBible(response.story_bible, 'createProject')
+        }
       )
     },
     initializeProjectFull(seed) {
-      return requestMapped<InitializeProjectResponse, InitializeProjectResponse>(
-        baseUrl,
-        '/projects',
-        { method: 'POST', body: projectSeedToBackend(seed, copy) },
-        (response) => ({
-          ...response,
-          story_bible: normalizeStoryBible(response.story_bible, copy),
-          workflow: normalizeWorkflow(response.workflow)
-        })
+      return mapApi(
+        'createProject',
+        () => apiSdk.createProject({ body: projectSeedToBackend(seed, copy) }),
+        (value) => {
+          const response = requireApiRecord(value, 'createProject')
+          return {
+            project: normalizeProjectEntity(response.project, 'createProject'),
+            story_bible: normalizeStoryBible(response.story_bible, 'createProject'),
+            workflow: normalizeWorkflow(response.workflow, 'createProject')
+          }
+        }
       )
     },
     getStoryBible(projectId) {
-      return requestMapped<StoryBible, StoryBible>(baseUrl, `/projects/${pathSegment(projectId)}/story-bibles/current`, {}, (storyBible) => normalizeStoryBible(storyBible, copy))
+      return mapApi(
+        'getCurrentStoryBible',
+        () => apiSdk.getCurrentStoryBible({ path: { projectID: projectId } }),
+        (storyBible) => normalizeStoryBible(storyBible, 'getCurrentStoryBible')
+      )
     },
     updateStoryBible(projectId, bible) {
       const storyBibleId = requirePathId(bible.id, 'story_bible_id')
-      return requestMapped<StoryBible, StoryBible>(
-        baseUrl,
-        `/projects/${pathSegment(projectId)}/story-bibles/${pathSegment(storyBibleId)}`,
-        { method: 'PUT', body: storyBibleToBackend(bible) },
-        (storyBible) => normalizeStoryBible(storyBible, copy)
+      return mapApi(
+        'updateStoryBible',
+        () => apiSdk.updateStoryBible({ path: { projectID: projectId, storyBibleID: storyBibleId }, body: storyBibleToBackend(bible) }),
+        (storyBible) => normalizeStoryBible(storyBible, 'updateStoryBible')
       )
     },
     syncCharacters(projectId, bible) {
-      const characters: BackendCharacterSyncRequest['characters'] = (bible.characters || [])
+      const characters: NonNullable<BackendCharacterSyncRequest['characters']> = (bible.characters || [])
         .filter(isSyncableCharacter)
         .map((character) => {
           const secret = character.secret?.trim()
@@ -1258,172 +1259,178 @@ export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient 
           }
         })
       if (characters.length === 0) {
-        return Promise.resolve({
-          data: {
-            project_id: projectId,
-            story_bible_id: bible.id || '',
-            characters: [],
-            mappings: []
-          }
+        const error = new ApiClientError({
+          endpoint: 'syncStoryBibleCharacters',
+          field: 'characters',
+          kind: 'validation',
+          code: 'characters_required',
+          message: 'characters_required: at least one complete character is required'
         })
+        console.error('[AeonEchoes API] Cannot sync an empty character collection', error.state)
+        return Promise.reject(error)
       }
+      const storyBibleId = requirePathId(bible.id, 'story_bible_id')
       const body: BackendCharacterSyncRequest = {
         story_bible_id: bible.id || undefined,
         characters
       }
-      return requestResult<CharacterSyncResponse>(
-        baseUrl,
-        `/projects/${pathSegment(projectId)}/story-bibles/${pathSegment(requirePathId(bible.id, 'story_bible_id'))}/character-syncs`,
-        {
-          method: 'POST',
-          body
-        }
+      return mapApi(
+        'syncStoryBibleCharacters',
+        () => apiSdk.syncStoryBibleCharacters({ path: { projectID: projectId, storyBibleID: storyBibleId }, body }),
+        (response) => normalizeCharacterSyncResponse(response)
       )
     },
     expandGraph(request) {
       const projectId = requirePathId(request.project_id, 'project_id')
-      const entityIds = request.entity_ids?.map((item) => item.trim()).filter(Boolean) || []
-      return requestMapped<GraphExpansion, GraphExpandResponse>(
-        baseUrl,
-        `/projects/${pathSegment(projectId)}/graph/expansions`,
-        { method: 'POST', body: { entity_ids: entityIds.length > 0 ? entityIds : undefined, depth: request.depth } },
-        normalizeGraphExpansion
+      if (!Number.isInteger(request.depth) || request.depth < 1 || request.depth > 4) {
+        return Promise.reject(new ApiClientError({ endpoint: 'expandGraph', field: 'depth', kind: 'validation', code: 'invalid_request', message: 'Graph expansion depth must be an integer between 1 and 4.', cause: request.depth }))
+      }
+      const entityIds = request.entity_ids?.map((item) => requireApiString(item, 'expandGraph', 'entity_ids').trim()) || []
+      return mapApi(
+        'expandGraph',
+        () => apiSdk.expandGraph({ path: { projectID: projectId }, body: { entity_ids: entityIds.length > 0 ? entityIds : undefined, depth: request.depth } }),
+        (expansion) => normalizeGraphExpansion(expansion, { project_id: projectId, depth: request.depth })
       )
     },
     semanticSearch(projectId, request) {
-      return requestResult<SemanticSearchResponse>(baseUrl, `/projects/${pathSegment(projectId)}/retrieval/semantic-searches`, {
-        method: 'POST',
-        body: request
-      })
+      return mapApi('semanticSearch', () => apiSdk.semanticSearch({ path: { projectID: projectId }, body: request }), (response) => response as SemanticSearchResponse)
     },
     listChapters(projectId) {
-      return requestMapped<Chapter[], Chapter[]>(
-        baseUrl,
-        `/projects/${pathSegment(projectId)}/chapters`,
-        {},
-        (items) => items.map(normalizeChapter)
+      return mapApi(
+        'listChapters',
+        () => apiSdk.listChapters({ path: { projectID: projectId } }),
+        (items) => requireApiArray(items, 'listChapters', 'chapters', (item, index) => normalizeChapter(item, index, 'listChapters'))
       )
     },
-    ensureChapter(projectId, request) {
-      const chapterId = request.chapter_id?.trim()
-      const endpoint = chapterId
-        ? `/projects/${pathSegment(projectId)}/chapters/${pathSegment(chapterId)}`
-        : `/projects/${pathSegment(projectId)}/chapters`
-      return requestMapped<EnsureChapterResponse | Chapter, EnsureChapterResponse>(
-        baseUrl,
-        endpoint,
-        { method: chapterId ? 'PUT' : 'POST', body: chapterRequestToBackend(request) },
-        normalizeEnsureChapterResponse
+    createChapter(projectId, request) {
+      const body = createChapterRequestToBackend(request)
+      return mapApi(
+        'createChapter',
+        () => apiSdk.createChapter({ path: { projectID: projectId }, body }),
+        (chapter) => normalizeChapter(chapter, 0, 'createChapter')
+      )
+    },
+    updateChapter(projectId, request) {
+      const chapterId = requirePathId(request.chapter_id, 'chapter_id')
+      const body = updateChapterRequestToBackend(request)
+      return mapApi(
+        'updateChapter',
+        () => apiSdk.updateChapter({ path: { projectID: projectId, chapterID: chapterId }, body }),
+        (chapter) => normalizeChapter(chapter, 0, 'updateChapter')
       )
     },
     listChapterVersions(projectId, chapterId) {
-      return requestMapped<ChapterVersion[], ChapterVersion[]>(
-        baseUrl,
-        `/projects/${pathSegment(projectId)}/chapters/${pathSegment(chapterId)}/versions`,
-        {},
-        (items) => items.map((item) => normalizeChapterVersion(item, copy))
+      return mapApi(
+        'listChapterVersions',
+        () => apiSdk.listChapterVersions({ path: { projectID: projectId, chapterID: chapterId } }),
+        (items) => requireApiArray(items, 'listChapterVersions', 'versions', (item, index) => normalizeChapterVersion(item, index, 'listChapterVersions'))
       )
     },
     saveChapterVersion(projectId, version) {
       const chapterId = requirePathId(version.chapter_id, 'chapter_id')
       const body: BackendChapterVersionRequest = {
-        id: version.id,
-        title: version.title || '',
-        content: version.content || '',
+        title: requireApiString(version.title, 'createChapterVersion', 'title'),
+        content: requireApiString(version.content, 'createChapterVersion', 'content'),
+        author_role: version.author_role,
         summary: version.summary,
-        author_role: version.author_role || 'editor',
-        source_workflow_id: version.source_workflow_id,
-        index_status: version.index_status || 'pending',
-        metadata: version.metadata
+        change_note: version.change_note,
+        metadata: version.metadata,
+        parent_version_id: version.parent_version_id
       }
-      return requestMapped<SaveChapterVersionResponse, SaveChapterVersionResponse>(
-        baseUrl,
-        `/projects/${pathSegment(projectId)}/chapters/${pathSegment(chapterId)}/versions`,
-        {
-          method: 'POST',
-          body
-        },
-        (response) => normalizeSaveChapterVersionResponse(response, copy)
+      return mapApi(
+        'createChapterVersion',
+        () => apiSdk.createChapterVersion({ path: { projectID: projectId, chapterID: chapterId }, body }),
+        (response) => normalizeSaveChapterVersionResponse(response)
       )
     },
     listAgents(options) {
-      return requestResult<AgentConfig[]>(baseUrl, '/agents', {
-        query: { project_id: options?.projectId, enabled: options?.enabled, limit: options?.limit }
-      })
+      return mapApi('listAgents', () => apiSdk.listAgents({ query: { project_id: options?.projectId, enabled: options?.enabled, limit: options?.limit } }), (items) => items.map((item) => item as AgentConfig))
     },
     saveAgent(agent, mode) {
       const isExisting = mode === 'edit' || (!mode && Boolean(agent.id && agent.created_at))
-      const endpoint = isExisting ? `/agents/${pathSegment(agent.id)}` : '/agents'
-      const method = isExisting ? 'PUT' : 'POST'
-      return requestResult<AgentConfig>(baseUrl, endpoint, { method, body: agent })
+      if (isExisting) {
+        return mapApi('updateAgent', () => apiSdk.updateAgent({ path: { id: requirePathId(agent.id, 'agent_id') }, body: agent }), (item) => item as AgentConfig)
+      }
+      return mapApi('createAgent', () => apiSdk.createAgent({ body: agent }), (item) => item as AgentConfig)
     },
     deleteAgent(id) {
-      return requestResult<{ status: string }>(baseUrl, `/agents/${pathSegment(id)}`, { method: 'DELETE' })
+      return mapApi('deleteAgent', () => apiSdk.deleteAgent({ path: { id } }), (status) => ({ status: status.status }))
     },
     runAgent(agentId, request) {
-      return requestResult<AgentRunResult>(baseUrl, `/agents/${pathSegment(agentId)}/runs`, { method: 'POST', body: agentRunRequestToBackend(request) })
+      return mapApi('runAgent', () => apiSdk.runAgent({ path: { id: agentId }, body: agentRunRequestToBackend(request) }), (response) => response as AgentRunResult)
     },
     listAgentRuns(options) {
-      return requestResult<AgentRun[]>(baseUrl, '/agent-runs', {
+      return mapApi('listAgentRuns', () => apiSdk.listAgentRuns({
         query: { agent_id: options?.agentId, project_id: options?.projectId, status: options?.status, limit: options?.limit }
-      })
+      }), (items) => items.map((item) => item as AgentRun))
     },
     listSkillSources(options) {
-      return requestResult<SkillSource[]>(baseUrl, '/skill-sources', {
+      return mapApi('listSkillSources', () => apiSdk.listSkillSources({
         query: { project_id: options?.projectId, enabled: options?.enabled, limit: options?.limit }
-      })
+      }), (items) => items.map((item) => item as SkillSource))
     },
     scanDefaultSkillSource() {
-      return requestResult<SkillScanResult>(baseUrl, '/skill-sources/default/scans', { method: 'POST' })
+      return mapApi('scanDefaultSkillSource', () => apiSdk.scanDefaultSkillSource(), (response) => response as SkillScanResult)
     },
     scanSkillSource(id) {
-      return requestResult<SkillScanResult>(baseUrl, `/skill-sources/${pathSegment(id)}/scans`, { method: 'POST' })
+      return mapApi('scanSkillSource', () => apiSdk.scanSkillSource({ path: { id } }), (response) => response as SkillScanResult)
     },
     listSkills(options) {
-      return requestResult<Skill[]>(baseUrl, '/skills', {
+      return mapApi('listSkills', () => apiSdk.listSkills({
         query: { project_id: options?.projectId, source_id: options?.sourceId, enabled: options?.enabled, limit: options?.limit }
-      })
+      }), (items) => items.map((item) => item as Skill))
     },
     saveSkill(skill, mode) {
       const isExisting = mode === 'edit' || (!mode && Boolean(skill.id && skill.created_at))
-      const endpoint = isExisting ? `/skills/${pathSegment(skill.id)}` : '/skills'
-      const method = isExisting ? 'PUT' : 'POST'
-      return requestResult<Skill>(baseUrl, endpoint, { method, body: skillToBackend(skill, isExisting) })
+      const body = skillToBackend(skill, isExisting)
+      if (isExisting) {
+        return mapApi('updateSkill', () => apiSdk.updateSkill({ path: { id: requirePathId(skill.id, 'skill_id') }, body }), (item) => item as Skill)
+      }
+      return mapApi('createSkill', () => apiSdk.createSkill({ body }), (item) => item as Skill)
     },
     deleteSkill(id) {
-      return requestResult<{ status: string }>(baseUrl, `/skills/${pathSegment(id)}`, { method: 'DELETE' })
+      return mapApi('deleteSkill', () => apiSdk.deleteSkill({ path: { id } }), (status) => ({ status: status.status }))
     },
     setSkillEnabled(id, enabled) {
-      return requestResult<Skill>(baseUrl, `/skills/${pathSegment(id)}`, { method: 'PATCH', body: { enabled } })
+      return mapApi('patchSkill', () => apiSdk.patchSkill({ path: { id }, body: { enabled } }), (item) => item as Skill)
     },
     listMCPServers(options) {
-      return requestResult<MCPServerConfig[]>(baseUrl, '/mcp-servers', {
+      return mapApi('listMcpServers', () => apiSdk.listMcpServers({
         query: { project_id: options?.projectId, enabled: options?.enabled, status: options?.status, limit: options?.limit }
-      })
+      }), (items) => items.map((item) => item as MCPServerConfig))
     },
     saveMCPServer(server, mode) {
       const isExisting = mode === 'edit' || (!mode && Boolean(server.id && server.created_at))
-      const endpoint = isExisting ? `/mcp-servers/${pathSegment(server.id)}` : '/mcp-servers'
-      const method = isExisting ? 'PUT' : 'POST'
-      return requestResult<MCPServerConfig>(baseUrl, endpoint, { method, body: mcpServerToBackend(server, isExisting) })
+      const body = mcpServerToBackend(server, isExisting)
+      if (isExisting) {
+        return mapApi('updateMcpServer', () => apiSdk.updateMcpServer({ path: { id: requirePathId(server.id, 'mcp_server_id') }, body }), (item) => item as MCPServerConfig)
+      }
+      return mapApi('createMcpServer', () => apiSdk.createMcpServer({ body }), (item) => item as MCPServerConfig)
     },
     deleteMCPServer(id) {
-      return requestResult<{ status: string }>(baseUrl, `/mcp-servers/${pathSegment(id)}`, { method: 'DELETE' })
+      return mapApi('deleteMcpServer', () => apiSdk.deleteMcpServer({ path: { id } }), (status) => ({ status: status.status }))
     },
     setMCPServerEnabled(id, enabled) {
-      return requestResult<MCPServerConfig>(baseUrl, `/mcp-servers/${pathSegment(id)}`, { method: 'PATCH', body: { enabled } })
+      return mapApi('patchMcpServer', () => apiSdk.patchMcpServer({ path: { id }, body: { enabled } }), (item) => item as MCPServerConfig)
     },
     testMCPServer(id) {
-      return requestResult<{ ok: boolean; server: MCPServerConfig }>(baseUrl, `/mcp-servers/${pathSegment(id)}/connection-tests`, { method: 'POST' })
+      return mapApi('testMcpServerConnection', () => apiSdk.testMcpServerConnection({ path: { id } }), (response) => ({
+        ok: Boolean(response.ok),
+        server: response.server as MCPServerConfig
+      }))
     },
     refreshMCPTools(id) {
-      return requestResult<{ tools: ToolDefinition[]; count: number; unavailable: number }>(baseUrl, `/mcp-servers/${pathSegment(id)}/tool-refreshes`, { method: 'POST' })
+      return mapApi('refreshMcpTools', () => apiSdk.refreshMcpTools({ path: { id } }), (response) => ({
+        tools: (response.tools || []).map((item) => item as ToolDefinition),
+        count: Number(response.count || 0),
+        unavailable: Number(response.unavailable || 0)
+      }))
     },
     listMCPServerTools(id) {
-      return requestResult<ToolDefinition[]>(baseUrl, `/mcp-servers/${pathSegment(id)}/tools`)
+      return mapApi('listMcpServerTools', () => apiSdk.listMcpServerTools({ path: { id } }), (items) => items.map((item) => item as ToolDefinition))
     },
     listToolCatalog(options) {
-      return requestResult<ToolDefinition[]>(baseUrl, '/tools', {
+      return mapApi('listTools', () => apiSdk.listTools({
         query: {
           project_id: options?.projectId,
           kind: options?.kind,
@@ -1433,13 +1440,13 @@ export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient 
           skill_id: options?.skillId,
           limit: options?.limit
         }
-      })
+      }), (items) => items.map((item) => item as ToolDefinition))
     },
     setToolEnabled(id, enabled) {
-      return requestResult<ToolDefinition>(baseUrl, `/tools/${pathSegment(id)}`, { method: 'PATCH', body: { enabled } })
+      return mapApi('patchTool', () => apiSdk.patchTool({ path: { id }, body: { enabled } }), (item) => item as ToolDefinition)
     },
     listToolInvocations(options) {
-      return requestResult<ToolInvocation[]>(baseUrl, '/tool-invocations', {
+      return mapApi('listToolInvocations', () => apiSdk.listToolInvocations({
         query: {
           agent_run_id: options?.agentRunId,
           agent_id: options?.agentId,
@@ -1448,28 +1455,34 @@ export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient 
           status: options?.status,
           limit: options?.limit
         }
-      })
+      }), (items) => items.map((item) => item as ToolInvocation))
     },
     listIndexJobs(options) {
       const query = typeof options === 'string'
         ? { project_id: options }
         : { project_id: options?.projectId, status: options?.status, limit: options?.limit }
-      return requestResult<IndexJob[]>(baseUrl, '/index-jobs', { query })
+      return mapApi('listIndexJobs', () => apiSdk.listIndexJobs({ query }), (items) => requireApiArray(items, 'listIndexJobs', 'jobs', (item, index) => normalizeIndexJob(item, index, 'listIndexJobs')))
     },
     runIndexJob(id) {
-      return requestResult<IndexJob>(baseUrl, `/index-jobs/${pathSegment(id)}/runs`, { method: 'POST' })
+      return mapApi('runIndexJob', () => apiSdk.runIndexJob({ path: { id } }), (item) => normalizeIndexJob(item, 0, 'runIndexJob'))
     },
     runPendingIndexJobs(projectId, limit = 10) {
-      return requestResult<RunPendingIndexResponse>(baseUrl, '/index-runs', { method: 'POST', query: { project_id: projectId, limit } })
+      return mapApi('runPendingIndexJobs', () => apiSdk.runPendingIndexJobs({ query: { project_id: projectId, limit } }), (value) => {
+        const response = requireApiRecord(value, 'runPendingIndexJobs')
+        return {
+          processed: requireApiArray(response.processed, 'runPendingIndexJobs', 'processed', (item, index) => normalizeIndexJob(item, index, 'runPendingIndexJobs')),
+          count: requireApiNumber(response.count, 'runPendingIndexJobs', 'count'),
+          error: typeof response.error === 'string' ? response.error : undefined
+        }
+      })
     },
     rebuildVectors() {
-      return requestResult<RebuildVectorsResponse>(baseUrl, '/vector-index-rebuilds', { method: 'POST' })
+      return mapApi('rebuildVectorIndex', () => apiSdk.rebuildVectorIndex(), (response) => response as RebuildVectorsResponse)
     },
     optimizeProjectSeed(seed) {
-      return requestMapped<ProjectSeed, ProjectSeed>(
-        baseUrl,
-        '/project-seed-optimizations',
-        { method: 'POST', body: projectSeedToBackend(seed, copy) },
+      return mapApi(
+        'optimizeProjectSeed',
+        () => apiSdk.optimizeProjectSeed({ body: projectSeedToBackend(seed, copy) }),
         (response) => ({
           ...seed,
           title: response.title || seed.title,
@@ -1489,4 +1502,53 @@ export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient 
       )
     }
   }
+
+  const api: ApiClient = {
+    ...client,
+    project: {
+      listProjects: client.listProjects,
+      initializeProject: client.initializeProject,
+      initializeProjectFull: client.initializeProjectFull,
+      optimizeProjectSeed: client.optimizeProjectSeed
+    },
+    storyBible: {
+      getStoryBible: client.getStoryBible,
+      updateStoryBible: client.updateStoryBible,
+      syncCharacters: client.syncCharacters
+    },
+    chapter: {
+      listChapters: client.listChapters,
+      createChapter: client.createChapter,
+      updateChapter: client.updateChapter,
+      listChapterVersions: client.listChapterVersions,
+      saveChapterVersion: client.saveChapterVersion
+    },
+    graph: {
+      expandGraph: client.expandGraph,
+      semanticSearch: client.semanticSearch
+    },
+    model: {
+      listModels: client.listModels,
+      saveModel: client.saveModel,
+      deleteModel: client.deleteModel,
+      refreshModels: client.refreshModels,
+      getModelUsageSettings: client.getModelUsageSettings,
+      saveModelUsageSettings: client.saveModelUsageSettings
+    },
+    agent: {
+      listAgents: client.listAgents,
+      saveAgent: client.saveAgent,
+      deleteAgent: client.deleteAgent,
+      runAgent: client.runAgent,
+      listAgentRuns: client.listAgentRuns
+    },
+    indexJob: {
+      listIndexJobs: client.listIndexJobs,
+      runIndexJob: client.runIndexJob,
+      runPendingIndexJobs: client.runPendingIndexJobs,
+      rebuildVectors: client.rebuildVectors
+    }
+  }
+
+  return api
 }

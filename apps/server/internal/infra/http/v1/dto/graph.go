@@ -80,11 +80,12 @@ type PlotThreadDTO struct {
 }
 
 type GraphExpansionDTO struct {
-	ProjectID string         `json:"project_id"`
-	Depth     int            `json:"depth"`
-	Entities  []EntityDTO    `json:"entities"`
-	Edges     []GraphEdgeDTO `json:"edges"`
-	Facts     []FactDTO      `json:"facts"`
+	ProjectID   string         `json:"project_id"`
+	Depth       int            `json:"depth"`
+	Entities    []EntityDTO    `json:"entities"`
+	Edges       []GraphEdgeDTO `json:"edges"`
+	Facts       []FactDTO      `json:"facts"`
+	GeneratedAt time.Time      `json:"generated_at"`
 }
 
 type GraphExpansionRequestDTO struct {

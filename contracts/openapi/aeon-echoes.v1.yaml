@@ -223,7 +223,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ChapterRequest'
+              $ref: '#/components/schemas/CreateChapterRequest'
       responses:
         '201':
           description: Created chapter.
@@ -238,6 +238,10 @@ paths:
                         $ref: '#/components/schemas/Chapter'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /projects/{projectID}/chapters/{chapterID}:
     parameters:
       - $ref: '#/components/parameters/ProjectID'
@@ -267,7 +271,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ChapterRequest'
+              $ref: '#/components/schemas/UpdateChapterRequest'
       responses:
         '200':
           description: Updated chapter.
@@ -282,6 +286,10 @@ paths:
                         $ref: '#/components/schemas/Chapter'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
     patch:
       operationId: patchChapter
       tags: [chapters]
@@ -290,7 +298,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ChapterRequest'
+              $ref: '#/components/schemas/UpdateChapterRequest'
       responses:
         '200':
           description: Patched chapter.
@@ -305,6 +313,10 @@ paths:
                         $ref: '#/components/schemas/Chapter'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /projects/{projectID}/chapters/{chapterID}/versions:
     parameters:
       - $ref: '#/components/parameters/ProjectID'
@@ -349,6 +361,8 @@ paths:
                         $ref: '#/components/schemas/SaveChapterVersionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /projects/{projectID}/workflows:
     parameters:
       - $ref: '#/components/parameters/ProjectID'
@@ -407,7 +421,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ContextPreviewResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
   /projects/{projectID}/chapters/{chapterID}/ideas:
@@ -429,7 +448,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ChapterIdeaResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
   /projects/{projectID}/chapters/{chapterID}/drafts:
@@ -451,7 +475,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DraftResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
   /projects/{projectID}/character-profiles:
@@ -472,7 +501,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CharacterProfilesResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
   /projects/{projectID}/graph/expansions:
@@ -493,7 +527,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/GraphExpansion'
         '400':
           $ref: '#/components/responses/BadRequest'
   /projects/{projectID}/retrieval/semantic-searches:
@@ -514,7 +553,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SemanticSearchResult'
         '400':
           $ref: '#/components/responses/BadRequest'
   /providers:
@@ -610,7 +654,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeleteStatus'
         '404':
           $ref: '#/components/responses/NotFound'
   /providers/{id}/model-refreshes:
@@ -731,7 +780,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeleteStatus'
         '404':
           $ref: '#/components/responses/NotFound'
   /model-routing:
@@ -870,7 +924,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeleteStatus'
         '404':
           $ref: '#/components/responses/NotFound'
   /agents/{id}/runs:
@@ -891,7 +950,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AgentRunResult'
         '400':
           $ref: '#/components/responses/BadRequest'
   /agent-runs:
@@ -996,7 +1060,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SkillScanResult'
         '400':
           $ref: '#/components/responses/BadRequest'
   /skill-sources/{id}/scans:
@@ -1011,7 +1080,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SkillScanResult'
         '400':
           $ref: '#/components/responses/BadRequest'
   /skills:
@@ -1138,7 +1212,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeleteStatus'
         '404':
           $ref: '#/components/responses/NotFound'
   /mcp-servers:
@@ -1265,7 +1344,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/V1Envelope'
+                allOf:
+                  - $ref: '#/components/schemas/V1Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeleteStatus'
         '404':
           $ref: '#/components/responses/NotFound'
   /mcp-servers/{id}/connection-tests:
@@ -1631,6 +1715,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
+    Conflict:
+      description: Resource state conflicts with the request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
     ServerError:
       description: Server error.
       content:
@@ -1845,6 +1935,20 @@ components:
           $ref: '#/components/schemas/ProjectSeed'
         rules:
           $ref: '#/components/schemas/StringMap'
+        worldline_ids:
+          type: array
+          items:
+            type: string
+        entity_ids:
+          type: array
+          items:
+            type: string
+        plot_thread_ids:
+          type: array
+          items:
+            type: string
+        genesis_workflow_id:
+          type: string
         approved:
           type: boolean
         created_at:
@@ -1898,13 +2002,20 @@ components:
         title:
           type: string
         status:
-          type: string
+          $ref: '#/components/schemas/ChapterStatus'
         summary:
           type: string
+
+    ChapterStatus:
+      type: string
+      enum: [planned, drafting, reviewing, locked]
+      default: drafting
     CharacterSyncRequest:
       type: object
       additionalProperties: false
       properties:
+        story_bible_id:
+          type: string
         source:
           type: string
         characters:
@@ -1931,6 +2042,8 @@ components:
     CharacterProfileMapping:
       type: object
       properties:
+        local_id:
+          type: string
         name:
           type: string
         entity_id:
@@ -1949,7 +2062,7 @@ components:
         title:
           type: string
         status:
-          type: string
+          $ref: '#/components/schemas/ChapterStatus'
         summary:
           type: string
         metadata:
@@ -1960,18 +2073,36 @@ components:
         updated_at:
           type: string
           format: date-time
-    ChapterRequest:
+    CreateChapterRequest:
       type: object
       additionalProperties: false
+      required: [title]
       properties:
-        chapter_id:
-          type: string
         number:
           type: integer
+          minimum: 1
         title:
           type: string
+          minLength: 1
         status:
+          $ref: '#/components/schemas/ChapterStatus'
+        summary:
           type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+    UpdateChapterRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/ChapterStatus'
         summary:
           type: string
         metadata:
@@ -1984,6 +2115,8 @@ components:
         project_id:
           type: string
         chapter_id:
+          type: string
+        parent_version_id:
           type: string
         version:
           type: integer
@@ -2007,24 +2140,25 @@ components:
     ChapterVersionRequest:
       type: object
       additionalProperties: false
-      required: [title, content]
+      required: [title, content, author_role]
       properties:
-        id:
-          type: string
         title:
           type: string
+          minLength: 1
         content:
           type: string
-        summary:
-          type: string
+          minLength: 1
         author_role:
           type: string
-        source_workflow_id:
+          enum: [genesis-optimizer, plot-architect, world-builder, character-keeper, continuity-auditor, writer, editor, fact-extractor, graph-curator]
+        summary:
           type: string
-        index_status:
+        change_note:
           type: string
         metadata:
           $ref: '#/components/schemas/StringMap'
+        parent_version_id:
+          type: string
     SaveChapterVersionResponse:
       type: object
       properties:
@@ -2032,9 +2166,10 @@ components:
           $ref: '#/components/schemas/ChapterVersion'
         index_job:
           $ref: '#/components/schemas/IndexJob'
+    ToolTrace:
+      type: string
     Provider:
       type: object
-      required: [id, name, type, enabled, status]
       properties:
         id:
           type: string
@@ -2644,6 +2779,7 @@ components:
           $ref: '#/components/schemas/StringMap'
     Entity:
       type: object
+      required: [id, project_id, name, type, summary, importance, status, created_at, updated_at]
       properties:
         id:
           type: string
@@ -2655,6 +2791,7 @@ components:
           type: string
         type:
           type: string
+          enum: [story_start, character, place, location, event, object, item, clue, chapter, concept, rule, time_node]
         aliases:
           type: array
           items:
@@ -2667,6 +2804,7 @@ components:
           type: integer
         status:
           type: string
+          enum: [stable, draft, conflict, resolved, active, canonical, deprecated]
         metadata:
           $ref: '#/components/schemas/StringMap'
         created_at:
@@ -2675,6 +2813,361 @@ components:
         updated_at:
           type: string
           format: date-time
+    Fact:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        worldline_id:
+          type: string
+        entity_id:
+          type: string
+        chapter_id:
+          type: string
+        chapter_version_id:
+          type: string
+        claim:
+          type: string
+        source:
+          type: string
+        confidence:
+          type: number
+        status:
+          type: string
+        embedding_ref:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    GraphEdge:
+      type: object
+      required: [id, project_id, source_entity_id, target_entity_id, type, label, weight, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        worldline_id:
+          type: string
+        source_entity_id:
+          type: string
+          minLength: 1
+        target_entity_id:
+          type: string
+          minLength: 1
+        type:
+          type: string
+        label:
+          type: string
+        weight:
+          type: number
+        evidence_fact_ids:
+          type: array
+          items:
+            type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PlotThread:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        worldline_id:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        status:
+          type: string
+        priority:
+          type: integer
+        related_entity_ids:
+          type: array
+          items:
+            type: string
+        opened_chapter_id:
+          type: string
+        closed_chapter_id:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    GraphExpansion:
+      type: object
+      required: [project_id, depth, entities, edges, facts, generated_at]
+      properties:
+        project_id:
+          type: string
+        depth:
+          type: integer
+          minimum: 1
+          maximum: 4
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEdge'
+        facts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fact'
+        generated_at:
+          type: string
+          format: date-time
+    SemanticSearchItem:
+      type: object
+      properties:
+        source_id:
+          type: string
+        score:
+          type: number
+        payload:
+          $ref: '#/components/schemas/ObjectMap'
+    SemanticSearchResult:
+      type: object
+      properties:
+        query:
+          type: string
+        project_id:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SemanticSearchItem'
+    ModelResolution:
+      type: object
+      properties:
+        route_key:
+          type: string
+        resolution_source:
+          type: string
+        provider_id:
+          type: string
+        provider_name:
+          type: string
+        provider_type:
+          type: string
+        model_id:
+          type: string
+        model_name:
+          type: string
+        model_kind:
+          type: string
+    IndexFreshness:
+      type: object
+      properties:
+        project_id:
+          type: string
+        chapter_id:
+          type: string
+        status:
+          type: string
+        latest_chapter_version_id:
+          type: string
+        latest_chapter_version_created_at:
+          type: string
+          format: date-time
+        latest_indexed_chapter_version_id:
+          type: string
+        latest_indexed_at:
+          type: string
+          format: date-time
+        pending_job_count:
+          type: integer
+    ContinuityEvidenceRef:
+      type: object
+      properties:
+        source_type:
+          type: string
+        source_id:
+          type: string
+        label:
+          type: string
+        excerpt:
+          type: string
+    ContinuityIssue:
+      type: object
+      properties:
+        type:
+          type: string
+        severity:
+          type: string
+        message:
+          type: string
+        draft_excerpt:
+          type: string
+        suggestion:
+          type: string
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContinuityEvidenceRef'
+    ContinuityAudit:
+      type: object
+      properties:
+        status:
+          type: string
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContinuityIssue'
+    ChapterSummary:
+      type: object
+      properties:
+        chapter_id:
+          type: string
+        chapter_version_id:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+    ContextPack:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        chapter_id:
+          type: string
+        role:
+          type: string
+        token_budget:
+          type: integer
+        query:
+          type: string
+        story_bible_id:
+          type: string
+        world_rules:
+          $ref: '#/components/schemas/StringMap'
+        facts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Fact'
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEdge'
+        plot_threads:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlotThread'
+        chapter_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChapterSummary'
+        tool_trace:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolTrace'
+        metadata:
+          $ref: '#/components/schemas/StringMap'
+        created_at:
+          type: string
+          format: date-time
+    ContextPreviewResponse:
+      type: object
+      properties:
+        context_pack:
+          $ref: '#/components/schemas/ContextPack'
+        summary:
+          type: string
+        estimated_tokens:
+          type: integer
+        index_freshness:
+          $ref: '#/components/schemas/IndexFreshness'
+        model_resolution:
+          $ref: '#/components/schemas/ModelResolution'
+    ChapterIdeaResponse:
+      type: object
+      properties:
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+        context_pack:
+          $ref: '#/components/schemas/ContextPack'
+        chapter_idea:
+          type: string
+        model_resolution:
+          $ref: '#/components/schemas/ModelResolution'
+        tool_trace:
+          type: array
+          items:
+            type: string
+    CharacterProfilesResponse:
+      type: object
+      properties:
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+        context_pack:
+          $ref: '#/components/schemas/ContextPack'
+        characters:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryBibleCharacter'
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+        mappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/CharacterProfileMapping'
+        model_resolution:
+          $ref: '#/components/schemas/ModelResolution'
+        tool_trace:
+          type: array
+          items:
+            type: string
+    DraftResponse:
+      type: object
+      properties:
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+        context_pack:
+          $ref: '#/components/schemas/ContextPack'
+        chapter_version:
+          $ref: '#/components/schemas/ChapterVersion'
+        index_job:
+          $ref: '#/components/schemas/IndexJob'
+        index_freshness:
+          $ref: '#/components/schemas/IndexFreshness'
+        model_resolution:
+          $ref: '#/components/schemas/ModelResolution'
+        continuity_audit:
+          $ref: '#/components/schemas/ContinuityAudit'
+        tool_trace:
+          type: array
+          items:
+            type: string
     ContextSelection:
       type: object
       additionalProperties: false
@@ -2760,13 +3253,18 @@ components:
     GraphExpansionRequest:
       type: object
       additionalProperties: false
+      required: [depth]
       properties:
         entity_ids:
           type: array
+          uniqueItems: true
           items:
             type: string
+            minLength: 1
         depth:
           type: integer
+          minimum: 1
+          maximum: 4
     SemanticSearchRequest:
       type: object
       additionalProperties: false
@@ -2778,6 +3276,67 @@ components:
         limit:
           type: integer
         filters:
+          $ref: '#/components/schemas/StringMap'
+    DeleteStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [deleted]
+    AgentRunResult:
+      type: object
+      properties:
+        run:
+          $ref: '#/components/schemas/AgentRun'
+        content:
+          type: string
+        tool_trace:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolTrace'
+        model_resolution:
+          $ref: '#/components/schemas/ModelResolution'
+    SkillScanResult:
+      type: object
+      properties:
+        source_id:
+          type: string
+        path:
+          type: string
+        created:
+          type: integer
+        updated:
+          type: integer
+        deleted:
+          type: integer
+        unchanged:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+        scanned_at:
+          type: string
+          format: date-time
+    CharacterProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        desire:
+          type: string
+        wound:
+          type: string
+        secret:
+          type: string
+        summary:
+          type: string
+        metadata:
           $ref: '#/components/schemas/StringMap'
     StringMap:
       type: object

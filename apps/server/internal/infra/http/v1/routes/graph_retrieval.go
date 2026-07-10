@@ -89,11 +89,11 @@ func (s *Router) v1ExpandGraph(w http.ResponseWriter, r *http.Request) {
 	if !respond.Decode(w, r, &input) {
 		return
 	}
-	depth := input.Depth
-	if depth == 0 {
-		depth = 1
+	if input.Depth < 1 || input.Depth > 4 {
+		respond.Error(w, r, http.StatusBadRequest, "bad_request", "graph expansion depth must be between 1 and 4", nil)
+		return
 	}
-	expansion, err := s.store.ExpandGraph(r.PathValue("projectID"), mappers.CopyStringSliceV1(input.EntityIDs), depth)
+	expansion, err := s.store.ExpandGraph(r.PathValue("projectID"), mappers.CopyStringSliceV1(input.EntityIDs), input.Depth)
 	if err != nil {
 		respond.ErrorFromErr(w, r, http.StatusBadRequest, err)
 		return

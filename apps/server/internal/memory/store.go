@@ -355,7 +355,7 @@ func (s *Store) GetProject(id string) (domain.Project, error) {
 	defer s.mu.RUnlock()
 	project, ok := s.projects[id]
 	if !ok {
-		return domain.Project{}, fmt.Errorf("project %q not found", id)
+		return domain.Project{}, repository.NotFound("project", id)
 	}
 	return project, nil
 }
@@ -601,14 +601,12 @@ func (s *Store) ListPlotThreads(projectID string) ([]domain.PlotThread, error) {
 }
 
 func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (domain.GraphExpansion, error) {
-	if strings.TrimSpace(projectID) == "" {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
 		return domain.GraphExpansion{}, fmt.Errorf("project_id must not be empty")
 	}
-	if depth < 0 {
-		return domain.GraphExpansion{}, fmt.Errorf("graph expansion depth must not be negative")
-	}
-	if depth == 0 {
-		depth = 1
+	if depth < 1 || depth > 4 {
+		return domain.GraphExpansion{}, fmt.Errorf("graph expansion depth must be between 1 and 4")
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -626,9 +624,14 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 	} else {
 		for _, id := range entityIDs {
 			id = strings.TrimSpace(id)
-			if id != "" {
-				frontier[id] = true
+			if id == "" {
+				return domain.GraphExpansion{}, fmt.Errorf("graph expansion entity_ids must not contain empty values")
 			}
+			entity, ok := s.entities[id]
+			if !ok || entity.ProjectID != projectID {
+				return domain.GraphExpansion{}, repository.NotFound("entity", id)
+			}
+			frontier[id] = true
 		}
 	}
 	selectedEdges := map[string]bool{}
@@ -645,11 +648,15 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 					continue
 				}
 				if edge.SourceEntityID == id || edge.TargetEntityID == id {
-					selectedEdges[edgeID] = true
 					other := edge.TargetEntityID
 					if other == id {
 						other = edge.SourceEntityID
 					}
+					otherEntity, ok := s.entities[other]
+					if !ok || otherEntity.ProjectID != projectID {
+						return domain.GraphExpansion{}, fmt.Errorf("graph edge %q references missing entity %q", edgeID, other)
+					}
+					selectedEdges[edgeID] = true
 					if !selected[other] {
 						next[other] = true
 					}
@@ -657,6 +664,13 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 			}
 		}
 		frontier = next
+	}
+	for id := range frontier {
+		entity, ok := s.entities[id]
+		if !ok || entity.ProjectID != projectID {
+			return domain.GraphExpansion{}, fmt.Errorf("graph expansion references missing entity %q", id)
+		}
+		selected[id] = true
 	}
 	entities := make([]domain.Entity, 0, len(selected))
 	for id := range selected {
@@ -686,53 +700,100 @@ func (s *Store) ExpandGraph(projectID string, entityIDs []string, depth int) (do
 	sort.Slice(entities, func(i, j int) bool { return entities[i].Name < entities[j].Name })
 	sort.Slice(edges, func(i, j int) bool { return edges[i].ID < edges[j].ID })
 	sort.Slice(facts, func(i, j int) bool { return facts[i].CreatedAt.Before(facts[j].CreatedAt) })
-	return domain.GraphExpansion{ProjectID: projectID, Depth: depth, Entities: entities, Edges: edges, Facts: facts}, nil
+	return domain.GraphExpansion{ProjectID: projectID, Depth: depth, Entities: entities, Edges: edges, Facts: facts, GeneratedAt: now()}, nil
 }
 
-func (s *Store) EnsureChapter(req domain.ChapterEnsureRequest) (domain.Chapter, error) {
+func (s *Store) CreateChapter(req domain.CreateChapterRequest) (domain.Chapter, error) {
 	projectID := strings.TrimSpace(req.ProjectID)
 	if projectID == "" {
-		return domain.Chapter{}, fmt.Errorf("chapter ensure project_id must not be empty")
+		return domain.Chapter{}, fmt.Errorf("create chapter project_id must not be empty")
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		return domain.Chapter{}, fmt.Errorf("chapter title must not be empty")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.projects[projectID]; !ok {
-		return domain.Chapter{}, fmt.Errorf("project %q not found", projectID)
+		return domain.Chapter{}, repository.NotFound("project", projectID)
 	}
-	chapterID := strings.TrimSpace(req.ChapterID)
-	if chapterID != "" {
-		if existing, ok := s.chapters[chapterID]; ok {
-			if existing.ProjectID != projectID {
-				return domain.Chapter{}, fmt.Errorf("chapter %q belongs to project %q, not %q", chapterID, existing.ProjectID, projectID)
-			}
-			updated := mergeChapter(existing, req)
-			s.chapters[updated.ID] = updated
-			return updated, nil
-		}
-	}
-	if req.Number > 0 {
-		for _, existing := range s.chapters {
-			if existing.ProjectID == projectID && existing.Number == req.Number {
-				updated := mergeChapter(existing, req)
-				s.chapters[updated.ID] = updated
-				return updated, nil
-			}
-		}
-	}
-	if chapterID == "" {
-		chapterID = s.nextIDLocked("chapter")
-	}
-	n := now()
 	number := req.Number
 	if number <= 0 {
 		number = s.nextChapterNumberLocked(projectID)
 	}
-	chapter := domain.Chapter{ID: chapterID, ProjectID: projectID, Number: number, Title: strings.TrimSpace(req.Title), Status: strings.TrimSpace(req.Status), Metadata: copyStringMap(req.Metadata), CreatedAt: n, UpdatedAt: n}
-	if chapter.Status == "" {
-		chapter.Status = "draft"
+	for _, existing := range s.chapters {
+		if existing.ProjectID == projectID && existing.Number == number {
+			return domain.Chapter{}, repository.Conflict("chapter", existing.ID, fmt.Sprintf("chapter number %d already exists in project %q", number, projectID), nil)
+		}
 	}
+	status := req.Status
+	if status == "" {
+		status = domain.ChapterStatusDrafting
+	}
+	if !status.Valid() {
+		return domain.Chapter{}, fmt.Errorf("chapter status %q is invalid", status)
+	}
+	n := now()
+	chapter := domain.Chapter{ID: s.nextIDLocked("chapter"), ProjectID: projectID, Number: number, Title: title, Status: status, Metadata: copyStringMap(req.Metadata), CreatedAt: n, UpdatedAt: n}
 	s.chapters[chapter.ID] = chapter
 	return chapter, nil
+}
+
+func (s *Store) UpdateChapter(req domain.UpdateChapterRequest) (domain.Chapter, error) {
+	projectID := strings.TrimSpace(req.ProjectID)
+	chapterID := strings.TrimSpace(req.ChapterID)
+	if projectID == "" || chapterID == "" {
+		return domain.Chapter{}, fmt.Errorf("update chapter project_id and chapter_id must not be empty")
+	}
+	if req.Number == nil && req.Title == nil && req.Status == nil && req.Metadata == nil {
+		return domain.Chapter{}, fmt.Errorf("chapter update must include at least one field")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.chapters[chapterID]
+	if !ok || existing.ProjectID != projectID {
+		return domain.Chapter{}, repository.NotFound("chapter", chapterID)
+	}
+	if req.Number != nil {
+		if *req.Number <= 0 {
+			return domain.Chapter{}, fmt.Errorf("chapter number must be greater than zero")
+		}
+		if *req.Number != existing.Number {
+			for _, candidate := range s.chapters {
+				if candidate.ID != chapterID && candidate.ProjectID == projectID && candidate.Number == *req.Number {
+					return domain.Chapter{}, repository.Conflict("chapter", chapterID, fmt.Sprintf("chapter number %d already exists in project %q", *req.Number, projectID), nil)
+				}
+			}
+			existing.Number = *req.Number
+		}
+	}
+	if req.Title != nil {
+		title := strings.TrimSpace(*req.Title)
+		if title == "" {
+			return domain.Chapter{}, fmt.Errorf("chapter title must not be empty")
+		}
+		existing.Title = title
+	}
+	if req.Status != nil {
+		status := *req.Status
+		if !status.Valid() {
+			return domain.Chapter{}, fmt.Errorf("chapter status %q is invalid", status)
+		}
+		existing.Status = status
+	}
+	if req.Metadata != nil {
+		metadata := copyStringMap(existing.Metadata)
+		if metadata == nil {
+			metadata = map[string]string{}
+		}
+		for key, value := range *req.Metadata {
+			metadata[key] = value
+		}
+		existing.Metadata = metadata
+	}
+	existing.UpdatedAt = now()
+	s.chapters[chapterID] = existing
+	return existing, nil
 }
 
 func (s *Store) GetChapter(id string) (domain.Chapter, error) {
@@ -744,7 +805,7 @@ func (s *Store) GetChapter(id string) (domain.Chapter, error) {
 	defer s.mu.RUnlock()
 	chapter, ok := s.chapters[id]
 	if !ok {
-		return domain.Chapter{}, fmt.Errorf("chapter %q not found", id)
+		return domain.Chapter{}, repository.NotFound("chapter", id)
 	}
 	return chapter, nil
 }
@@ -756,6 +817,9 @@ func (s *Store) ListChapters(projectID string) ([]domain.Chapter, error) {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if _, ok := s.projects[projectID]; !ok {
+		return nil, repository.NotFound("project", projectID)
+	}
 	items := make([]domain.Chapter, 0)
 	for _, item := range s.chapters {
 		if item.ProjectID == projectID {
@@ -771,25 +835,6 @@ func (s *Store) ListChapters(projectID string) ([]domain.Chapter, error) {
 	return items, nil
 }
 
-func mergeChapter(existing domain.Chapter, req domain.ChapterEnsureRequest) domain.Chapter {
-	updated := existing
-	if strings.TrimSpace(req.Title) != "" {
-		updated.Title = strings.TrimSpace(req.Title)
-	}
-	if strings.TrimSpace(req.Status) != "" {
-		updated.Status = strings.TrimSpace(req.Status)
-	}
-	if len(req.Metadata) > 0 {
-		metadata := copyStringMap(updated.Metadata)
-		for key, value := range req.Metadata {
-			metadata[key] = value
-		}
-		updated.Metadata = metadata
-	}
-	updated.UpdatedAt = now()
-	return updated
-}
-
 func copyStringMap(values map[string]string) map[string]string {
 	if len(values) == 0 {
 		return nil
@@ -802,29 +847,41 @@ func copyStringMap(values map[string]string) map[string]string {
 }
 
 func (s *Store) SaveChapterVersion(version domain.ChapterVersion) (domain.ChapterVersion, domain.IndexJob, error) {
-	if strings.TrimSpace(version.ProjectID) == "" {
+	version.ProjectID = strings.TrimSpace(version.ProjectID)
+	if version.ProjectID == "" {
 		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version project_id must not be empty")
+	}
+	version.Title = strings.TrimSpace(version.Title)
+	if version.Title == "" {
+		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version title must not be empty")
 	}
 	if strings.TrimSpace(version.Content) == "" {
 		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version content must not be empty")
 	}
+	if !version.AuthorRole.Valid() {
+		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version author_role %q is invalid", version.AuthorRole)
+	}
+	version.ChapterID = strings.TrimSpace(version.ChapterID)
+	if version.ChapterID == "" {
+		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("chapter version chapter_id must not be empty")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.projects[version.ProjectID]; !ok {
-		return domain.ChapterVersion{}, domain.IndexJob{}, fmt.Errorf("project %q not found", version.ProjectID)
+		return domain.ChapterVersion{}, domain.IndexJob{}, repository.NotFound("project", version.ProjectID)
 	}
-	if strings.TrimSpace(version.ChapterID) == "" {
-		n := now()
-		chapter := domain.Chapter{ID: s.nextIDLocked("chapter"), ProjectID: version.ProjectID, Number: s.nextChapterNumberLocked(version.ProjectID), Title: version.Title, Status: "draft", CreatedAt: n, UpdatedAt: n}
-		s.chapters[chapter.ID] = chapter
-		version.ChapterID = chapter.ID
-	} else if _, ok := s.chapters[version.ChapterID]; !ok {
-		n := now()
-		chapter := domain.Chapter{ID: version.ChapterID, ProjectID: version.ProjectID, Number: s.nextChapterNumberLocked(version.ProjectID), Title: version.Title, Status: "draft", CreatedAt: n, UpdatedAt: n}
-		s.chapters[chapter.ID] = chapter
+	chapter, ok := s.chapters[version.ChapterID]
+	if !ok || chapter.ProjectID != version.ProjectID {
+		return domain.ChapterVersion{}, domain.IndexJob{}, repository.NotFound("chapter", version.ChapterID)
 	}
 	if strings.TrimSpace(version.ID) == "" {
 		version.ID = s.nextIDLocked("chapter_version")
+	} else if _, exists := s.chapterVersions[version.ID]; exists {
+		return domain.ChapterVersion{}, domain.IndexJob{}, repository.Conflict("chapter version", version.ID, fmt.Sprintf("chapter version %q already exists", version.ID), nil)
+	}
+	version.ParentVersionID = strings.TrimSpace(version.ParentVersionID)
+	if err := s.validateChapterVersionParentLocked(version); err != nil {
+		return domain.ChapterVersion{}, domain.IndexJob{}, err
 	}
 	version.Version = s.nextChapterVersionLocked(version.ChapterID)
 	version.CreatedAt = now()
@@ -837,6 +894,41 @@ func (s *Store) SaveChapterVersion(version domain.ChapterVersion) (domain.Chapte
 	job := domain.IndexJob{ID: s.nextIDLocked("index_job"), ProjectID: version.ProjectID, ChapterID: version.ChapterID, ChapterVersionID: version.ID, Kind: "chapter_reindex", Status: "pending", Payload: map[string]string{"trigger": "chapter_version_saved"}, CreatedAt: jobCreatedAt, UpdatedAt: jobCreatedAt}
 	s.indexJobs[job.ID] = job
 	return version, job, nil
+}
+
+func (s *Store) validateChapterVersionParentLocked(version domain.ChapterVersion) error {
+	if version.ParentVersionID == "" {
+		return nil
+	}
+	if version.ParentVersionID == version.ID {
+		return fmt.Errorf("chapter version %q cannot reference itself as parent", version.ID)
+	}
+	parent, ok := s.chapterVersions[version.ParentVersionID]
+	if !ok {
+		return repository.NotFound("chapter version", version.ParentVersionID)
+	}
+	if parent.ProjectID != version.ProjectID || parent.ChapterID != version.ChapterID {
+		return fmt.Errorf("chapter version parent %q must belong to project %q and chapter %q", version.ParentVersionID, version.ProjectID, version.ChapterID)
+	}
+	visited := map[string]struct{}{version.ID: {}}
+	current := parent
+	for {
+		if _, seen := visited[current.ID]; seen {
+			return fmt.Errorf("chapter version parent chain contains a cycle at %q", current.ID)
+		}
+		visited[current.ID] = struct{}{}
+		if current.ProjectID != version.ProjectID || current.ChapterID != version.ChapterID {
+			return fmt.Errorf("chapter version parent chain crosses project or chapter at %q", current.ID)
+		}
+		if strings.TrimSpace(current.ParentVersionID) == "" {
+			return nil
+		}
+		next, ok := s.chapterVersions[current.ParentVersionID]
+		if !ok {
+			return fmt.Errorf("chapter version parent chain references missing version %q", current.ParentVersionID)
+		}
+		current = next
+	}
 }
 
 func (s *Store) supersedePendingIndexJobsLocked(projectID, chapterID string) {
@@ -900,8 +992,22 @@ func (s *Store) UpdateChapterVersionIndexStatus(id, status string) (domain.Chapt
 }
 
 func (s *Store) ListChapterVersions(projectID, chapterID string) ([]domain.ChapterVersion, error) {
+	projectID = strings.TrimSpace(projectID)
+	chapterID = strings.TrimSpace(chapterID)
+	if projectID == "" {
+		return nil, fmt.Errorf("list chapter versions project_id must not be empty")
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if _, ok := s.projects[projectID]; !ok {
+		return nil, repository.NotFound("project", projectID)
+	}
+	if chapterID != "" {
+		chapter, ok := s.chapters[chapterID]
+		if !ok || chapter.ProjectID != projectID {
+			return nil, repository.NotFound("chapter", chapterID)
+		}
+	}
 	items := make([]domain.ChapterVersion, 0)
 	for _, item := range s.chapterVersions {
 		if item.ProjectID != projectID {
