@@ -19,9 +19,12 @@ type Store interface {
 	UpsertToolDefinition(tool domain.ToolDefinition) (domain.ToolDefinition, error)
 	GetToolDefinition(id string) (domain.ToolDefinition, error)
 	ListToolDefinitions(filter repository.ToolDefinitionFilter) ([]domain.ToolDefinition, error)
+	DeleteToolDefinition(id string) error
 	SetToolDefinitionEnabled(id string, enabled bool) (domain.ToolDefinition, error)
 	CreateToolInvocation(invocation domain.ToolInvocation) (domain.ToolInvocation, error)
 	UpdateToolInvocation(id string, invocation domain.ToolInvocation) (domain.ToolInvocation, error)
+	ListAgentConfigs(filter repository.AgentConfigFilter) ([]domain.AgentConfig, error)
+	UpdateAgentConfig(id string, cfg domain.AgentConfig) (domain.AgentConfig, error)
 }
 
 // ToolExecutionContext records runtime identity for persisted tool invocation traces.
@@ -42,10 +45,13 @@ func NewRegistry(store Store, toolStore agent.ToolStore) *Registry {
 }
 
 // SeedBuiltinTools stores the narrative builtin tool catalog using stable builtin-prefixed IDs.
+// Any builtin catalog row that is not part of the current NarrativeToolSpecs is deleted, and agent
+// configs lose those tool_ids so stale entries (for example chapter.ensure) cannot survive upgrades.
 func (r *Registry) SeedBuiltinTools(ctx context.Context) error {
 	if r == nil || r.store == nil {
 		return fmt.Errorf("tooling registry store is not configured")
 	}
+	current := currentBuiltinToolNames()
 	for _, spec := range agent.NarrativeToolSpecs() {
 		select {
 		case <-ctx.Done():
@@ -70,11 +76,63 @@ func (r *Registry) SeedBuiltinTools(ctx context.Context) error {
 			return fmt.Errorf("upsert builtin tool %q: %w", spec.Name, err)
 		}
 	}
+	if err := r.deleteObsoleteBuiltinTools(ctx, current); err != nil {
+		return err
+	}
+	if err := r.scrubAgentBuiltinToolIDs(ctx, current); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Registry) deleteObsoleteBuiltinTools(ctx context.Context, current map[string]bool) error {
+	builtins, err := r.store.ListToolDefinitions(repository.ToolDefinitionFilter{Kind: domain.ToolDefinitionBuiltin})
+	if err != nil {
+		return fmt.Errorf("list builtin tool definitions for seed cleanup: %w", err)
+	}
+	for _, tool := range builtins {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		name := builtinToolName(tool)
+		if name != "" && current[name] {
+			continue
+		}
+		if err := r.store.DeleteToolDefinition(tool.ID); err != nil {
+			return fmt.Errorf("delete obsolete builtin tool %q: %w", tool.ID, err)
+		}
+	}
+	return nil
+}
+
+func (r *Registry) scrubAgentBuiltinToolIDs(ctx context.Context, current map[string]bool) error {
+	agents, err := r.store.ListAgentConfigs(repository.AgentConfigFilter{})
+	if err != nil {
+		return fmt.Errorf("list agent configs for tool_ids cleanup: %w", err)
+	}
+	for _, cfg := range agents {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		cleaned, changed := scrubObsoleteBuiltinToolIDs(cfg.ToolIDs, current)
+		if !changed {
+			continue
+		}
+		cfg.ToolIDs = cleaned
+		if _, err := r.store.UpdateAgentConfig(cfg.ID, cfg); err != nil {
+			return fmt.Errorf("scrub obsolete tool_ids for agent %q: %w", cfg.ID, err)
+		}
+	}
 	return nil
 }
 
 // ListProviderTools returns enabled active tools as provider-neutral specs.
-// Builtin names are de-prefixed so the legacy agent.ToolExecutor can dispatch them.
+// Builtin names are de-prefixed so the agent ToolExecutor can dispatch them.
+// Builtins that are not part of the current NarrativeToolSpecs are never exposed.
 func (r *Registry) ListProviderTools(ctx context.Context, cfg domain.AgentConfig) ([]provider.ToolSpec, error) {
 	if r == nil || r.store == nil {
 		return nil, fmt.Errorf("tooling registry store is not configured")
@@ -90,6 +148,7 @@ func (r *Registry) ListProviderTools(ctx context.Context, cfg domain.AgentConfig
 	}
 	allowed := stringSetFromSlice(cfg.ToolIDs)
 	defaultBuiltinOnly := len(allowed) == 0
+	currentBuiltins := currentBuiltinToolNames()
 	result := make([]provider.ToolSpec, 0, len(activeTools))
 	for _, tool := range activeTools {
 		select {
@@ -102,6 +161,12 @@ func (r *Registry) ListProviderTools(ctx context.Context, cfg domain.AgentConfig
 		}
 		if defaultBuiltinOnly && tool.Kind != domain.ToolDefinitionBuiltin {
 			continue
+		}
+		if tool.Kind == domain.ToolDefinitionBuiltin {
+			name := builtinToolName(tool)
+			if name == "" || !currentBuiltins[name] {
+				continue
+			}
 		}
 		spec, ok, err := providerToolSpec(tool)
 		if err != nil {
@@ -127,7 +192,7 @@ func (r *Registry) SetEnabled(ctx context.Context, id string, enabled bool) (dom
 	return r.store.SetToolDefinitionEnabled(id, enabled)
 }
 
-// ExecuteBuiltin executes one builtin provider tool call through the legacy narrative ToolExecutor.
+// ExecuteBuiltin executes one builtin provider tool call through the narrative ToolExecutor.
 func (r *Registry) ExecuteBuiltin(ctx context.Context, call provider.ToolCall, exec ToolExecutionContext) (any, error) {
 	if r == nil || r.toolStore == nil {
 		return nil, fmt.Errorf("tooling registry tool store is not configured")
@@ -305,6 +370,65 @@ func resultObject(result any) (map[string]any, error) {
 
 func builtinToolID(name string) string {
 	return builtinToolIDPrefix + strings.TrimSpace(name)
+}
+
+func currentBuiltinToolNames() map[string]bool {
+	specs := agent.NarrativeToolSpecs()
+	set := make(map[string]bool, len(specs))
+	for _, spec := range specs {
+		name := strings.TrimSpace(spec.Name)
+		if name != "" {
+			set[name] = true
+		}
+	}
+	return set
+}
+
+func builtinToolName(tool domain.ToolDefinition) string {
+	if strings.HasPrefix(tool.ID, builtinToolIDPrefix) {
+		return strings.TrimSpace(strings.TrimPrefix(tool.ID, builtinToolIDPrefix))
+	}
+	name := strings.TrimSpace(tool.Name)
+	name = strings.TrimPrefix(name, builtinToolIDPrefix)
+	name = strings.TrimPrefix(name, "builtin.")
+	return strings.TrimSpace(name)
+}
+
+func scrubObsoleteBuiltinToolIDs(toolIDs []string, current map[string]bool) ([]string, bool) {
+	if len(toolIDs) == 0 {
+		return nil, false
+	}
+	cleaned := make([]string, 0, len(toolIDs))
+	changed := false
+	for _, raw := range toolIDs {
+		id := strings.TrimSpace(raw)
+		if id == "" {
+			changed = true
+			continue
+		}
+		name, isBuiltin := parseBuiltinToolID(id)
+		if isBuiltin && (name == "" || !current[name]) {
+			changed = true
+			continue
+		}
+		cleaned = append(cleaned, id)
+	}
+	if !changed {
+		return toolIDs, false
+	}
+	return cleaned, true
+}
+
+func parseBuiltinToolID(id string) (name string, isBuiltin bool) {
+	id = strings.TrimSpace(id)
+	switch {
+	case strings.HasPrefix(id, builtinToolIDPrefix):
+		return strings.TrimSpace(strings.TrimPrefix(id, builtinToolIDPrefix)), true
+	case strings.HasPrefix(id, "builtin."):
+		return strings.TrimSpace(strings.TrimPrefix(id, "builtin.")), true
+	default:
+		return "", false
+	}
 }
 
 func stringSetFromSlice(values []string) map[string]bool {
