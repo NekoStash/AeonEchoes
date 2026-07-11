@@ -9,7 +9,7 @@ import UiSheet from '~/components/ui/Sheet.vue'
 import { applyAgentProposal, canCancelAgentRun, createAgentProposal, isAgentRunActive, type AgentProposal, type ProposalApplyMode } from '~/features/agent-run'
 import { buildChapterVersionPayload, latestChapterVersion, loadChapterVersion, sortChapterVersions } from '~/features/chapter-version'
 import { countWritingMetrics, resolveStrictChapter, type TextSelection } from '~/features/chapter-write'
-import { buildContextSelection, createContextSelectState, type ContextSelectState } from '~/features/context-select'
+import { buildAgentRunInput, buildContextSelection, createContextSelectState, type ContextSelectState } from '~/features/context-select'
 import {
   buildLineDiff,
   draftDiffersFromBackend,
@@ -458,13 +458,14 @@ async function runAgent() {
     const result = await agentStore.runStream(agent.id, {
       project_id: projectId.value,
       task_type: 'generic',
-      input: {
-        chapter_id: runChapterId,
-        instruction: prompt.value.trim(),
+      input: buildAgentRunInput({
+        chapterId: runChapterId,
         title: title.value,
+        instruction: prompt.value.trim(),
         content: content.value,
-        selected_text: selectedText.value || undefined
-      },
+        selectedText: selectedText.value,
+        state: contextState.value
+      }),
       context_selection: contextSelection
     }, {
       signal: controller.signal,

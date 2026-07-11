@@ -1133,8 +1133,12 @@ function contextSelectionToBackend(selection: AgentRunRequest['context_selection
   const body: BackendContextSelection = {
     chapter_ids: chapterIds?.length ? chapterIds : undefined,
     character_ids: characterIds?.length ? characterIds : undefined,
-    character_names: characterNames?.length ? characterNames : undefined,
-    include_world_rules: selection.include_world_rules || undefined
+    character_names: characterNames?.length ? characterNames : undefined
+  }
+  // Preserve explicit false: `false || undefined` would drop the flag and the
+  // backend would default include_world_rules to true.
+  if (selection.include_world_rules !== undefined) {
+    body.include_world_rules = selection.include_world_rules
   }
   return Object.values(body).some((value) => value !== undefined) ? body : undefined
 }

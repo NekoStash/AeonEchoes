@@ -1183,7 +1183,7 @@
     },
     "context": {
       "title": "上下文选择",
-      "description": "仅控制真实 Agent Run 请求；页面不会模拟或展示后端上下文命中。",
+      "description": "仅控制真实 Agent Run 请求；页面不会模拟或展示后端上下文命中。关闭「包含当前章节」表示重写本章：不把本章正文与章节摘要送入模型。",
       "currentChapter": "包含当前章节",
       "worldRules": "包含世界规则",
       "previousChapters": "参考前 N 个真实章节",

@@ -326,6 +326,61 @@ func TestContextPackBuilderAutoModeStillWorks(t *testing.T) {
 	}
 }
 
+func TestContextPackBuilderExplicitExcludeCurrentChapterDoesNotFallbackToAuto(t *testing.T) {
+	includeWorldRules := true
+	repo := fakeContextPackRepository{
+		bible: domain.StoryBible{ID: "bible-1", Rules: map[string]string{"canon_policy": "必须遵守"}},
+		versions: []domain.ChapterVersion{
+			{ID: "cv-1", ProjectID: "project-1", ChapterID: "chapter-1", Title: "第一章", Summary: "前章摘要", Content: "前章正文"},
+			{ID: "cv-2", ProjectID: "project-1", ChapterID: "chapter-2", Title: "第二章", Summary: "本章旧稿摘要", Content: "本章旧稿正文不应进入重写上下文"},
+		},
+		facts: []domain.Fact{
+			{ID: "fact-1", ProjectID: "project-1", ChapterID: "chapter-1", ChapterVersionID: "cv-1", Claim: "前章事实"},
+			{ID: "fact-2", ProjectID: "project-1", ChapterID: "chapter-2", ChapterVersionID: "cv-2", Claim: "本章旧事实"},
+		},
+		threads:   []domain.PlotThread{{ID: "thread-1", ProjectID: "project-1", Title: "线索", OpenedChapterID: "chapter-1"}},
+		expansion: domain.GraphExpansion{},
+	}
+	builder := NewContextPackBuilder(repo, NewToolRuntime(repo), fakeIDSource{id: "context-pack-rewrite"})
+
+	// Rewrite current chapter: only previous chapter_ids, no current chapter.
+	pack, err := builder.BuildWithSelection("project-1", "chapter-2", domain.AgentRoleWriter, "重写本章", 1000, &ContextSelection{
+		ChapterIDs:        []string{"chapter-1"},
+		IncludeWorldRules: &includeWorldRules,
+	}, nil)
+	if err != nil {
+		t.Fatalf("BuildWithSelection(rewrite with previous) error: %v", err)
+	}
+	if pack.Metadata["selection_mode"] != "explicit" {
+		t.Fatalf("expected explicit selection mode, got %+v", pack.Metadata)
+	}
+	if len(pack.ChapterSummaries) != 1 || pack.ChapterSummaries[0].ChapterID != "chapter-1" {
+		t.Fatalf("rewrite pack should only include previous chapter, got %+v", pack.ChapterSummaries)
+	}
+	for _, summary := range pack.ChapterSummaries {
+		if summary.ChapterID == "chapter-2" {
+			t.Fatalf("current chapter leaked into rewrite context summaries: %+v", pack.ChapterSummaries)
+		}
+	}
+
+	// Rewrite with no chapter context at all (world rules only) must not auto-inject current chapter.
+	pack, err = builder.BuildWithSelection("project-1", "chapter-2", domain.AgentRoleWriter, "纯重写", 1000, &ContextSelection{
+		IncludeWorldRules: &includeWorldRules,
+	}, nil)
+	if err != nil {
+		t.Fatalf("BuildWithSelection(rewrite without chapters) error: %v", err)
+	}
+	if pack.Metadata["selection_mode"] != "explicit" {
+		t.Fatalf("expected explicit selection mode for empty chapter rewrite, got %+v", pack.Metadata)
+	}
+	if len(pack.ChapterSummaries) != 0 {
+		t.Fatalf("rewrite without chapter_ids must not include any chapter summaries, got %+v", pack.ChapterSummaries)
+	}
+	if pack.WorldRules["canon_policy"] != "必须遵守" {
+		t.Fatalf("expected world rules preserved for rewrite, got %+v", pack.WorldRules)
+	}
+}
+
 func TestWorkflowRunnerGenerateChapterIdeaUsesPlotArchitectBrief(t *testing.T) {
 	store, runner, textClient, projectID := newConfiguredWorkflowRunner(t)
 	chapter, err := store.CreateChapter(domain.CreateChapterRequest{ProjectID: projectID, Number: 7, Title: "第七章"})

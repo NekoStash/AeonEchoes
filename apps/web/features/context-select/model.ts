@@ -9,6 +9,16 @@ export interface ContextSelectState {
   characterIds: string[]
 }
 
+/** Agent run input assembled from the editor + context selection switches. */
+export interface AgentRunInputBuildArgs {
+  chapterId: string
+  title: string
+  instruction: string
+  content: string
+  selectedText: string
+  state: ContextSelectState
+}
+
 export function createContextSelectState(): ContextSelectState {
   return {
     previousChapterCount: 0,
@@ -18,6 +28,15 @@ export function createContextSelectState(): ContextSelectState {
   }
 }
 
+/**
+ * Expand UI context switches into the API ContextSelection.
+ *
+ * - includeCurrentChapter=false means rewrite mode for the current chapter:
+ *   the current chapter id is omitted from chapter_ids so the model does not
+ *   receive this chapter's prior text via ContextPack summaries.
+ * - previousChapterCount / character multi-select only contribute real ids.
+ * - include_world_rules is always an explicit boolean (false must not be dropped).
+ */
 export function buildContextSelection(
   chapters: Chapter[],
   bible: StoryBible | null,
@@ -42,9 +61,41 @@ export function buildContextSelection(
 
   return {
     chapter_ids: chapterIds.length > 0 ? Array.from(new Set(chapterIds)) : undefined,
-    previous_chapter_count: previousCount || undefined,
-    include_current_chapter: state.includeCurrentChapter || undefined,
-    include_world_rules: state.includeWorldRules || undefined,
+    include_world_rules: state.includeWorldRules,
     character_ids: characterIds.length > 0 ? characterIds : undefined
   }
+}
+
+/**
+ * Build the AgentRun input payload.
+ *
+ * When includeCurrentChapter is false, this is rewrite-the-chapter mode:
+ * current body and selection must not be sent, otherwise the model still
+ * "sees" the chapter and cannot rewrite from other context alone.
+ */
+export function buildAgentRunInput(args: AgentRunInputBuildArgs): Record<string, unknown> {
+  const instruction = args.instruction.trim()
+  if (!instruction) {
+    throw new Error('Agent run instruction must not be empty.')
+  }
+  const chapterId = args.chapterId.trim()
+  if (!chapterId) {
+    throw new Error('Agent run chapter_id must not be empty.')
+  }
+
+  const input: Record<string, unknown> = {
+    chapter_id: chapterId,
+    instruction,
+    title: args.title
+  }
+
+  if (args.state.includeCurrentChapter) {
+    input.content = args.content
+    const selected = args.selectedText.trim()
+    if (selected) {
+      input.selected_text = selected
+    }
+  }
+
+  return input
 }

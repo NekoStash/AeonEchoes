@@ -1180,7 +1180,7 @@
     },
     "context": {
       "title": "Context selection",
-      "description": "Controls the real Agent Run request only; the page does not simulate or display backend context hits.",
+      "description": "Controls the real Agent Run request only; the page does not simulate or display backend context hits. Turning off “Include current chapter” means rewrite mode: the current chapter body and summaries are not sent to the model.",
       "currentChapter": "Include current chapter",
       "worldRules": "Include world rules",
       "previousChapters": "Reference previous N real chapters",

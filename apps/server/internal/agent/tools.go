@@ -89,7 +89,11 @@ func (b *ContextPackBuilder) BuildWithSelection(projectID, chapterID string, rol
 	}
 	includeWorldRules := shouldIncludeWorldRules(selection)
 	metadata := buildSelectionMetadata(selection, contextNodeIDs)
-	if selection == nil || !selection.hasStructuredFilters() {
+	// nil selection => auto pack (includes current chapter by default).
+	// Non-nil explicit selection (even with empty chapter/character filters)
+	// must use the selected path so "exclude current chapter" / rewrite mode
+	// cannot fall back into auto and re-inject the current chapter.
+	if selection == nil {
 		return b.buildAutoContextPack(contextPackID, bible, projectID, chapterID, role, query, tokenBudget, includeWorldRules, metadata)
 	}
 	return b.buildSelectedContextPack(contextPackID, bible, projectID, chapterID, role, query, tokenBudget, selection, includeWorldRules, metadata)
@@ -115,7 +119,7 @@ func (b *ContextPackBuilder) buildAutoContextPack(contextPackID string, bible do
 	if err != nil {
 		return domain.ContextPack{}, err
 	}
-	metadata["selection_chapter_summary_count"] = strconv.Itoa(len(buildChapterSummaries(versions, chapterID, nil, nil)))
+	metadata["selection_chapter_summary_count"] = strconv.Itoa(len(buildChapterSummaries(versions, chapterID, nil, nil, false)))
 	metadata["selection_entity_count"] = strconv.Itoa(len(limitEntities(expansion.Entities, 20)))
 	metadata["selection_fact_count"] = strconv.Itoa(len(facts))
 	metadata["selection_plot_thread_count"] = strconv.Itoa(len(limitThreads(threads, 12)))
@@ -132,7 +136,7 @@ func (b *ContextPackBuilder) buildAutoContextPack(contextPackID string, bible do
 		Entities:         limitEntities(expansion.Entities, 20),
 		Edges:            limitEdges(expansion.Edges, 30),
 		PlotThreads:      limitThreads(threads, 12),
-		ChapterSummaries: buildChapterSummaries(versions, chapterID, nil, nil),
+		ChapterSummaries: buildChapterSummaries(versions, chapterID, nil, nil, false),
 		ToolTrace:        []string{"selection.mode=auto", "graph.expand depth=1", "facts.limit=20", "chapter_summaries.limit=8"},
 		Metadata:         metadata,
 		CreatedAt:        nowUTC(),
@@ -215,7 +219,9 @@ func (b *ContextPackBuilder) buildSelectedContextPack(contextPackID string, bibl
 	entities = filterEntitiesForSelection(allEntities, selectedEntityIDs, selectedVersionIDs)
 	edges := filterEdgesForSelection(expansion.Edges, selectedEntityIDs)
 	plotThreads := filterThreadsForSelection(threads, selectedEntityIDs, selectedChapterIDs, selectedVersionIDs)
-	summaries := buildChapterSummaries(allVersions, chapterID, selectedChapterIDs, selectedVersionIDs)
+	// Explicit selection never falls back to the current chapter: empty
+	// chapter_ids means rewrite mode without this chapter's prior text.
+	summaries := buildChapterSummaries(allVersions, chapterID, selectedChapterIDs, selectedVersionIDs, true)
 	metadata["selection_chapter_summary_count"] = strconv.Itoa(len(summaries))
 	metadata["selection_entity_count"] = strconv.Itoa(len(entities))
 	metadata["selection_fact_count"] = strconv.Itoa(len(facts))
@@ -330,10 +336,10 @@ func buildSelectionMetadata(selection *ContextSelection, contextNodeIDs []string
 	return metadata
 }
 
-func buildChapterSummaries(versions []domain.ChapterVersion, chapterID string, selectedChapterIDs, selectedVersionIDs stringSet) []domain.ChapterSummary {
+func buildChapterSummaries(versions []domain.ChapterVersion, chapterID string, selectedChapterIDs, selectedVersionIDs stringSet, restrictToSelection bool) []domain.ChapterSummary {
 	summaries := make([]domain.ChapterSummary, 0, len(versions))
 	for _, version := range versions {
-		if !shouldIncludeVersion(version, chapterID, selectedChapterIDs, selectedVersionIDs) {
+		if !shouldIncludeVersion(version, chapterID, selectedChapterIDs, selectedVersionIDs, restrictToSelection) {
 			continue
 		}
 		if strings.TrimSpace(version.Summary) == "" && version.ChapterID != chapterID {
@@ -347,7 +353,10 @@ func buildChapterSummaries(versions []domain.ChapterVersion, chapterID string, s
 	return summaries
 }
 
-func shouldIncludeVersion(version domain.ChapterVersion, defaultChapterID string, selectedChapterIDs, selectedVersionIDs stringSet) bool {
+func shouldIncludeVersion(version domain.ChapterVersion, defaultChapterID string, selectedChapterIDs, selectedVersionIDs stringSet, restrictToSelection bool) bool {
+	if restrictToSelection {
+		return selectedChapterIDs.has(version.ChapterID) || selectedVersionIDs.has(version.ID)
+	}
 	if len(selectedChapterIDs) > 0 || len(selectedVersionIDs) > 0 {
 		return selectedChapterIDs.has(version.ChapterID) || selectedVersionIDs.has(version.ID)
 	}
