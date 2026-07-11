@@ -39,7 +39,11 @@ const selectedNode = computed(() => allNodes.value.find((node) => node.id === se
 const selectedEdge = computed(() => allEdges.value.find((edge) => edge.id === selectedEdgeId.value) || null)
 const selectionId = computed(() => selectedNode.value?.id || selectedEdge.value?.id || '')
 const selectionEdges = computed(() => relatedEdges(allEdges.value, selectionId.value))
-const maxTimelineAvailable = computed(() => Math.max(0, ...allNodes.value.map((node) => node.timeline), ...allEdges.value.map((edge) => edge.timeline)))
+const maxTimelineAvailable = computed(() => {
+  const values = [...allNodes.value.map((node) => node.timeline), ...allEdges.value.map((edge) => edge.timeline)]
+    .filter((value): value is number => value !== undefined)
+  return values.length > 0 ? Math.max(...values) : null
+})
 const requestedEntityIds = computed(() => entityIdsInput.value.split(/[\s,，]+/u).map((item) => item.trim()).filter(Boolean))
 const hasLocalFilters = computed(() => Boolean(filters.search || filters.nodeType || filters.nodeStatus || filters.edgeType || filters.maxTimeline !== null))
 const nodeTypes = computed(() => uniqueTokens(allNodes.value.map((node) => node.type)))
@@ -110,6 +114,10 @@ function translatedToken(key: string, fallback: string) {
   return value === key ? fallback.replace(/[-_]/g, ' ') : value
 }
 
+function optionalGraphMetric(prefix: string, value: number | undefined) {
+  return value === undefined ? t('common.emptyValue') : `${prefix}${value}`
+}
+
 function statusTone(status: string) {
   if (status === 'stable' || status === 'resolved') return 'success' as const
   if (status === 'conflict') return 'danger' as const
@@ -173,7 +181,7 @@ function statusTone(status: string) {
           <label class="block space-y-2"><span class="field-label">{{ t('graph.table.type') }}</span><UiSelect v-model="filters.nodeType" :options="nodeTypes.map((value) => ({ value, label: nodeTypeLabel(value) }))" :placeholder="t('graph.filterControls.allNodeTypes')" /></label>
           <label class="block space-y-2"><span class="field-label">{{ t('graph.table.status') }}</span><UiSelect v-model="filters.nodeStatus" :options="nodeStatuses.map((value) => ({ value, label: nodeStatusLabel(value) }))" :placeholder="t('graph.filterControls.allStatuses')" /></label>
           <label class="block space-y-2"><span class="field-label">{{ t('graph.table.relation') }}</span><UiSelect v-model="filters.edgeType" :options="edgeTypes.map((value) => ({ value, label: edgeTypeLabel(value) }))" :placeholder="t('graph.filterControls.allEdgeTypes')" /></label>
-          <label v-if="maxTimelineAvailable > 0" class="block space-y-2"><span class="flex items-center justify-between gap-3"><span class="field-label">{{ t('graph.localFilters.timeline') }}</span><span class="font-mono text-xs">{{ filters.maxTimeline ?? t('graph.localFilters.allTimeline') }}</span></span><input v-model.number="filters.maxTimeline" type="range" min="0" :max="maxTimelineAvailable" class="w-full accent-foreground" /><button type="button" class="focus-ring text-xs font-bold underline underline-offset-4" @click="filters.maxTimeline = null">{{ t('graph.localFilters.clearTimeline') }}</button></label>
+          <label v-if="maxTimelineAvailable !== null" class="block space-y-2"><span class="flex items-center justify-between gap-3"><span class="field-label">{{ t('graph.localFilters.timeline') }}</span><span class="font-mono text-xs">{{ filters.maxTimeline ?? t('graph.localFilters.allTimeline') }}</span></span><input v-model.number="filters.maxTimeline" type="range" min="0" :max="maxTimelineAvailable ?? 0" class="w-full accent-foreground" /><button type="button" class="focus-ring text-xs font-bold underline underline-offset-4" @click="filters.maxTimeline = null">{{ t('graph.localFilters.clearTimeline') }}</button></label>
           <UiButton v-if="hasLocalFilters" variant="outline" class="w-full" @click="clearFilters">{{ t('graph.filterControls.clear') }}</UiButton>
         </div>
       </aside>
@@ -203,13 +211,13 @@ function statusTone(status: string) {
             <div v-if="listKind === 'nodes'" class="divide-y divide-border">
               <button v-for="node in filteredNodes" :key="node.id" type="button" :class="['focus-ring grid w-full gap-3 px-5 py-4 text-left transition-colors sm:grid-cols-[minmax(0,1fr)_9rem_7rem_5rem]', selectedNodeId === node.id ? 'bg-foreground text-background' : 'hover:bg-surface-muted']" @click="selectNode(node.id)">
                 <span class="min-w-0"><strong class="block truncate">{{ node.label || node.id }}</strong><span :class="['mt-1 block truncate font-mono text-[11px]', selectedNodeId === node.id ? 'text-background/60' : 'text-muted-foreground']">{{ node.id }}</span></span>
-                <span class="text-sm font-semibold">{{ nodeTypeLabel(node.type) }}</span><span class="text-sm font-semibold">{{ nodeStatusLabel(node.status) }}</span><span class="font-mono text-sm">D{{ node.depth }} · T{{ node.timeline }}</span>
+                <span class="text-sm font-semibold">{{ nodeTypeLabel(node.type) }}</span><span class="text-sm font-semibold">{{ nodeStatusLabel(node.status) }}</span><span class="font-mono text-sm">{{ optionalGraphMetric('D', node.depth) }} · {{ optionalGraphMetric('T', node.timeline) }}</span>
               </button>
               <div v-if="filteredNodes.length === 0" class="p-8 text-center text-sm text-muted-foreground">{{ t('graph.states.nodes.noResultsDescription') }}</div>
             </div>
             <div v-else class="divide-y divide-border">
               <button v-for="edge in filteredEdges" :key="edge.id" type="button" :class="['focus-ring grid w-full gap-3 px-5 py-4 text-left transition-colors sm:grid-cols-[minmax(0,1fr)_10rem_7rem]', selectedEdgeId === edge.id ? 'bg-foreground text-background' : 'hover:bg-surface-muted']" @click="selectEdge(edge.id)">
-                <span class="min-w-0"><strong class="block truncate">{{ edge.label || edgeTypeLabel(edge.type) }}</strong><span :class="['mt-1 block truncate font-mono text-[11px]', selectedEdgeId === edge.id ? 'text-background/60' : 'text-muted-foreground']">{{ edge.source }} → {{ edge.target }}</span></span><span class="text-sm font-semibold">{{ edgeTypeLabel(edge.type) }}</span><span class="font-mono text-sm">W{{ edge.weight }} · T{{ edge.timeline }}</span>
+                <span class="min-w-0"><strong class="block truncate">{{ edge.label || edgeTypeLabel(edge.type) }}</strong><span :class="['mt-1 block truncate font-mono text-[11px]', selectedEdgeId === edge.id ? 'text-background/60' : 'text-muted-foreground']">{{ edge.source }} → {{ edge.target }}</span></span><span class="text-sm font-semibold">{{ edgeTypeLabel(edge.type) }}</span><span class="font-mono text-sm">W{{ edge.weight }} · {{ optionalGraphMetric('T', edge.timeline) }}</span>
               </button>
               <div v-if="filteredEdges.length === 0" class="p-8 text-center text-sm text-muted-foreground">{{ t('graph.states.edges.noResultsDescription') }}</div>
             </div>

@@ -21,7 +21,7 @@ import {
 import AssistantPanel from '~/widgets/assistant-panel/AssistantPanel.vue'
 import WritingWorkspace from '~/widgets/writing-workspace/WritingWorkspace.vue'
 import type { AgentRunResult } from '~/entities/agent'
-import { useAgentStore } from '~/entities/agent'
+import { preferredAgent, useAgentStore } from '~/entities/agent'
 import type { Chapter, ChapterVersion } from '~/entities/chapter'
 import { useChapterStore } from '~/entities/chapter'
 import { useStoryBibleStore } from '~/entities/story-bible'
@@ -51,7 +51,8 @@ const baseTitle = ref('')
 const baseContent = ref('')
 const parentVersionId = ref('')
 const versions = computed<ChapterVersion[]>(() => chapterStore.versionsByChapterId[chapterId.value] || [])
-const agents = computed(() => agentStore.items)
+const agentListOptions = computed(() => ({ projectId: projectId.value, enabled: true as const }))
+const agents = computed(() => agentStore.itemsFor(agentListOptions.value).filter((agent) => agent.enabled && (!agent.project_id || agent.project_id === projectId.value)))
 const proposals = ref<AgentProposal[]>([])
 const selection = ref<TextSelection>({ start: 0, end: 0 })
 const prompt = ref('')
@@ -61,8 +62,9 @@ const localDraft = ref<EditorDraftSnapshot | null>(null)
 const draftError = ref('')
 const pageError = ref('')
 const chapterLoadError = ref('')
+const agentLoadError = ref('')
 const loading = ref(true)
-const loadingAgents = computed(() => agentStore.listRequest.loading)
+const loadingAgents = ref(false)
 const loadingVersions = computed(() => chapterStore.versionListRequest.loading)
 const savingVersion = computed(() => chapterStore.versionSaveRequest.loading)
 const runningAgent = computed(() => agentStore.runRequest.loading)
@@ -118,15 +120,19 @@ async function loadEditor() {
 }
 
 async function loadAgents() {
+  loadingAgents.value = true
+  agentLoadError.value = ''
   try {
-    await agentStore.load({ projectId: projectId.value, enabled: true })
+    await agentStore.load(agentListOptions.value)
     if (!selectedAgentId.value || !agents.value.some((agent) => agent.id === selectedAgentId.value)) {
-      const preferred = agents.value.find((agent) => agent.role === 'writer') || agents.value[0]
-      selectedAgentId.value = preferred?.id || ''
+      selectedAgentId.value = preferredAgent(agents.value, projectId.value)?.id || ''
     }
   } catch (cause) {
     console.error('[AeonEchoes Editor] Failed to load agents.', cause)
-    pageError.value = agentStore.listRequest.error?.message || (cause instanceof Error ? cause.message : t('editor.errors.loadAgentsFailed'))
+    agentLoadError.value = cause instanceof Error ? cause.message : t('editor.errors.loadAgentsFailed')
+    selectedAgentId.value = ''
+  } finally {
+    loadingAgents.value = false
   }
 }
 
@@ -371,7 +377,7 @@ function loadVersion(versionId: string) {
 </script>
 
 <template>
-  <div class="mx-auto min-h-[calc(100dvh-var(--layout-height-topbar))] w-full max-w-[112rem] px-3 py-4 sm:px-5 lg:px-7">
+  <div data-testid="editor-page" class="-mx-4 min-h-[calc(100dvh-var(--layout-height-topbar))] w-[calc(100%+2rem)] max-w-[96rem] px-3 py-3 sm:mx-auto sm:w-full sm:px-4 sm:py-4 lg:px-5">
     <div v-if="loading" class="flex min-h-[60vh] items-center justify-center text-muted-foreground">
       <Loader2 class="mr-2 h-5 w-5 animate-spin" />
       {{ t('editor.states.loadingWorkspace') }}
@@ -418,7 +424,7 @@ function loadVersion(versionId: string) {
       <UiInlineNotice v-if="pageError" tone="danger" :title="t('editor.errors.title')" :description="pageError" class="mb-4" />
       <UiInlineNotice v-if="draftError" tone="danger" :title="t('editor.errors.draftTitle')" :description="draftError" class="mb-4" />
 
-      <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
+      <div data-testid="editor-layout" class="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_21rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         <WritingWorkspace
           ref="writingWorkspace"
           :chapter="currentChapter"
@@ -440,9 +446,11 @@ function loadVersion(versionId: string) {
           @assistant="assistantOpen = true"
         />
 
-        <aside class="sticky top-[calc(var(--layout-height-topbar)+1rem)] hidden max-h-[calc(100dvh-var(--layout-height-topbar)-2rem)] overflow-y-auto border border-border bg-surface-muted p-4 text-surface-foreground subtle-scrollbar xl:block">
+        <aside data-testid="editor-assistant" class="sticky top-[calc(var(--layout-height-topbar)+1rem)] hidden max-h-[calc(100dvh-var(--layout-height-topbar)-2rem)] overflow-y-auto border border-border bg-surface-muted p-3 text-surface-foreground subtle-scrollbar xl:block">
           <AssistantPanel
             :agents="agents"
+            :project-id="projectId"
+            :agent-load-error="agentLoadError"
             :chapters="chapters"
             :chapter="currentChapter"
             :bible="storyBible"
@@ -460,6 +468,7 @@ function loadVersion(versionId: string) {
             @update:prompt="prompt = $event"
             @update:selected-agent-id="selectedAgentId = $event"
             @update:context-state="contextState = $event"
+            @retry-agents="loadAgents"
             @run="runAgent"
             @insert="handleProposal($event, 'insert')"
             @replace="handleProposal($event, 'replace')"
@@ -481,6 +490,8 @@ function loadVersion(versionId: string) {
         <AssistantPanel
           v-if="assistantOpen"
           :agents="agents"
+          :project-id="projectId"
+          :agent-load-error="agentLoadError"
           :chapters="chapters"
           :chapter="currentChapter"
           :bible="storyBible"
@@ -498,6 +509,7 @@ function loadVersion(versionId: string) {
           @update:prompt="prompt = $event"
           @update:selected-agent-id="selectedAgentId = $event"
           @update:context-state="contextState = $event"
+          @retry-agents="loadAgents"
           @run="runAgent"
           @insert="handleProposal($event, 'insert')"
           @replace="handleProposal($event, 'replace')"

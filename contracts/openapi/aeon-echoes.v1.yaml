@@ -831,8 +831,9 @@ paths:
     get:
       operationId: listAgents
       tags: [agents]
+      description: When project_id is provided, returns the effective Agent scope for that project (project-specific plus global Agents), excluding Agents owned by other projects.
       parameters:
-        - $ref: '#/components/parameters/ProjectIDQuery'
+        - $ref: '#/components/parameters/AgentProjectIDQuery'
         - $ref: '#/components/parameters/EnabledQuery'
         - $ref: '#/components/parameters/LimitQuery'
       responses:
@@ -1689,6 +1690,12 @@ components:
     ProjectIDQuery:
       name: project_id
       in: query
+      schema:
+        type: string
+    AgentProjectIDQuery:
+      name: project_id
+      in: query
+      description: Project whose effective Agent scope is requested. Matching project Agents and global Agents (null or empty project_id) are returned; other projects are excluded.
       schema:
         type: string
     EnabledQuery:

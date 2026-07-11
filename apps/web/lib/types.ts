@@ -253,8 +253,9 @@ export interface GraphNode {
   id: string
   label: string
   type: 'story_start' | 'character' | 'location' | 'event' | 'clue' | 'chapter' | 'rule'
-  depth: number
-  timeline: number
+  importance: number
+  depth?: number
+  timeline?: number
   status: 'stable' | 'draft' | 'conflict' | 'resolved'
   metadata: Record<string, string | number | boolean | string[]>
 }
@@ -265,16 +266,16 @@ export interface GraphEdge {
   worldline_id?: string
   source: string
   target: string
-  source_entity_id?: string
-  target_entity_id?: string
+  source_entity_id: string
+  target_entity_id: string
   label: string
   type: 'causes' | 'reveals' | 'depends_on' | 'appears_in' | 'contradicts' | 'foreshadows' | string
   weight: number
-  timeline: number
+  timeline?: number
   evidence_fact_ids?: string[]
-  metadata?: Record<string, string | number | boolean>
-  created_at?: string
-  updated_at?: string
+  metadata?: Record<string, string>
+  created_at: string
+  updated_at: string
 }
 
 export interface PlotThread {

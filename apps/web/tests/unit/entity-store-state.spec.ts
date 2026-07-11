@@ -1,9 +1,11 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { preferredAgent } from '../../entities/agent/selection'
+import { useAgentStore } from '../../entities/agent/store'
 import { useChapterStore } from '../../entities/chapter/store'
 import { useStoryBibleStore } from '../../entities/story-bible/store'
 import { useWorkspaceStore } from '../../stores/workspace'
-import type { ChapterVersion, ChapterVersionWriteRequest, StoryBible } from '../../lib/types'
+import type { AgentConfig, ChapterVersion, ChapterVersionWriteRequest, StoryBible } from '../../lib/types'
 
 const bible: StoryBible = {
   id: 'bible-1',
@@ -41,6 +43,59 @@ const version: ChapterVersion = {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+})
+
+describe('Agent 查询作用域', () => {
+  const agent = (id: string, projectId: string | undefined, role: AgentConfig['role'] = 'writer', enabled = true): AgentConfig => ({
+    id, project_id: projectId, name: id, role, enabled
+  })
+
+  it('按 projectId/enabled 缓存，设置页加载不会覆盖编辑器集合', async () => {
+    const listAgents = vi.fn()
+      .mockResolvedValueOnce({ data: [agent('project-writer', 'project-1'), agent('global-writer', undefined)] })
+      .mockResolvedValueOnce({ data: [agent('disabled', 'project-1', 'editor', false), agent('global-writer', undefined)] })
+    vi.stubGlobal('useApi', () => ({ agent: { listAgents } }))
+    const store = useAgentStore()
+    const editorOptions = { projectId: 'project-1', enabled: true }
+    const settingsOptions = { limit: 100 }
+
+    await store.load(editorOptions)
+    await store.load(settingsOptions)
+
+    expect(listAgents).toHaveBeenNthCalledWith(1, editorOptions)
+    expect(listAgents).toHaveBeenNthCalledWith(2, settingsOptions)
+    expect(store.itemsFor(editorOptions).map((item) => item.id)).toEqual(['project-writer', 'global-writer'])
+    expect(store.itemsFor(settingsOptions).map((item) => item.id)).toEqual(['disabled', 'global-writer'])
+  })
+
+  it('保存和删除会同步所有已加载 scope，而不会引入禁用或其他项目 Agent', async () => {
+    const projectWriter = agent('project-writer', 'project-1')
+    const listAgents = vi.fn().mockResolvedValue({ data: [projectWriter] })
+    const saveAgent = vi.fn().mockResolvedValue({ data: { ...projectWriter, enabled: false } })
+    const deleteAgent = vi.fn().mockResolvedValue({ data: { status: 'deleted' } })
+    vi.stubGlobal('useApi', () => ({ agent: { listAgents, saveAgent, deleteAgent } }))
+    const store = useAgentStore()
+    const options = { projectId: 'project-1', enabled: true }
+    await store.load(options)
+
+    await store.save({ ...projectWriter, enabled: false }, 'edit')
+    expect(store.itemsFor(options)).toEqual([])
+
+    await store.remove(projectWriter.id)
+    expect(store.itemsFor(options)).toEqual([])
+  })
+
+  it('自动选择优先项目 writer，再全局 writer，再项目任意，再全局任意', () => {
+    const globalWriter = agent('global-writer', undefined)
+    const projectWriter = agent('project-writer', 'project-1')
+    const projectEditor = agent('project-editor', 'project-1', 'editor')
+    const globalEditor = agent('global-editor', undefined, 'editor')
+
+    expect(preferredAgent([globalWriter], 'project-1')?.id).toBe('global-writer')
+    expect(preferredAgent([globalWriter, projectWriter], 'project-1')?.id).toBe('project-writer')
+    expect(preferredAgent([globalEditor, projectEditor], 'project-1')?.id).toBe('project-editor')
+    expect(preferredAgent([globalEditor], 'project-1')?.id).toBe('global-editor')
+  })
 })
 
 describe('实体 Store 状态收敛', () => {

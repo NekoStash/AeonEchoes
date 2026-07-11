@@ -30,6 +30,23 @@ type AgentRunResult struct {
 	ModelResolution domain.ModelResolution `json:"model_resolution"`
 }
 
+// AgentProjectScopeError reports an invalid project scope requested for an agent run.
+type AgentProjectScopeError struct {
+	AgentID          string
+	AgentProjectID   string
+	RequestProjectID string
+}
+
+func (e *AgentProjectScopeError) Error() string {
+	if e == nil {
+		return "agent run project scope is invalid"
+	}
+	if e.RequestProjectID == "" {
+		return fmt.Sprintf("project-scoped agent %q requires a non-empty project_id matching %q", e.AgentID, e.AgentProjectID)
+	}
+	return fmt.Sprintf("project-scoped agent %q belongs to project %q and cannot run for project %q", e.AgentID, e.AgentProjectID, e.RequestProjectID)
+}
+
 // RuntimeStore is the repository surface required by AgentRuntime orchestration.
 type RuntimeStore interface {
 	NewID(prefix string) (string, error)
@@ -80,10 +97,15 @@ func (r *Runtime) Run(ctx context.Context, req AgentRunRequest) (AgentRunResult,
 	if err != nil {
 		return AgentRunResult{}, err
 	}
+	req.ProjectID = strings.TrimSpace(req.ProjectID)
+	cfg.ProjectID = strings.TrimSpace(cfg.ProjectID)
 	if !cfg.Enabled {
 		return AgentRunResult{}, fmt.Errorf("agent %q is disabled", cfg.ID)
 	}
-	projectID := firstText(strings.TrimSpace(req.ProjectID), strings.TrimSpace(cfg.ProjectID))
+	projectID, err := validateAgentProjectScope(cfg, req.ProjectID)
+	if err != nil {
+		return AgentRunResult{}, err
+	}
 	run, err := r.createRunningRun(req, projectID)
 	if err != nil {
 		return AgentRunResult{}, err
@@ -98,6 +120,18 @@ func (r *Runtime) Run(ctx context.Context, req AgentRunRequest) (AgentRunResult,
 		return result, runErr
 	}
 	return result, nil
+}
+
+func validateAgentProjectScope(cfg domain.AgentConfig, requestProjectID string) (string, error) {
+	requestProjectID = strings.TrimSpace(requestProjectID)
+	agentProjectID := strings.TrimSpace(cfg.ProjectID)
+	if agentProjectID == "" {
+		return requestProjectID, nil
+	}
+	if requestProjectID == "" || requestProjectID != agentProjectID {
+		return "", &AgentProjectScopeError{AgentID: cfg.ID, AgentProjectID: agentProjectID, RequestProjectID: requestProjectID}
+	}
+	return requestProjectID, nil
 }
 
 func (r *Runtime) runCreated(ctx context.Context, run domain.AgentRun, cfg domain.AgentConfig, req AgentRunRequest, projectID string) (AgentRunResult, error) {

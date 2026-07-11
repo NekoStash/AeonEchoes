@@ -48,8 +48,9 @@ async function mockApi(page: import('@playwright/test').Page) {
     else if (path.endsWith('/agents') || path.endsWith('/skills') || path.endsWith('/mcp-servers') || path.endsWith('/tools') || path.endsWith('/index-jobs')) data = []
     else if (path.includes('/graph/expansions')) data = {
       project_id: 'project-1', depth: 2,
-      entities: [{ id: 'entity-a', project_id: 'project-1', name: 'Alpha', type: 'character', summary: 'Lead', importance: 1, status: 'stable', metadata: { timeline: '1', depth: '1' }, created_at: now, updated_at: now }],
-      edges: [], facts: [], generated_at: now
+      entities: [{ id: 'entity-a', project_id: 'project-1', name: 'Alpha', type: 'character', summary: 'Lead', importance: 1, status: 'stable', created_at: now, updated_at: now }],
+      edges: [{ id: 'edge-a', project_id: 'project-1', source_entity_id: 'entity-a', target_entity_id: 'entity-a', type: 'references', label: '自指', weight: 1, created_at: now, updated_at: now }],
+      facts: [], generated_at: now
     }
 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data, meta: { request_id: 'e2e' }, page: { count: Array.isArray(data) ? data.length : 1 } }) })
@@ -333,15 +334,26 @@ test('模型配置弹窗关闭时确认未保存更改', async ({ page }, testIn
   await expect(modelDialog).toHaveCount(0)
 })
 
-test('图谱移动端默认列表并只发送 entity_ids/depth', async ({ page }, testInfo) => {
+test('图谱移动端默认列表并接受缺失派生 metadata', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-chromium')
   let graphBody: unknown = null
+  const regressionErrors: string[] = []
   page.on('request', (request) => {
     if (request.url().includes('/graph/expansions')) graphBody = request.postDataJSON()
   })
+  page.on('console', (message) => {
+    if (message.type() === 'error' && message.text().includes('invalid_api_response')) regressionErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => {
+    if (error.message.includes('invalid_api_response')) regressionErrors.push(error.message)
+  })
   await page.goto('/projects/project-1/graph')
   await expect(page.getByRole('button', { name: '列表', exact: true })).toBeVisible()
-  await expect(page.getByText('Alpha')).toBeVisible()
+  const alphaRow = page.getByRole('button').filter({ hasText: 'Alpha' })
+  await expect(alphaRow).toBeVisible()
+  await expect(alphaRow).toContainText('— · —')
+  await expect(page.getByText(/invalid_api_response/)).toHaveCount(0)
+  expect(regressionErrors).toEqual([])
   expect(graphBody).toEqual({ depth: 2 })
   const range = page.locator('input[type="range"]').first()
   await expectSquare(range)

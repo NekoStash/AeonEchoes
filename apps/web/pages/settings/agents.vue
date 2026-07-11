@@ -22,7 +22,8 @@ const loadError = ref('')
 const saving = ref(false)
 const pendingAction = ref('')
 const search = ref('')
-const agents = computed(() => agentStore.items)
+const agentListOptions = { limit: 100 } as const
+const agents = computed(() => agentStore.itemsFor(agentListOptions))
 const skills = ref<Skill[]>([])
 const servers = ref<MCPServerConfig[]>([])
 const tools = ref<ToolDefinition[]>([])
@@ -53,7 +54,7 @@ async function loadResources() {
   loadError.value = ''
   try {
     const [, skillResult, serverResult, toolResult] = await Promise.all([
-      agentStore.load({ limit: 100 }), api.listSkills({ limit: 100 }), api.listMCPServers({ limit: 100 }), api.listToolCatalog({ limit: 200 }), modelStore.load()
+      agentStore.load(agentListOptions), api.listSkills({ limit: 100 }), api.listMCPServers({ limit: 100 }), api.listToolCatalog({ limit: 200 }), modelStore.load()
     ])
     skills.value = skillResult.data
     servers.value = serverResult.data
@@ -172,7 +173,7 @@ function statusTone(status: string) { if (status === 'active' || status === 'onl
 
       <div class="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between"><label class="block min-w-0 flex-1 space-y-2"><span class="field-label">{{ t('settings.agents.search') }}</span><UiInput v-model="search" :placeholder="t('settings.agents.searchPlaceholder')" /></label><div class="flex flex-wrap gap-2"><UiButton variant="outline" :loading="loading" @click="loadResources"><RefreshCw class="h-4 w-4" />{{ t('actions.refresh') }}</UiButton><UiButton v-if="activeKind === 'agents'" @click="openAgent()"><Plus class="h-4 w-4" />{{ t('settings.agents.addAgent') }}</UiButton><template v-else-if="activeKind === 'skills'"><UiButton variant="outline" :loading="pendingAction === 'scan'" @click="scanSkills"><ScanSearch class="h-4 w-4" />{{ t('settings.agents.scanSkills') }}</UiButton><UiButton @click="openSkill()"><Plus class="h-4 w-4" />{{ t('settings.agents.addSkill') }}</UiButton></template><UiButton v-else-if="activeKind === 'mcp'" @click="openMCP()"><Plus class="h-4 w-4" />{{ t('settings.agents.addMCP') }}</UiButton></div></div>
 
-      <UiAlert v-if="agentStore.listRequest.error && activeKind === 'agents' && agents.length === 0" tone="danger" :title="t('settings.agents.messages.loadFailed')" :description="agentStore.listRequest.error.message" />
+      <UiAlert v-if="loadError && activeKind === 'agents' && agents.length === 0" tone="danger" :title="t('settings.agents.messages.loadFailed')" :description="loadError" />
       <div v-else-if="loading && agents.length + skills.length + servers.length + tools.length === 0" class="py-16 text-center text-sm font-bold text-muted-foreground">{{ t('settings.agents.messages.loading') }}</div>
 
       <div v-else-if="activeKind === 'agents'" class="divide-y divide-border border-y border-border">

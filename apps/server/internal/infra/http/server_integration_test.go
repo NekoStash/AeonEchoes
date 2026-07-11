@@ -21,6 +21,7 @@ import (
 	"aeonechoes/server/internal/memory"
 	"aeonechoes/server/internal/provider"
 	"aeonechoes/server/internal/providerregistry"
+	"aeonechoes/server/internal/repository"
 	"aeonechoes/server/internal/skills"
 	"aeonechoes/server/internal/tooling"
 	"aeonechoes/server/internal/vector"
@@ -39,6 +40,39 @@ func (c *integrationFakeEmbeddingClient) Embed(ctx context.Context, req provider
 
 type integrationFakeProviderFactory struct {
 	client provider.EmbeddingModelClient
+}
+
+type integrationFakeTextClientFactory struct {
+	client provider.TextModelClient
+	calls  int
+}
+
+type integrationFakeTextClient struct {
+	responses []provider.ModelResponse
+	requests  []provider.TextRequest
+}
+
+func (f *integrationFakeTextClientFactory) NewTextClient(_ domain.ProviderConfig) (provider.TextModelClient, error) {
+	f.calls++
+	if f.client == nil {
+		return nil, fmt.Errorf("integration fake text client is not configured")
+	}
+	return f.client, nil
+}
+
+func (c *integrationFakeTextClient) Generate(_ context.Context, req provider.TextRequest) (provider.ModelResponse, error) {
+	c.requests = append(c.requests, req)
+	if len(c.responses) == 0 {
+		return provider.ModelResponse{}, fmt.Errorf("integration fake text responses are not configured")
+	}
+	response := c.responses[0]
+	c.responses = c.responses[1:]
+	return response, nil
+}
+
+func (c *integrationFakeTextClient) Stream(ctx context.Context, req provider.TextRequest) (<-chan provider.StreamEvent, error) {
+	response, err := c.Generate(ctx, req)
+	return provider.StreamSingleEvent(ctx, response, err)
 }
 
 func (f integrationFakeProviderFactory) NewEmbeddingClient(cfg domain.ProviderConfig) (provider.EmbeddingModelClient, error) {
@@ -552,6 +586,105 @@ func TestHandlerLegacyProductEndpointsAreRemoved(t *testing.T) {
 	for _, tc := range cases {
 		response := sendJSON(t, handler, tc.method, tc.path, tc.body)
 		assertNon2xx(t, response)
+	}
+}
+
+func TestHandlerListAgentsUsesEffectiveScopeAndValidatesEnabled(t *testing.T) {
+	handler, store := newAgentTestHandler(t)
+	configs := []domain.AgentConfig{
+		{ID: "http-project-writer", ProjectID: "project-http", Name: "Project writer", Role: domain.AgentRoleWriter, Enabled: true},
+		{ID: "http-global-writer", Name: "Global writer", Role: domain.AgentRoleWriter, Enabled: true},
+		{ID: "http-other-writer", ProjectID: "project-other", Name: "Other writer", Role: domain.AgentRoleWriter, Enabled: true},
+		{ID: "http-project-disabled", ProjectID: "project-http", Name: "Disabled", Role: domain.AgentRoleWriter, Enabled: false},
+		{ID: "http-global-disabled", Name: "Global disabled", Role: domain.AgentRoleEditor, Enabled: false},
+	}
+	for _, cfg := range configs {
+		if _, err := store.CreateAgentConfig(cfg); err != nil {
+			t.Fatalf("CreateAgentConfig(%q) error: %v", cfg.ID, err)
+		}
+	}
+
+	response := sendJSON(t, handler, http.MethodGet, "/api/v1/agents?project_id=project-http&enabled=true", nil)
+	assertStatus(t, response, http.StatusOK)
+	var enabled []domain.AgentConfig
+	decodeJSON(t, response, &enabled)
+	if len(enabled) != 2 || enabled[0].ID != "http-project-writer" || enabled[1].ID != "http-global-writer" {
+		t.Fatalf("enabled effective agents = %+v", enabled)
+	}
+
+	response = sendJSON(t, handler, http.MethodGet, "/api/v1/agents?project_id=project-http&enabled=false", nil)
+	assertStatus(t, response, http.StatusOK)
+	var disabled []domain.AgentConfig
+	decodeJSON(t, response, &disabled)
+	if len(disabled) != 2 || disabled[0].ID != "http-project-disabled" || disabled[1].ID != "http-global-disabled" {
+		t.Fatalf("disabled effective agents = %+v", disabled)
+	}
+	for _, agent := range append(enabled, disabled...) {
+		if agent.ProjectID == "project-other" {
+			t.Fatalf("other-project Agent leaked into effective scope: %+v", agent)
+		}
+	}
+
+	response = sendJSON(t, handler, http.MethodGet, "/api/v1/agents?project_id=project-http&enabled=not-a-bool", nil)
+	assertStatus(t, response, http.StatusBadRequest)
+}
+
+func TestHandlerRunAgentEnforcesProjectScope(t *testing.T) {
+	store := memory.NewStore()
+	providerCfg, err := store.CreateProvider(domain.ProviderConfig{ID: "provider_http_scope", Name: "HTTP Scope Provider", Type: domain.ProviderOpenAI, Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateProvider() error: %v", err)
+	}
+	_, err = store.CreateModel(domain.ModelConfig{ID: "model_http_scope", ProviderID: providerCfg.ID, Name: "http-scope-model", Kind: domain.ModelKindText, Enabled: true, DefaultForKind: true, SupportsTools: false, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleWriter}})
+	if err != nil {
+		t.Fatalf("CreateModel() error: %v", err)
+	}
+	projectAgent, err := store.CreateAgentConfig(domain.AgentConfig{ID: "agent_http_project", ProjectID: "project-http-a", Name: "Project HTTP Writer", Role: domain.AgentRoleWriter, Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateAgentConfig(project) error: %v", err)
+	}
+	globalAgent, err := store.CreateAgentConfig(domain.AgentConfig{ID: "agent_http_global", Name: "Global HTTP Writer", Role: domain.AgentRoleWriter, Enabled: true})
+	if err != nil {
+		t.Fatalf("CreateAgentConfig(global) error: %v", err)
+	}
+	textClient := &integrationFakeTextClient{responses: []provider.ModelResponse{{Content: "same project"}, {Content: "global project"}}}
+	clientFactory := &integrationFakeTextClientFactory{client: textClient}
+	runtime := agent.NewRuntime(store, agent.NewModelRouter(store, agent.NewAgentRoleRegistry()), nil, clientFactory, nil)
+	providers := providerregistry.New(nil, time.Second)
+	server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providers, nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server.ConfigureAgents(runtime, nil, nil, time.Second)
+	handler := server.Handler()
+
+	crossProjectResponse := sendJSON(t, handler, http.MethodPost, "/api/v1/agents/"+projectAgent.ID+"/runs", map[string]any{"project_id": "project-http-b", "input": map[string]any{"brief": "must reject"}})
+	assertStatus(t, crossProjectResponse, http.StatusBadRequest)
+	if clientFactory.calls != 0 || len(textClient.requests) != 0 {
+		t.Fatalf("cross-project HTTP run called model: factories=%d requests=%d", clientFactory.calls, len(textClient.requests))
+	}
+	runs, err := store.ListAgentRuns(repository.AgentRunFilter{AgentID: projectAgent.ID})
+	if err != nil {
+		t.Fatalf("ListAgentRuns(project agent) error: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("cross-project HTTP run created records: %+v", runs)
+	}
+
+	sameProjectResponse := sendJSON(t, handler, http.MethodPost, "/api/v1/agents/"+projectAgent.ID+"/runs", map[string]any{"project_id": "project-http-a", "input": map[string]any{"brief": "same"}})
+	assertStatus(t, sameProjectResponse, http.StatusCreated)
+	var sameProjectRun agent.AgentRunResult
+	decodeJSON(t, sameProjectResponse, &sameProjectRun)
+	if sameProjectRun.Run.ProjectID != "project-http-a" || sameProjectRun.Run.Status != domain.AgentRunStatusCompleted {
+		t.Fatalf("same-project HTTP run = %+v", sameProjectRun.Run)
+	}
+
+	globalResponse := sendJSON(t, handler, http.MethodPost, "/api/v1/agents/"+globalAgent.ID+"/runs", map[string]any{"project_id": "project-http-b", "input": map[string]any{"brief": "global"}})
+	assertStatus(t, globalResponse, http.StatusCreated)
+	var globalRun agent.AgentRunResult
+	decodeJSON(t, globalResponse, &globalRun)
+	if globalRun.Run.ProjectID != "project-http-b" || globalRun.Run.Status != domain.AgentRunStatusCompleted {
+		t.Fatalf("global HTTP run = %+v", globalRun.Run)
+	}
+	if clientFactory.calls != 2 || len(textClient.requests) != 2 {
+		t.Fatalf("successful HTTP model calls: factories=%d requests=%d, want 2", clientFactory.calls, len(textClient.requests))
 	}
 }
 

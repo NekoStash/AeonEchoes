@@ -106,9 +106,9 @@ async function mockApi(page: Page) {
       project_id: 'project-1', depth: 2,
       entities: [
         { id: 'entity-a', project_id: 'project-1', name: '林澈', label: '林澈', type: 'character', summary: '档案记录员', importance: 1, status: 'stable', metadata: { timeline: '1', depth: '1' }, created_at: now, updated_at: now },
-        { id: 'entity-b', project_id: 'project-1', name: '第七档案馆', label: '第七档案馆', type: 'location', summary: '保存冲突档案的地点', importance: 0.8, status: 'stable', metadata: { timeline: '1', depth: '2' }, created_at: now, updated_at: now }
+        { id: 'entity-b', project_id: 'project-1', name: '第七档案馆', label: '第七档案馆', type: 'location', summary: '保存冲突档案的地点', importance: 0.8, status: 'stable', created_at: now, updated_at: now }
       ],
-      edges: [{ id: 'edge-1', project_id: 'project-1', source_entity_id: 'entity-a', target_entity_id: 'entity-b', type: 'located_at', label: '任职于', weight: 1, metadata: { timeline: '1' }, created_at: now, updated_at: now }],
+      edges: [{ id: 'edge-1', project_id: 'project-1', source_entity_id: 'entity-a', target_entity_id: 'entity-b', type: 'located_at', label: '任职于', weight: 1, created_at: now, updated_at: now }],
       facts: [],
       generated_at: now
     })
@@ -132,7 +132,11 @@ const cases = [
   { name: 'editor', path: '/projects/project-1/editor?chapter=chapter-1', ready: (page: Page) => expect(page.getByTestId('writing-workspace')).toBeVisible() },
   { name: 'settings', path: '/settings/providers', ready: (page: Page) => expect(page.getByRole('heading', { name: '提供商连接' })).toBeVisible() },
   { name: 'models-settings', path: '/settings/models', ready: (page: Page) => expect(page.getByText('叙事模型 14')).toBeAttached() },
-  { name: 'graph', path: '/projects/project-1/graph', ready: (page: Page) => expect(page.getByText('林澈', { exact: true })).toBeVisible() }
+  { name: 'graph', path: '/projects/project-1/graph', ready: async (page: Page) => {
+    await expect(page.getByText('林澈', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button').filter({ hasText: '第七档案馆' })).toContainText('— · —')
+    await expect(page.getByText(/invalid_api_response/)).toHaveCount(0)
+  } }
 ]
 
 for (const item of cases) {

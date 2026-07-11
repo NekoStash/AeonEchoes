@@ -36,6 +36,66 @@ func openPostgresTestStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	return store, pool
 }
 
+func TestListAgentConfigsUsesEffectiveProjectScope(t *testing.T) {
+	store, pool := openPostgresTestStore(t)
+	ids := []string{"test-effective-project-a", "test-effective-project-b", "test-effective-global", "test-effective-other", "test-effective-disabled"}
+	_, _ = pool.Exec(context.Background(), `DELETE FROM agent_configs WHERE id = ANY($1)`, ids)
+	t.Cleanup(func() {
+		if _, err := pool.Exec(context.Background(), `DELETE FROM agent_configs WHERE id = ANY($1)`, ids); err != nil {
+			t.Logf("cleanup effective Agent configs: %v", err)
+		}
+	})
+	configs := []domain.AgentConfig{
+		{ID: ids[0], ProjectID: "project-effective", Name: "Alpha", Role: domain.AgentRoleWriter, Enabled: true},
+		{ID: ids[1], ProjectID: "project-effective", Name: "Beta", Role: domain.AgentRoleEditor, Enabled: true},
+		{ID: ids[2], Name: "Alpha", Role: domain.AgentRoleWriter, Enabled: true},
+		{ID: ids[3], ProjectID: "project-other", Name: "Other", Role: domain.AgentRoleWriter, Enabled: true},
+		{ID: ids[4], ProjectID: "project-effective", Name: "Disabled", Role: domain.AgentRoleWriter, Enabled: false},
+	}
+	for _, cfg := range configs {
+		if _, err := store.CreateAgentConfig(cfg); err != nil {
+			t.Fatalf("CreateAgentConfig(%q) error: %v", cfg.ID, err)
+		}
+	}
+	enabled := true
+	items, err := store.ListAgentConfigs(repository.AgentConfigFilter{ProjectID: "project-effective", Enabled: &enabled})
+	if err != nil {
+		t.Fatalf("ListAgentConfigs(enabled) error: %v", err)
+	}
+	positions := map[string]int{}
+	for index, item := range items {
+		positions[item.ID] = index
+		if item.ID == ids[3] || item.ProjectID == "project-other" {
+			t.Fatalf("other-project Agent leaked into effective scope: %+v", item)
+		}
+	}
+	for _, id := range []string{ids[0], ids[1], ids[2]} {
+		if _, ok := positions[id]; !ok {
+			t.Fatalf("effective Agent %q missing: items=%+v", id, items)
+		}
+	}
+	if positions[ids[0]] >= positions[ids[1]] || positions[ids[1]] >= positions[ids[2]] {
+		t.Fatalf("effective Agent ordering is not project name/id then global: positions=%+v items=%+v", positions, items)
+	}
+	disabled := false
+	items, err = store.ListAgentConfigs(repository.AgentConfigFilter{ProjectID: "project-effective", Enabled: &disabled})
+	if err != nil {
+		t.Fatalf("ListAgentConfigs(disabled) error: %v", err)
+	}
+	foundDisabled := false
+	for _, item := range items {
+		if item.ID == ids[3] || item.ProjectID == "project-other" {
+			t.Fatalf("other-project disabled Agent leaked into effective scope: %+v", item)
+		}
+		if item.ID == ids[4] {
+			foundDisabled = !item.Enabled
+		}
+	}
+	if !foundDisabled {
+		t.Fatalf("disabled effective agents = %+v, want %q", items, ids[4])
+	}
+}
+
 func TestChapterAndGraphContractsMatchMemoryStore(t *testing.T) {
 	store, pool := openPostgresTestStore(t)
 	projectA, _, err := store.CreateProject(domain.Project{Title: "Postgres 严格契约 A"}, domain.StoryBible{Title: "Postgres 严格契约 A", Logline: "测试"})

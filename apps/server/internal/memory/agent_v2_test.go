@@ -7,6 +7,47 @@ import (
 	"aeonechoes/server/internal/repository"
 )
 
+func TestListAgentConfigsUsesEffectiveProjectScopeAndStableOrdering(t *testing.T) {
+	store := NewStore()
+	configs := []domain.AgentConfig{
+		{ID: "global-z", Name: "Zulu", Role: domain.AgentRoleWriter, Enabled: true},
+		{ID: "project-b", ProjectID: "project-a", Name: "Beta", Role: domain.AgentRoleEditor, Enabled: true},
+		{ID: "other", ProjectID: "project-b", Name: "Alpha", Role: domain.AgentRoleWriter, Enabled: true},
+		{ID: "global-a", ProjectID: "  ", Name: "Alpha", Role: domain.AgentRoleWriter, Enabled: true},
+		{ID: "disabled", ProjectID: "project-a", Name: "Disabled", Role: domain.AgentRoleWriter, Enabled: false},
+		{ID: "project-a", ProjectID: "project-a", Name: "Alpha", Role: domain.AgentRoleWriter, Enabled: true},
+	}
+	for _, cfg := range configs {
+		if _, err := store.CreateAgentConfig(cfg); err != nil {
+			t.Fatalf("CreateAgentConfig(%q) error: %v", cfg.ID, err)
+		}
+	}
+
+	enabled := true
+	items, err := store.ListAgentConfigs(repository.AgentConfigFilter{ProjectID: "project-a", Enabled: &enabled})
+	if err != nil {
+		t.Fatalf("ListAgentConfigs(enabled) error: %v", err)
+	}
+	wantIDs := []string{"project-a", "project-b", "global-a", "global-z"}
+	if len(items) != len(wantIDs) {
+		t.Fatalf("enabled effective agents = %+v, want ids %v", items, wantIDs)
+	}
+	for index, id := range wantIDs {
+		if items[index].ID != id {
+			t.Fatalf("enabled effective agents[%d].ID = %q, want %q; all=%+v", index, items[index].ID, id, items)
+		}
+	}
+
+	disabled := false
+	items, err = store.ListAgentConfigs(repository.AgentConfigFilter{ProjectID: "project-a", Enabled: &disabled})
+	if err != nil {
+		t.Fatalf("ListAgentConfigs(disabled) error: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "disabled" || items[0].Enabled {
+		t.Fatalf("disabled effective agents = %+v, want disabled project agent", items)
+	}
+}
+
 func TestAgentInlineSkillLifecycle(t *testing.T) {
 	store := NewStore()
 

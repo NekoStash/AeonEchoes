@@ -126,11 +126,24 @@ func (s *Store) ListAgentConfigs(filter repository.AgentConfigFilter) ([]domain.
 		args = append(args, *filter.Enabled)
 		conditions = append(conditions, fmt.Sprintf("enabled=$%d", len(args)))
 	}
-	if projectID := strings.TrimSpace(filter.ProjectID); projectID != "" {
+	projectID := strings.TrimSpace(filter.ProjectID)
+	if projectID != "" {
 		args = append(args, projectID)
-		conditions = append(conditions, fmt.Sprintf("project_id=$%d", len(args)))
+		conditions = append(conditions, fmt.Sprintf("(project_id=$%d OR project_id IS NULL OR btrim(project_id)='')", len(args)))
 	}
-	return s.queryAgentConfigs(applyAgentListFilter(query, conditions, filter.Limit, &args), args...)
+	if len(conditions) > 0 {
+		query += ` WHERE ` + strings.Join(conditions, ` AND `)
+	}
+	if projectID != "" {
+		query += fmt.Sprintf(" ORDER BY CASE WHEN project_id=$%d THEN 0 WHEN project_id IS NULL OR btrim(project_id)='' THEN 1 ELSE 2 END, lower(name) ASC, id ASC", len(args))
+	} else {
+		query += ` ORDER BY CASE WHEN project_id IS NULL OR btrim(project_id)='' THEN 1 ELSE 0 END, lower(name) ASC, id ASC`
+	}
+	if filter.Limit > 0 {
+		args = append(args, filter.Limit)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	return s.queryAgentConfigs(query, args...)
 }
 
 func (s *Store) CreateAgentRun(run domain.AgentRun) (domain.AgentRun, error) {

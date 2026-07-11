@@ -847,6 +847,11 @@ export type ChapterId = string;
 
 export type ProjectIdQuery = string;
 
+/**
+ * Project whose effective Agent scope is requested. Matching project Agents and global Agents (null or empty project_id) are returned; other projects are excluded.
+ */
+export type AgentProjectIdQuery = string;
+
 export type EnabledQuery = boolean;
 
 export type LimitQuery = number;
@@ -1866,6 +1871,9 @@ export type ListAgentsData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Project whose effective Agent scope is requested. Matching project Agents and global Agents (null or empty project_id) are returned; other projects are excluded.
+         */
         project_id?: string;
         enabled?: boolean;
         limit?: number;

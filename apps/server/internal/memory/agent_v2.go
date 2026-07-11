@@ -86,7 +86,8 @@ func (s *Store) ListAgentConfigs(filter repository.AgentConfigFilter) ([]domain.
 	projectID := strings.TrimSpace(filter.ProjectID)
 	items := make([]domain.AgentConfig, 0)
 	for _, item := range s.agentConfigs {
-		if projectID != "" && item.ProjectID != projectID {
+		itemProjectID := strings.TrimSpace(item.ProjectID)
+		if projectID != "" && itemProjectID != "" && itemProjectID != projectID {
 			continue
 		}
 		if filter.Enabled != nil && item.Enabled != *filter.Enabled {
@@ -94,7 +95,7 @@ func (s *Store) ListAgentConfigs(filter repository.AgentConfigFilter) ([]domain.
 		}
 		items = append(items, cloneAgentConfig(item))
 	}
-	sortAgentConfigs(items)
+	sortAgentConfigs(items, projectID)
 	return limitSlice(items, filter.Limit), nil
 }
 
@@ -739,10 +740,31 @@ func removeStringValue(values []string, target string) []string {
 	return filtered
 }
 
-func sortAgentConfigs(items []domain.AgentConfig) {
+func sortAgentConfigs(items []domain.AgentConfig, projectID string) {
 	sort.Slice(items, func(i, j int) bool {
-		return lessCreatedID(items[i].CreatedAt, items[i].ID, items[j].CreatedAt, items[j].ID)
+		leftRank := agentScopeRank(items[i].ProjectID, projectID)
+		rightRank := agentScopeRank(items[j].ProjectID, projectID)
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		leftName := strings.ToLower(strings.TrimSpace(items[i].Name))
+		rightName := strings.ToLower(strings.TrimSpace(items[j].Name))
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		return items[i].ID < items[j].ID
 	})
+}
+
+func agentScopeRank(itemProjectID string, requestedProjectID string) int {
+	itemProjectID = strings.TrimSpace(itemProjectID)
+	if requestedProjectID != "" && itemProjectID == requestedProjectID {
+		return 0
+	}
+	if itemProjectID == "" {
+		return 1
+	}
+	return 0
 }
 
 func sortAgentRuns(items []domain.AgentRun) {

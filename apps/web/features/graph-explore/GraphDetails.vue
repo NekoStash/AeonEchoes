@@ -30,8 +30,8 @@ const { t } = useI18n()
     <div v-if="node" class="space-y-3 text-sm">
       <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.table.type') }}</span><strong class="break-all font-mono text-xs">{{ node.type }}</strong></div>
       <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.table.status') }}</span><strong class="break-all font-mono text-xs">{{ node.status }}</strong></div>
-      <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.depth') }}</span><strong class="font-mono text-xs">{{ node.depth }}</strong></div>
-      <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.timeline') }}</span><strong class="font-mono text-xs">{{ node.timeline }}</strong></div>
+      <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.depth') }}</span><strong class="font-mono text-xs">{{ node.depth ?? t('common.emptyValue') }}</strong></div>
+      <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.timeline') }}</span><strong class="font-mono text-xs">{{ node.timeline ?? t('common.emptyValue') }}</strong></div>
       <pre class="max-h-72 overflow-auto whitespace-pre-wrap break-words border border-border bg-background p-3 text-xs leading-5">{{ JSON.stringify(node.metadata || {}, null, 2) }}</pre>
     </div>
 
@@ -40,7 +40,7 @@ const { t } = useI18n()
       <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.source') }}</span><strong class="break-all font-mono text-xs">{{ edge.source }}</strong></div>
       <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.target') }}</span><strong class="break-all font-mono text-xs">{{ edge.target }}</strong></div>
       <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.table.weight') }}</span><strong class="font-mono text-xs">{{ edge.weight }}</strong></div>
-      <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.timeline') }}</span><strong class="font-mono text-xs">{{ edge.timeline }}</strong></div>
+      <div class="grid grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border pb-2"><span class="text-muted-foreground">{{ t('graph.timeline') }}</span><strong class="font-mono text-xs">{{ edge.timeline ?? t('common.emptyValue') }}</strong></div>
       <pre v-if="edge.metadata" class="max-h-72 overflow-auto whitespace-pre-wrap break-words border border-border bg-background p-3 text-xs leading-5">{{ JSON.stringify(edge.metadata, null, 2) }}</pre>
     </div>
 

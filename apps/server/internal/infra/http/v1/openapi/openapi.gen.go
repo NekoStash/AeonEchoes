@@ -1103,6 +1103,9 @@ type WorkflowStep struct {
 	Status    *string    `json:"status,omitempty"`
 }
 
+// AgentProjectIDQuery defines model for AgentProjectIDQuery.
+type AgentProjectIDQuery = string
+
 // ChapterID defines model for ChapterID.
 type ChapterID = string
 
@@ -1146,9 +1149,10 @@ type ListAgentRunsParams struct {
 
 // ListAgentsParams defines parameters for ListAgents.
 type ListAgentsParams struct {
-	ProjectId *ProjectIDQuery `form:"project_id,omitempty" json:"project_id,omitempty"`
-	Enabled   *EnabledQuery   `form:"enabled,omitempty" json:"enabled,omitempty"`
-	Limit     *LimitQuery     `form:"limit,omitempty" json:"limit,omitempty"`
+	// ProjectId Project whose effective Agent scope is requested. Matching project Agents and global Agents (null or empty project_id) are returned; other projects are excluded.
+	ProjectId *AgentProjectIDQuery `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Enabled   *EnabledQuery        `form:"enabled,omitempty" json:"enabled,omitempty"`
+	Limit     *LimitQuery          `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListIndexJobsParams defines parameters for ListIndexJobs.

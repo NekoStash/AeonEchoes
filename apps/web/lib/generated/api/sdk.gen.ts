@@ -225,6 +225,9 @@ export const putModelRouting = <ThrowOnError extends boolean = false>(options: O
     }
 });
 
+/**
+ * When project_id is provided, returns the effective Agent scope for that project (project-specific plus global Agents), excluding Agents owned by other projects.
+ */
 export const listAgents = <ThrowOnError extends boolean = false>(options?: Options<ListAgentsData, ThrowOnError>): RequestResult<ListAgentsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListAgentsResponses, unknown, ThrowOnError>({ url: '/agents', ...options });
 
 export const createAgent = <ThrowOnError extends boolean = false>(options: Options<CreateAgentData, ThrowOnError>): RequestResult<CreateAgentResponses, CreateAgentErrors, ThrowOnError> => (options.client ?? client).post<CreateAgentResponses, CreateAgentErrors, ThrowOnError>({

@@ -37,4 +37,4 @@ logs
 artifacts
 *.tmp
 
-apps/web/test/e2e/__screenshots__
+apps/web/tests/e2e/__screenshots__

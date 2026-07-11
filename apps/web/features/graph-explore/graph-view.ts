@@ -43,7 +43,7 @@ export function filterGraphNodes(nodes: GraphNode[], filters: GraphViewFilters):
   return nodes.filter((node) => {
     if (filters.nodeType && node.type !== filters.nodeType) return false
     if (filters.nodeStatus && node.status !== filters.nodeStatus) return false
-    if (filters.maxTimeline !== null && node.timeline > filters.maxTimeline) return false
+    if (filters.maxTimeline !== null && (node.timeline === undefined || node.timeline > filters.maxTimeline)) return false
     if (!query) return true
     return [node.id, node.label, node.type, node.status, node.depth, node.timeline, JSON.stringify(node.metadata || {})]
       .some((value) => normalizeSearch(value).includes(query))
@@ -55,7 +55,7 @@ export function filterGraphEdges(edges: GraphEdge[], visibleNodeIds: Set<string>
   return edges.filter((edge) => {
     if (!visibleNodeIds.has(edge.source) || !visibleNodeIds.has(edge.target)) return false
     if (filters.edgeType && edge.type !== filters.edgeType) return false
-    if (filters.maxTimeline !== null && edge.timeline > filters.maxTimeline) return false
+    if (filters.maxTimeline !== null && (edge.timeline === undefined || edge.timeline > filters.maxTimeline)) return false
     if (!query) return true
     return [edge.id, edge.label, edge.type, edge.source, edge.target, edge.weight, edge.timeline, ...(edge.evidence_fact_ids || [])]
       .some((value) => normalizeSearch(value).includes(query))

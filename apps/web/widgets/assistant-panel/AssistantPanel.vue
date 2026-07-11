@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Bot, Check, ChevronDown, History, Play, Plus, Replace, RotateCcw, X } from '@lucide/vue'
+import { computed, ref } from 'vue'
 import UiBadge from '~/components/ui/Badge.vue'
 import UiButton from '~/components/ui/Button.vue'
 import UiEmptyState from '~/components/ui/EmptyState.vue'
@@ -17,6 +18,8 @@ import type { ModelResolution, StoryBible, ToolTrace } from '~/lib/types'
 
 const props = defineProps<{
   agents: AgentConfig[]
+  projectId: string
+  agentLoadError: string
   chapters: Chapter[]
   chapter: Chapter
   bible: StoryBible | null
@@ -37,6 +40,7 @@ const emit = defineEmits<{
   'update:prompt': [value: string]
   'update:selectedAgentId': [value: string]
   'update:contextState': [value: ContextSelectState]
+  retryAgents: []
   run: []
   insert: [proposalId: string]
   replace: [proposalId: string]
@@ -53,7 +57,7 @@ const diagnosticsOpen = ref(false)
 const agentOptions = computed(() => props.agents.map((agent) => ({
   label: agent.name,
   value: agent.id,
-  description: agent.role ? t(`agents.roles.${agent.role.replaceAll('-', '_')}`) : t('agents.roles.default')
+  description: `${agent.project_id === props.projectId ? t('editor.assistant.scopeProject') : t('editor.assistant.scopeGlobal')} · ${agent.role ? t(`agents.roles.${agent.role.replaceAll('-', '_')}`) : t('agents.roles.default')}`
 })))
 const currentChapterIndex = computed(() => props.chapters.findIndex((chapter) => chapter.id === props.chapter.id))
 const previousLimit = computed(() => Math.max(0, currentChapterIndex.value))
@@ -101,11 +105,32 @@ function versionLabel(version: ChapterVersion) {
         </div>
       </div>
       <div class="mt-4 space-y-3">
+        <UiInlineNotice
+          v-if="agentLoadError"
+          tone="danger"
+          :title="t('editor.assistant.loadFailedTitle')"
+          :description="agentLoadError"
+        >
+          <template #actions>
+            <UiButton size="sm" variant="outline" @click="emit('retryAgents')">{{ t('common.retry') }}</UiButton>
+          </template>
+        </UiInlineNotice>
+        <UiEmptyState
+          v-else-if="!loadingAgents && agents.length === 0"
+          class="min-h-32"
+          :title="t('editor.assistant.emptyAgentsTitle')"
+          :description="t('editor.assistant.emptyAgentsDescription')"
+        >
+          <template #actions>
+            <UiButton size="sm" variant="outline" @click="navigateTo('/settings/agents')">{{ t('editor.assistant.openAgentSettings') }}</UiButton>
+          </template>
+        </UiEmptyState>
         <UiSelect
           :model-value="selectedAgentId"
           :options="agentOptions"
           :disabled="loadingAgents"
           :placeholder="t('editor.assistant.agentPlaceholder')"
+          :empty-text="t('editor.assistant.emptyAgentOptions')"
           :aria-label="t('editor.assistant.agentLabel')"
           @update:model-value="emit('update:selectedAgentId', $event)"
         />

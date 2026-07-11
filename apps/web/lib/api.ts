@@ -57,6 +57,7 @@ import type { ProjectApi } from '~/entities/project'
 import type { StoryBibleApi } from '~/entities/story-bible'
 import {
   ApiClientError,
+  apiValidationError,
   callGeneratedApi,
   configureGeneratedClient,
   DEFAULT_API_BASE,
@@ -64,6 +65,7 @@ import {
   optionalApiArray,
   optionalStringRecord,
   requireApiArray,
+  requireApiBoolean,
   requireApiNumber,
   requireApiRecord,
   requireApiString
@@ -329,6 +331,38 @@ function normalizeAgentRole(value?: string): NonNullable<ModelConfig['allowed_ag
 
 function normalizeAgentRoles(values?: string[]): ModelConfig['allowed_agent_roles'] {
   return (values || []).map(normalizeAgentRole).filter((value): value is NonNullable<ModelConfig['allowed_agent_roles']>[number] => Boolean(value))
+}
+
+function optionalAgentString(value: unknown, endpoint: string, field: string): string | undefined {
+  if (value === undefined || value === null) return undefined
+  return requireApiString(value, endpoint, field, { allowEmpty: true })
+}
+
+export function decodeAgentResponse(value: unknown, index = 0, endpoint = 'listAgents'): AgentConfig {
+  const item = requireApiRecord(value, endpoint, `agents[${index}]`)
+  const roleValue = optionalAgentString(item.role, endpoint, `agents[${index}].role`)
+  const role = roleValue ? normalizeAgentRole(roleValue) : undefined
+  if (roleValue && !role) {
+    throw apiValidationError(endpoint, `agents[${index}].role`, `role must be one of the documented Agent roles`, roleValue)
+  }
+  return {
+    id: requireApiString(item.id, endpoint, `agents[${index}].id`),
+    project_id: optionalAgentString(item.project_id, endpoint, `agents[${index}].project_id`),
+    name: requireApiString(item.name, endpoint, `agents[${index}].name`),
+    description: optionalAgentString(item.description, endpoint, `agents[${index}].description`),
+    role,
+    model_id: optionalAgentString(item.model_id, endpoint, `agents[${index}].model_id`),
+    enabled: requireApiBoolean(item.enabled, endpoint, `agents[${index}].enabled`),
+    system_prompt: optionalAgentString(item.system_prompt, endpoint, `agents[${index}].system_prompt`),
+    skill_ids: optionalApiArray(item.skill_ids, endpoint, `agents[${index}].skill_ids`, (entry, entryIndex) => requireApiString(entry, endpoint, `agents[${index}].skill_ids[${entryIndex}]`)),
+    tool_ids: optionalApiArray(item.tool_ids, endpoint, `agents[${index}].tool_ids`, (entry, entryIndex) => requireApiString(entry, endpoint, `agents[${index}].tool_ids[${entryIndex}]`)),
+    mcp_server_ids: optionalApiArray(item.mcp_server_ids, endpoint, `agents[${index}].mcp_server_ids`, (entry, entryIndex) => requireApiString(entry, endpoint, `agents[${index}].mcp_server_ids[${entryIndex}]`)),
+    memory_policy: item.memory_policy === undefined || item.memory_policy === null ? undefined : requireApiRecord(item.memory_policy, endpoint, `agents[${index}].memory_policy`),
+    runtime_options: item.runtime_options === undefined || item.runtime_options === null ? undefined : requireApiRecord(item.runtime_options, endpoint, `agents[${index}].runtime_options`),
+    metadata: optionalStringRecord(item.metadata, endpoint, `agents[${index}].metadata`),
+    created_at: optionalAgentString(item.created_at, endpoint, `agents[${index}].created_at`),
+    updated_at: optionalAgentString(item.updated_at, endpoint, `agents[${index}].updated_at`)
+  }
 }
 
 function requirePathId(value: string | undefined, label: string): string {
@@ -870,14 +904,34 @@ function normalizeGraphStatus(status: string, endpoint: string, field: string): 
   throw new ApiClientError({ endpoint, field, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: unsupported graph node status ${status}`, cause: status })
 }
 
-function requireGraphMetadataNumber(metadata: Record<string, string> | undefined, endpoint: string, field: string): number {
-  const value = metadata?.[field]
-  if (value === undefined) {
-    throw new ApiClientError({ endpoint, field: `entities.metadata.${field}`, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: graph entity is missing ${field}`, cause: metadata })
+function optionalGraphMetadataNumber(
+  metadata: Record<string, string> | undefined,
+  key: string,
+  endpoint: string,
+  field: string
+): number | undefined {
+  const value = metadata?.[key]
+  if (value === undefined) return undefined
+  if (!value.trim()) {
+    throw new ApiClientError({
+      endpoint,
+      field,
+      kind: 'validation',
+      code: 'invalid_api_response',
+      message: `invalid_api_response: ${field} must be a finite number when present`,
+      cause: value
+    })
   }
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) {
-    throw new ApiClientError({ endpoint, field: `entities.metadata.${field}`, kind: 'validation', code: 'invalid_api_response', message: `invalid_api_response: graph entity ${field} must be numeric`, cause: value })
+    throw new ApiClientError({
+      endpoint,
+      field,
+      kind: 'validation',
+      code: 'invalid_api_response',
+      message: `invalid_api_response: ${field} must be a finite number when present`,
+      cause: value
+    })
   }
   return parsed
 }
@@ -887,8 +941,9 @@ function entityToNode(entity: Entity, index: number, endpoint: string): GraphNod
     id: entity.id,
     label: entity.name,
     type: normalizeGraphType(entity.type, endpoint, `entities[${index}].type`),
-    depth: requireGraphMetadataNumber(entity.metadata, endpoint, 'depth'),
-    timeline: requireGraphMetadataNumber(entity.metadata, endpoint, 'timeline'),
+    importance: entity.importance,
+    depth: optionalGraphMetadataNumber(entity.metadata, 'depth', endpoint, `entities[${index}].metadata.depth`),
+    timeline: optionalGraphMetadataNumber(entity.metadata, 'timeline', endpoint, `entities[${index}].metadata.timeline`),
     status: normalizeGraphStatus(entity.status, endpoint, `entities[${index}].status`),
     metadata: {
       summary: entity.summary,
@@ -899,18 +954,33 @@ function entityToNode(entity: Entity, index: number, endpoint: string): GraphNod
   }
 }
 
-function normalizeGraphEdge(edge: GraphEdge, index: number, endpoint: string): GraphEdge {
+function normalizeGraphEdge(value: unknown, index: number, endpoint: string): GraphEdge {
+  const edge = requireApiRecord(value, endpoint, `edges[${index}]`)
   const source = requireApiString(edge.source_entity_id, endpoint, `edges[${index}].source_entity_id`)
   const target = requireApiString(edge.target_entity_id, endpoint, `edges[${index}].target_entity_id`)
-  const timelineValue = edge.metadata?.timeline
-  if (timelineValue === undefined) {
-    throw new ApiClientError({ endpoint, field: `edges[${index}].metadata.timeline`, kind: 'validation', code: 'invalid_api_response', message: 'invalid_api_response: graph edge is missing timeline', cause: edge })
+  const metadata = optionalStringRecord(edge.metadata, endpoint, `edges[${index}].metadata`)
+  const evidenceFactIds = edge.evidence_fact_ids === undefined || edge.evidence_fact_ids === null
+    ? undefined
+    : requireApiArray(edge.evidence_fact_ids, endpoint, `edges[${index}].evidence_fact_ids`, (item, evidenceIndex) => requireApiString(item, endpoint, `edges[${index}].evidence_fact_ids[${evidenceIndex}]`))
+  return {
+    id: requireApiString(edge.id, endpoint, `edges[${index}].id`),
+    project_id: requireApiString(edge.project_id, endpoint, `edges[${index}].project_id`),
+    worldline_id: edge.worldline_id === undefined || edge.worldline_id === null
+      ? undefined
+      : requireApiString(edge.worldline_id, endpoint, `edges[${index}].worldline_id`),
+    source,
+    target,
+    source_entity_id: source,
+    target_entity_id: target,
+    label: requireApiString(edge.label, endpoint, `edges[${index}].label`, { allowEmpty: true }),
+    type: requireApiString(edge.type, endpoint, `edges[${index}].type`),
+    weight: requireApiNumber(edge.weight, endpoint, `edges[${index}].weight`),
+    timeline: optionalGraphMetadataNumber(metadata, 'timeline', endpoint, `edges[${index}].metadata.timeline`),
+    evidence_fact_ids: evidenceFactIds,
+    metadata,
+    created_at: requireApiString(edge.created_at, endpoint, `edges[${index}].created_at`),
+    updated_at: requireApiString(edge.updated_at, endpoint, `edges[${index}].updated_at`)
   }
-  const timeline = Number(timelineValue)
-  if (!Number.isFinite(timeline)) {
-    throw new ApiClientError({ endpoint, field: `edges[${index}].metadata.timeline`, kind: 'validation', code: 'invalid_api_response', message: 'invalid_api_response: graph edge timeline must be numeric', cause: timelineValue })
-  }
-  return { ...edge, source, target, timeline }
 }
 
 function normalizeEntity(value: unknown, index: number, endpoint: string): Entity {
@@ -961,24 +1031,10 @@ function normalizeGraphExpansion(value: unknown, expected?: Pick<GraphExpandRequ
   const nodes = entities.map((entity, index) => entityToNode(entity, index, endpoint))
   const nodeIDs = new Set(nodes.map((node) => node.id))
   const edges = requireApiArray(expansion.edges, endpoint, 'edges', (item, index) => {
-    const edge = requireApiRecord(item, endpoint, `edges[${index}]`)
-    const normalized = normalizeGraphEdge({
-      ...(edge as unknown as Partial<GraphEdge>),
-      id: requireApiString(edge.id, endpoint, `edges[${index}].id`),
-      project_id: requireApiString(edge.project_id, endpoint, `edges[${index}].project_id`),
-      source: requireApiString(edge.source_entity_id, endpoint, `edges[${index}].source_entity_id`),
-      target: requireApiString(edge.target_entity_id, endpoint, `edges[${index}].target_entity_id`),
-      source_entity_id: requireApiString(edge.source_entity_id, endpoint, `edges[${index}].source_entity_id`),
-      target_entity_id: requireApiString(edge.target_entity_id, endpoint, `edges[${index}].target_entity_id`),
-      label: requireApiString(edge.label, endpoint, `edges[${index}].label`, { allowEmpty: true }),
-      type: requireApiString(edge.type, endpoint, `edges[${index}].type`),
-      weight: requireApiNumber(edge.weight, endpoint, `edges[${index}].weight`),
-      timeline: 0,
-      metadata: optionalStringRecord(edge.metadata, endpoint, `edges[${index}].metadata`) as Record<string, string | number | boolean> | undefined
-    } as GraphEdge, index, endpoint)
-    if (normalized.project_id !== projectId) graphExpansionMismatch(`edges[${index}].project_id`, projectId, normalized.project_id, edge)
+    const normalized = normalizeGraphEdge(item, index, endpoint)
+    if (normalized.project_id !== projectId) graphExpansionMismatch(`edges[${index}].project_id`, projectId, normalized.project_id, item)
     if (!nodeIDs.has(normalized.source) || !nodeIDs.has(normalized.target)) {
-      throw new ApiClientError({ endpoint, field: `edges[${index}]`, kind: 'validation', code: 'invalid_api_response', message: 'invalid_api_response: graph edge endpoint is missing from entities', cause: edge })
+      throw new ApiClientError({ endpoint, field: `edges[${index}]`, kind: 'validation', code: 'invalid_api_response', message: 'invalid_api_response: graph edge endpoint is missing from entities', cause: item })
     }
     return normalized
   })
@@ -1344,14 +1400,18 @@ export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient 
       )
     },
     listAgents(options) {
-      return mapApi('listAgents', () => apiSdk.listAgents({ query: { project_id: options?.projectId, enabled: options?.enabled, limit: options?.limit } }), (items) => items.map((item) => item as AgentConfig))
+      return mapApi(
+        'listAgents',
+        () => apiSdk.listAgents({ query: { project_id: options?.projectId, enabled: options?.enabled, limit: options?.limit } }),
+        (items) => requireApiArray(items, 'listAgents', 'agents', (item, index) => decodeAgentResponse(item, index, 'listAgents'))
+      )
     },
     saveAgent(agent, mode) {
       const isExisting = mode === 'edit' || (!mode && Boolean(agent.id && agent.created_at))
       if (isExisting) {
-        return mapApi('updateAgent', () => apiSdk.updateAgent({ path: { id: requirePathId(agent.id, 'agent_id') }, body: agent }), (item) => item as AgentConfig)
+        return mapApi('updateAgent', () => apiSdk.updateAgent({ path: { id: requirePathId(agent.id, 'agent_id') }, body: agent }), (item) => decodeAgentResponse(item, 0, 'updateAgent'))
       }
-      return mapApi('createAgent', () => apiSdk.createAgent({ body: agent }), (item) => item as AgentConfig)
+      return mapApi('createAgent', () => apiSdk.createAgent({ body: agent }), (item) => decodeAgentResponse(item, 0, 'createAgent'))
     },
     deleteAgent(id) {
       return mapApi('deleteAgent', () => apiSdk.deleteAgent({ path: { id } }), (status) => ({ status: status.status }))

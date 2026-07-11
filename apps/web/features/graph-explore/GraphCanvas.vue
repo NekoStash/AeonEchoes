@@ -27,7 +27,7 @@ const elements = computed<ElementDefinition[]>(() => [
       label: node.label,
       type: node.type,
       status: node.status,
-      depth: node.depth
+      importance: node.importance
     }
   })),
   ...props.edges.map((edge) => ({
@@ -134,8 +134,8 @@ function graphStyle() {
         'background-color': muted,
         'border-color': border,
         'border-width': 2,
-        width: 'mapData(depth, 0, 4, 58, 32)',
-        height: 'mapData(depth, 0, 4, 58, 32)'
+        width: 'mapData(importance, 0, 1, 32, 58)',
+        height: 'mapData(importance, 0, 1, 32, 58)'
       }
     },
     { selector: 'node[type = "character"]', style: { 'background-color': cssColor('--state-info', muted) } },
