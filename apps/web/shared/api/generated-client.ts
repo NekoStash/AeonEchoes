@@ -21,7 +21,7 @@ type GeneratedFieldsResult = {
   response?: unknown
 }
 
-function normalizeApiBase(baseUrl?: string): string {
+export function normalizeApiBase(baseUrl?: string): string {
   const trimmed = (baseUrl || DEFAULT_API_BASE).trim().replace(/\/+$/, '')
   if (!trimmed) return DEFAULT_API_BASE
   if (/\/api$/i.test(trimmed)) return `${trimmed}/v1`

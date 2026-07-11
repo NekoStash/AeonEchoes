@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { ApiRequestState } from '~/shared/api'
-import type { AgentConfig, AgentListOptions, AgentRunRequest } from './types'
+import { toApiErrorState } from '~/shared/api'
+import type { AgentConfig, AgentListOptions, AgentRunRequest, AgentRunStreamOptions } from './types'
 import { createApiRequestState, withApiRequestState } from '~/shared/store'
 
 interface AgentQueryScope {
@@ -58,7 +59,9 @@ export const useAgentStore = defineStore('agent-domain', {
     scopes: {} as Record<string, AgentQueryScope>,
     saveRequest: createApiRequestState(),
     deleteRequest: createApiRequestState(),
-    runRequest: createApiRequestState()
+    runRequest: createApiRequestState(),
+    streamRequest: createApiRequestState(),
+    streamRequestToken: 0
   }),
   actions: {
     itemsFor(options?: AgentListOptions) {
@@ -102,6 +105,22 @@ export const useAgentStore = defineStore('agent-domain', {
       return withApiRequestState(this.runRequest, 'agents.run', async () => {
         return useApi().agent.runAgent(agentId, request)
       })
+    },
+    async runStream(agentId: string, request: AgentRunRequest, options?: AgentRunStreamOptions) {
+      const token = ++this.streamRequestToken
+      this.streamRequest.loading = true
+      this.streamRequest.error = null
+      try {
+        return await useApi().agent.runAgentStream(agentId, request, options)
+      } catch (cause) {
+        if (cause instanceof Error && cause.name === 'AbortError') throw cause
+        const error = toApiErrorState('agents.run-stream', cause)
+        console.error('[AeonEchoes Store] agents.run-stream failed', error)
+        if (token === this.streamRequestToken) this.streamRequest.error = error
+        throw cause
+      } finally {
+        if (token === this.streamRequestToken) this.streamRequest.loading = false
+      }
     }
   }
 })

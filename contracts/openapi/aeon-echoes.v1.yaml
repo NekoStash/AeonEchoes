@@ -959,6 +959,32 @@ paths:
                         $ref: '#/components/schemas/AgentRunResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+  /agents/{id}/runs/stream:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      operationId: streamAgentRun
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRunRequest'
+      responses:
+        '200':
+          description: >-
+            Server-sent agent run events. Each business SSE event uses its type as the event name and serializes AgentRunStreamEvent as data. The server may also send `: heartbeat` comments, which are not business events and do not consume sequence numbers.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              x-sse-event-schema:
+                $ref: '#/components/schemas/AgentRunStreamEvent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /agent-runs:
     get:
       operationId: listAgentRuns
@@ -1730,6 +1756,12 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     ServerError:
       description: Server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ServiceUnavailable:
+      description: Service unavailable.
       content:
         application/json:
           schema:
@@ -3304,6 +3336,51 @@ components:
             $ref: '#/components/schemas/ToolTrace'
         model_resolution:
           $ref: '#/components/schemas/ModelResolution'
+    AgentRunStreamEvent:
+      type: object
+      description: >-
+        Unified SSE business-event data object validated by the server before emission. Exactly one type-specific payload is allowed: run.started requires run; model.resolved requires model_resolution; tool.started and tool.completed require tool with matching status; content.delta requires a non-empty delta; run.completed requires the complete AgentRunResult in result; run.failed requires a non-empty error. Heartbeats are SSE comments and are not represented by this schema.
+      additionalProperties: false
+      required: [type, sequence, run_id]
+      properties:
+        type:
+          type: string
+          enum: [run.started, model.resolved, tool.started, tool.completed, content.delta, run.completed, run.failed]
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        run_id:
+          type: string
+          minLength: 1
+        delta:
+          type: string
+        run:
+          $ref: '#/components/schemas/AgentRun'
+        result:
+          $ref: '#/components/schemas/AgentRunResult'
+        model_resolution:
+          $ref: '#/components/schemas/ModelResolution'
+        tool:
+          $ref: '#/components/schemas/AgentRunStreamTool'
+        error:
+          type: string
+          minLength: 1
+    AgentRunStreamTool:
+      type: object
+      description: Public tool lifecycle identity only. Tool arguments and results are intentionally excluded because they may contain secrets or manuscript content.
+      additionalProperties: false
+      required: [call_id, name, status]
+      properties:
+        call_id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum: [started, completed]
     SkillScanResult:
       type: object
       properties:

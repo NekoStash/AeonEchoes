@@ -161,6 +161,16 @@ function completionText(body, family) {
   return `[${family}] deterministic fake response for: ${preview}`;
 }
 
+function splitTextChunks(text) {
+  const value = String(text);
+  if (value.length < 3) {
+    return [value];
+  }
+  const first = Math.max(1, Math.floor(value.length / 3));
+  const second = Math.max(first + 1, Math.floor((value.length * 2) / 3));
+  return [value.slice(0, first), value.slice(first, second), value.slice(second)].filter(Boolean);
+}
+
 function embeddingVector(text, dimensions) {
   const size = Math.max(1, Math.min(Number(dimensions || 16), 3072));
   const seed = crypto.createHash('sha256').update(String(text)).digest();
@@ -206,7 +216,7 @@ function openAiResponsesResponse(res, body) {
   if (body.stream) {
     sseResponse(res, [
       { type: 'response.created', response: { id: response.id, status: 'in_progress' } },
-      { type: 'response.output_text.delta', delta: text },
+      ...splitTextChunks(text).map(delta => ({ type: 'response.output_text.delta', delta })),
       { type: 'response.completed', response }
     ]);
     return;
@@ -218,22 +228,26 @@ function openAiChatResponse(res, body) {
   const text = completionText(body, 'openai.chat');
   const chunkId = stableId('chatcmpl', body);
   if (body.stream) {
-    sseResponse(res, [
-      {
-        id: chunkId,
-        object: 'chat.completion.chunk',
-        created: 1_700_000_000,
-        model: body.model || 'fake-gpt-4.1-mini',
-        choices: [{ index: 0, delta: { role: 'assistant', content: text }, finish_reason: null }]
-      },
-      {
-        id: chunkId,
-        object: 'chat.completion.chunk',
-        created: 1_700_000_000,
-        model: body.model || 'fake-gpt-4.1-mini',
-        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }]
+    const chunks = splitTextChunks(text).map((content, index) => ({
+      id: chunkId,
+      object: 'chat.completion.chunk',
+      created: 1_700_000_000,
+      model: body.model || 'fake-gpt-4.1-mini',
+      choices: [{ index: 0, delta: index === 0 ? { role: 'assistant', content } : { content }, finish_reason: null }]
+    }));
+    chunks.push({
+      id: chunkId,
+      object: 'chat.completion.chunk',
+      created: 1_700_000_000,
+      model: body.model || 'fake-gpt-4.1-mini',
+      choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      usage: {
+        prompt_tokens: Math.max(1, messagesText(body.messages).length / 4 | 0),
+        completion_tokens: Math.max(1, text.length / 4 | 0),
+        total_tokens: Math.max(2, (messagesText(body.messages).length + text.length) / 4 | 0)
       }
-    ]);
+    });
+    sseResponse(res, chunks);
     return;
   }
 
@@ -303,7 +317,7 @@ function anthropicMessagesResponse(res, body) {
     sseResponse(res, [
       { type: 'message_start', message: { ...response, content: [] } },
       { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
-      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
+      ...splitTextChunks(text).map(chunk => ({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: chunk } })),
       { type: 'content_block_stop', index: 0 },
       { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: response.usage },
       { type: 'message_stop' }
@@ -347,7 +361,16 @@ function geminiGenerateContentResponse(res, body, modelName, stream) {
   };
 
   if (stream) {
-    sseResponse(res, [response]);
+    const chunks = splitTextChunks(text).map((chunk, index, items) => ({
+      candidates: [{
+        index: 0,
+        content: { role: 'model', parts: [{ text: chunk }] },
+        finishReason: index === items.length - 1 ? 'STOP' : undefined
+      }],
+      usageMetadata: index === items.length - 1 ? response.usageMetadata : undefined,
+      modelVersion: response.modelVersion
+    }));
+    sseResponse(res, chunks);
     return;
   }
   jsonResponse(res, 200, response);

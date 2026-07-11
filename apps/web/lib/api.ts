@@ -47,7 +47,8 @@ import { CHAPTER_STATUS_VALUES } from './types'
 
 import * as apiSdk from './generated/api/sdk.gen'
 import type * as GeneratedApi from './generated/api/types.gen'
-import type { AgentApi } from '~/entities/agent'
+import type { AgentApi, AgentRunStreamOptions } from '~/entities/agent'
+import { streamAgentRun } from '~/entities/agent/stream'
 import type { ChapterApi } from '~/entities/chapter'
 import type { CreateChapterRequest, UpdateChapterRequest } from '~/entities/chapter'
 import type { GraphApi } from '~/entities/graph'
@@ -229,6 +230,7 @@ export interface ApiClient extends ApiDomains {
   saveAgent(agent: AgentConfig, mode?: 'create' | 'edit'): Promise<ApiResult<AgentConfig>>
   deleteAgent(id: string): Promise<ApiResult<{ status: string }>>
   runAgent(agentId: string, request: AgentRunRequest): Promise<ApiResult<AgentRunResult>>
+  runAgentStream(agentId: string, request: AgentRunRequest, options?: AgentRunStreamOptions): Promise<AgentRunResult>
   listAgentRuns(options?: AgentRunListOptions): Promise<ApiResult<AgentRun[]>>
   listSkillSources(options?: SkillSourceListOptions): Promise<ApiResult<SkillSource[]>>
   scanDefaultSkillSource(): Promise<ApiResult<SkillScanResult>>
@@ -1184,7 +1186,7 @@ export function decodeGraphExpansionResponse(value: unknown): GraphExpandRespons
 }
 
 export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient {
-  configureGeneratedClient(rawBaseUrl)
+  const apiBase = configureGeneratedClient(rawBaseUrl)
   const normalizedLocale = normalizeLocale(locale)
   const copy = getApiCopy(normalizedLocale)
 
@@ -1419,6 +1421,9 @@ export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient 
     runAgent(agentId, request) {
       return mapApi('runAgent', () => apiSdk.runAgent({ path: { id: agentId }, body: agentRunRequestToBackend(request) }), (response) => response as AgentRunResult)
     },
+    runAgentStream(agentId, request, options) {
+      return streamAgentRun(apiBase, agentId, agentRunRequestToBackend(request), options)
+    },
     listAgentRuns(options) {
       return mapApi('listAgentRuns', () => apiSdk.listAgentRuns({
         query: { agent_id: options?.agentId, project_id: options?.projectId, status: options?.status, limit: options?.limit }
@@ -1600,6 +1605,7 @@ export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient 
       saveAgent: client.saveAgent,
       deleteAgent: client.deleteAgent,
       runAgent: client.runAgent,
+      runAgentStream: client.runAgentStream,
       listAgentRuns: client.listAgentRuns
     },
     indexJob: {

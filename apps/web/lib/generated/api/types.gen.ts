@@ -792,6 +792,30 @@ export type AgentRunResult = {
     model_resolution?: ModelResolution;
 };
 
+/**
+ * Unified SSE business-event data object validated by the server before emission. Exactly one type-specific payload is allowed: run.started requires run; model.resolved requires model_resolution; tool.started and tool.completed require tool with matching status; content.delta requires a non-empty delta; run.completed requires the complete AgentRunResult in result; run.failed requires a non-empty error. Heartbeats are SSE comments and are not represented by this schema.
+ */
+export type AgentRunStreamEvent = {
+    type: 'run.started' | 'model.resolved' | 'tool.started' | 'tool.completed' | 'content.delta' | 'run.completed' | 'run.failed';
+    sequence: number;
+    run_id: string;
+    delta?: string;
+    run?: AgentRun;
+    result?: AgentRunResult;
+    model_resolution?: ModelResolution;
+    tool?: AgentRunStreamTool;
+    error?: string;
+};
+
+/**
+ * Public tool lifecycle identity only. Tool arguments and results are intentionally excluded because they may contain secrets or manuscript content.
+ */
+export type AgentRunStreamTool = {
+    call_id: string;
+    name: string;
+    status: 'started' | 'completed';
+};
+
 export type SkillScanResult = {
     source_id?: string;
     path?: string;
@@ -2034,6 +2058,37 @@ export type RunAgentResponses = {
 };
 
 export type RunAgentResponse = RunAgentResponses[keyof RunAgentResponses];
+
+export type StreamAgentRunData = {
+    body: AgentRunRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/agents/{id}/runs/stream';
+};
+
+export type StreamAgentRunErrors = {
+    /**
+     * Invalid request.
+     */
+    400: ErrorEnvelope;
+    /**
+     * Service unavailable.
+     */
+    503: ErrorEnvelope;
+};
+
+export type StreamAgentRunError = StreamAgentRunErrors[keyof StreamAgentRunErrors];
+
+export type StreamAgentRunResponses = {
+    /**
+     * Server-sent agent run events. Each business SSE event uses its type as the event name and serializes AgentRunStreamEvent as data. The server may also send `: heartbeat` comments, which are not business events and do not consume sequence numbers.
+     */
+    200: string;
+};
+
+export type StreamAgentRunResponse = StreamAgentRunResponses[keyof StreamAgentRunResponses];
 
 export type ListAgentRunsData = {
     body?: never;

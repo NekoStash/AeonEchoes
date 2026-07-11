@@ -11,7 +11,11 @@ import (
 	"aeonechoes/server/internal/provider"
 )
 
-const defaultToolLoopMaxRounds = 6
+const (
+	defaultToolLoopMaxRounds           = 6
+	maxToolRoundBufferedDeltaBytes     = 1 << 20
+	maxToolRoundBufferedDeltaFragments = 4096
+)
 
 // ToolExecutionRecord is a stable trace item for one backend tool execution.
 type ToolExecutionRecord struct {
@@ -86,6 +90,179 @@ func RunToolLoop(ctx context.Context, client provider.TextModelClient, baseReq p
 		}
 	}
 	return ToolLoopResult{}, fmt.Errorf("tool loop exceeded max rounds %d; last response finish_reason=%q content_len=%d tool_calls=%d", maxRounds, final.FinishReason, len(final.Content), len(final.ToolCalls))
+}
+
+// ToolLoopStreamHooks receives final-round text and completed tool execution lifecycle events.
+type ToolLoopStreamHooks struct {
+	OnContentDelta  func(delta string) error
+	OnToolStarted   func(record ToolExecutionRecord) error
+	OnToolCompleted func(record ToolExecutionRecord) error
+}
+
+type contentDeltaSink interface {
+	OnContentDelta(delta string) error
+}
+
+type contentDeltaSinkFunc func(delta string) error
+
+func (f contentDeltaSinkFunc) OnContentDelta(delta string) error {
+	return f(delta)
+}
+
+type boundedToolRoundDeltaBuffer struct {
+	fragments []string
+	bytes     int
+}
+
+func (b *boundedToolRoundDeltaBuffer) OnContentDelta(delta string) error {
+	if delta == "" {
+		return nil
+	}
+	if len(b.fragments) >= maxToolRoundBufferedDeltaFragments {
+		return fmt.Errorf("streaming tool round delta buffer exceeded fragment limit %d", maxToolRoundBufferedDeltaFragments)
+	}
+	if len(delta) > maxToolRoundBufferedDeltaBytes-b.bytes {
+		return fmt.Errorf("streaming tool round delta buffer exceeded byte limit %d", maxToolRoundBufferedDeltaBytes)
+	}
+	b.fragments = append(b.fragments, delta)
+	b.bytes += len(delta)
+	return nil
+}
+
+func (b *boundedToolRoundDeltaBuffer) Replay(sink func(delta string) error) error {
+	if sink == nil {
+		return fmt.Errorf("streaming tool loop content delta hook is not configured")
+	}
+	for _, delta := range b.fragments {
+		if err := sink(delta); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RunToolLoopStream executes every model round through the provider streaming API.
+// Each round buffers text until its final response proves that no tool call was
+// requested. This prevents intermediate tool-planning prose from leaking while
+// bounding memory to maxToolRoundBufferedDeltaBytes and fragments. The final
+// no-tool round is replayed only after that decision, trading token immediacy for
+// proposal integrity on tool-enabled runs.
+func RunToolLoopStream(ctx context.Context, client provider.TextModelClient, baseReq provider.TextRequest, executor *ToolExecutor, maxRounds int, hooks ToolLoopStreamHooks) (ToolLoopResult, error) {
+	if client == nil {
+		return ToolLoopResult{}, fmt.Errorf("streaming tool loop text client is not configured")
+	}
+	if executor == nil {
+		return ToolLoopResult{}, fmt.Errorf("streaming tool loop executor is not configured")
+	}
+	if len(baseReq.Tools) == 0 {
+		return ToolLoopResult{}, fmt.Errorf("streaming tool loop requires at least one tool spec")
+	}
+	if maxRounds <= 0 {
+		maxRounds = defaultToolLoopMaxRounds
+	}
+	messages := append([]provider.Message{}, baseReq.Messages...)
+	if strings.TrimSpace(baseReq.UserPrompt) != "" {
+		messages = append(messages, provider.Message{Role: "user", Content: baseReq.UserPrompt})
+	}
+	req := baseReq
+	req.UserPrompt = ""
+	req.Stream = true
+	trace := make([]string, 0)
+	records := make([]ToolExecutionRecord, 0)
+	var final provider.ModelResponse
+	for round := 1; round <= maxRounds; round++ {
+		req.Messages = messages
+		buffer := &boundedToolRoundDeltaBuffer{}
+		resp, err := consumeTextStream(ctx, client, req, buffer)
+		if err != nil {
+			return ToolLoopResult{}, err
+		}
+		final = resp
+		if len(resp.ToolCalls) == 0 {
+			if err := buffer.Replay(hooks.OnContentDelta); err != nil {
+				return ToolLoopResult{}, err
+			}
+			return ToolLoopResult{Response: resp, Trace: trace, ToolCalls: records}, nil
+		}
+		calls := append([]provider.ToolCall(nil), resp.ToolCalls...)
+		for index := range calls {
+			if strings.TrimSpace(calls[index].ID) == "" {
+				calls[index].ID = fmt.Sprintf("round-%d-call-%d", round, index+1)
+			}
+		}
+		messages = append(messages, provider.Message{Role: "assistant", Content: resp.Content, ToolCalls: calls})
+		for _, call := range calls {
+			record := ToolExecutionRecord{CallID: call.ID, Name: call.Name, Arguments: append(json.RawMessage(nil), call.Arguments...)}
+			if hooks.OnToolStarted != nil {
+				if err := hooks.OnToolStarted(record); err != nil {
+					return ToolLoopResult{}, err
+				}
+			}
+			result, err := executor.Execute(ctx, call)
+			if err != nil {
+				return ToolLoopResult{}, err
+			}
+			payload, err := json.Marshal(result)
+			if err != nil {
+				return ToolLoopResult{}, fmt.Errorf("marshal tool %q result: %w", call.Name, err)
+			}
+			record.Result = payload
+			if hooks.OnToolCompleted != nil {
+				if err := hooks.OnToolCompleted(record); err != nil {
+					return ToolLoopResult{}, err
+				}
+			}
+			trace = append(trace, fmt.Sprintf("round=%d tool=%s call_id=%s", round, call.Name, strings.TrimSpace(call.ID)))
+			records = append(records, record)
+			messages = append(messages, provider.Message{Role: "tool", Name: call.Name, ToolCallID: call.ID, Content: string(payload)})
+		}
+	}
+	return ToolLoopResult{}, fmt.Errorf("streaming tool loop exceeded max rounds %d; last response finish_reason=%q content_len=%d tool_calls=%d", maxRounds, final.FinishReason, len(final.Content), len(final.ToolCalls))
+}
+
+func consumeTextStream(ctx context.Context, client provider.TextModelClient, req provider.TextRequest, sink contentDeltaSink) (provider.ModelResponse, error) {
+	if sink == nil {
+		return provider.ModelResponse{}, fmt.Errorf("provider streaming content delta sink is not configured")
+	}
+	stream, err := client.Stream(ctx, req)
+	if err != nil {
+		return provider.ModelResponse{}, err
+	}
+	if stream == nil {
+		return provider.ModelResponse{}, fmt.Errorf("provider streaming returned a nil event channel")
+	}
+	var final *provider.ModelResponse
+	for {
+		select {
+		case <-ctx.Done():
+			return provider.ModelResponse{}, ctx.Err()
+		case event, ok := <-stream:
+			if !ok {
+				if err := ctx.Err(); err != nil {
+					return provider.ModelResponse{}, err
+				}
+				if final == nil {
+					return provider.ModelResponse{}, fmt.Errorf("provider streaming ended without a final response")
+				}
+				return *final, nil
+			}
+			if strings.TrimSpace(event.Error) != "" {
+				return provider.ModelResponse{}, fmt.Errorf("provider streaming failed: %s", strings.TrimSpace(event.Error))
+			}
+			if event.Type == "content.delta" && event.Delta != "" {
+				if err := sink.OnContentDelta(event.Delta); err != nil {
+					return provider.ModelResponse{}, err
+				}
+			}
+			if event.Response != nil {
+				if final != nil {
+					return provider.ModelResponse{}, fmt.Errorf("provider streaming returned multiple final responses")
+				}
+				response := *event.Response
+				final = &response
+			}
+		}
+	}
 }
 
 func NarrativeToolSpecs() []provider.ToolSpec {

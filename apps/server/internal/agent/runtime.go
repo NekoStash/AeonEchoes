@@ -30,6 +30,131 @@ type AgentRunResult struct {
 	ModelResolution domain.ModelResolution `json:"model_resolution"`
 }
 
+const (
+	AgentRunEventStarted       = "run.started"
+	AgentRunEventModelResolved = "model.resolved"
+	AgentRunEventToolStarted   = "tool.started"
+	AgentRunEventToolCompleted = "tool.completed"
+	AgentRunEventContentDelta  = "content.delta"
+	AgentRunEventCompleted     = "run.completed"
+	AgentRunEventFailed        = "run.failed"
+)
+
+// AgentRunStreamTool describes one tool lifecycle event after its arguments are complete.
+type AgentRunStreamTool struct {
+	CallID string `json:"call_id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+// AgentRunStreamEvent is the stable SSE data object shared with API clients.
+type AgentRunStreamEvent struct {
+	Type            string                  `json:"type"`
+	Sequence        int64                   `json:"sequence"`
+	RunID           string                  `json:"run_id"`
+	Delta           string                  `json:"delta,omitempty"`
+	Run             *domain.AgentRun        `json:"run,omitempty"`
+	Result          *AgentRunResult         `json:"result,omitempty"`
+	ModelResolution *domain.ModelResolution `json:"model_resolution,omitempty"`
+	Tool            *AgentRunStreamTool     `json:"tool,omitempty"`
+	Error           string                  `json:"error,omitempty"`
+}
+
+// Valid reports whether the event satisfies the type-specific public SSE contract.
+func (e AgentRunStreamEvent) Valid() bool {
+	return e.Validate() == nil
+}
+
+// Validate enforces common identity fields, the required payload for each event
+// type, and rejects payload fields belonging to another event type.
+func (e AgentRunStreamEvent) Validate() error {
+	if e.Sequence < 1 {
+		return fmt.Errorf("agent run stream event sequence must be positive")
+	}
+	if strings.TrimSpace(e.RunID) == "" {
+		return fmt.Errorf("agent run stream event run_id must not be empty")
+	}
+	switch e.Type {
+	case AgentRunEventStarted:
+		if e.Run == nil || e.Run.ID != e.RunID || e.Run.Status != domain.AgentRunStatusRunning {
+			return fmt.Errorf("run.started requires the matching running run")
+		}
+		if e.Delta != "" || e.Result != nil || e.ModelResolution != nil || e.Tool != nil || e.Error != "" {
+			return fmt.Errorf("run.started contains fields reserved for another event type")
+		}
+	case AgentRunEventModelResolved:
+		if e.ModelResolution == nil || strings.TrimSpace(e.ModelResolution.ModelID) == "" || strings.TrimSpace(e.ModelResolution.ProviderID) == "" {
+			return fmt.Errorf("model.resolved requires model_resolution with model_id and provider_id")
+		}
+		if e.Delta != "" || e.Run != nil || e.Result != nil || e.Tool != nil || e.Error != "" {
+			return fmt.Errorf("model.resolved contains fields reserved for another event type")
+		}
+	case AgentRunEventToolStarted, AgentRunEventToolCompleted:
+		if e.Tool == nil {
+			return fmt.Errorf("%s requires tool", e.Type)
+		}
+		if err := e.Tool.validateForEvent(e.Type); err != nil {
+			return err
+		}
+		if e.Delta != "" || e.Run != nil || e.Result != nil || e.ModelResolution != nil || e.Error != "" {
+			return fmt.Errorf("%s contains fields reserved for another event type", e.Type)
+		}
+	case AgentRunEventContentDelta:
+		if e.Delta == "" {
+			return fmt.Errorf("content.delta requires a non-empty delta")
+		}
+		if e.Run != nil || e.Result != nil || e.ModelResolution != nil || e.Tool != nil || e.Error != "" {
+			return fmt.Errorf("content.delta contains fields reserved for another event type")
+		}
+	case AgentRunEventCompleted:
+		if e.Result == nil || e.Result.Run.ID != e.RunID || e.Result.Run.Status != domain.AgentRunStatusCompleted || strings.TrimSpace(e.Result.Content) == "" || strings.TrimSpace(e.Result.ModelResolution.ModelID) == "" {
+			return fmt.Errorf("run.completed requires a complete matching AgentRunResult")
+		}
+		if e.Delta != "" || e.Run != nil || e.ModelResolution != nil || e.Tool != nil || e.Error != "" {
+			return fmt.Errorf("run.completed contains fields reserved for another event type")
+		}
+	case AgentRunEventFailed:
+		if strings.TrimSpace(e.Error) == "" {
+			return fmt.Errorf("run.failed requires a non-empty error")
+		}
+		if e.Delta != "" || e.Run != nil || e.Result != nil || e.ModelResolution != nil || e.Tool != nil {
+			return fmt.Errorf("run.failed contains fields reserved for another event type")
+		}
+	default:
+		return fmt.Errorf("agent run stream event type %q is invalid", e.Type)
+	}
+	return nil
+}
+
+func (t AgentRunStreamTool) validateForEvent(eventType string) error {
+	if strings.TrimSpace(t.CallID) == "" || strings.TrimSpace(t.Name) == "" {
+		return fmt.Errorf("%s tool requires call_id and name", eventType)
+	}
+	expectedStatus := "started"
+	if eventType == AgentRunEventToolCompleted {
+		expectedStatus = "completed"
+	}
+	if t.Status != expectedStatus {
+		return fmt.Errorf("%s tool status must be %q", eventType, expectedStatus)
+	}
+	return nil
+}
+
+type runtimeExecution struct {
+	run       domain.AgentRun
+	config    domain.AgentConfig
+	request   AgentRunRequest
+	projectID string
+}
+
+type preparedRuntimeExecution struct {
+	runtimeExecution
+	client            provider.TextModelClient
+	textRequest       provider.TextRequest
+	modelResolution   domain.ModelResolution
+	supportsStreaming bool
+}
+
 // AgentProjectScopeError reports an invalid project scope requested for an agent run.
 type AgentProjectScopeError struct {
 	AgentID          string
@@ -86,40 +211,59 @@ func NewRuntime(store RuntimeStore, router *ModelRouter, builder *ContextPackBui
 }
 
 func (r *Runtime) Run(ctx context.Context, req AgentRunRequest) (AgentRunResult, error) {
+	execution, err := r.startExecution(req)
+	if err != nil {
+		return AgentRunResult{}, err
+	}
+	prepared, err := r.prepareExecution(ctx, execution)
+	if err != nil {
+		return r.failExecution(execution.run, AgentRunResult{Run: execution.run}, err)
+	}
+	result, err := r.executePrepared(ctx, prepared, false, nil)
+	if err != nil {
+		return r.failExecution(execution.run, result, err)
+	}
+	return result, nil
+}
+
+// Stream starts one persisted run and returns ordered business events. Once the
+// channel is returned, every execution error is represented by run.failed.
+func (r *Runtime) Stream(ctx context.Context, req AgentRunRequest) (<-chan AgentRunStreamEvent, error) {
+	execution, err := r.startExecution(req)
+	if err != nil {
+		return nil, err
+	}
+	events := make(chan AgentRunStreamEvent, 8)
+	go r.streamExecution(ctx, execution, events)
+	return events, nil
+}
+
+func (r *Runtime) startExecution(req AgentRunRequest) (runtimeExecution, error) {
 	if r == nil || r.store == nil || r.router == nil || r.clients == nil {
-		return AgentRunResult{}, fmt.Errorf("agent runtime is not fully configured")
+		return runtimeExecution{}, fmt.Errorf("agent runtime is not fully configured")
 	}
 	req.AgentID = strings.TrimSpace(req.AgentID)
 	if req.AgentID == "" {
-		return AgentRunResult{}, fmt.Errorf("agent run agent_id must not be empty")
+		return runtimeExecution{}, fmt.Errorf("agent run agent_id must not be empty")
 	}
 	cfg, err := r.store.GetAgentConfig(req.AgentID)
 	if err != nil {
-		return AgentRunResult{}, err
+		return runtimeExecution{}, err
 	}
 	req.ProjectID = strings.TrimSpace(req.ProjectID)
 	cfg.ProjectID = strings.TrimSpace(cfg.ProjectID)
 	if !cfg.Enabled {
-		return AgentRunResult{}, fmt.Errorf("agent %q is disabled", cfg.ID)
+		return runtimeExecution{}, fmt.Errorf("agent %q is disabled", cfg.ID)
 	}
 	projectID, err := validateAgentProjectScope(cfg, req.ProjectID)
 	if err != nil {
-		return AgentRunResult{}, err
+		return runtimeExecution{}, err
 	}
 	run, err := r.createRunningRun(req, projectID)
 	if err != nil {
-		return AgentRunResult{}, err
+		return runtimeExecution{}, err
 	}
-	result, runErr := r.runCreated(ctx, run, cfg, req, projectID)
-	if runErr != nil {
-		failed, failErr := r.failRun(run, runErr)
-		if failErr != nil {
-			return AgentRunResult{Run: run}, fmt.Errorf("%w; update failed agent run: %v", runErr, failErr)
-		}
-		result.Run = failed
-		return result, runErr
-	}
-	return result, nil
+	return runtimeExecution{run: run, config: cfg, request: req, projectID: projectID}, nil
 }
 
 func validateAgentProjectScope(cfg domain.AgentConfig, requestProjectID string) (string, error) {
@@ -134,69 +278,188 @@ func validateAgentProjectScope(cfg domain.AgentConfig, requestProjectID string) 
 	return requestProjectID, nil
 }
 
-func (r *Runtime) runCreated(ctx context.Context, run domain.AgentRun, cfg domain.AgentConfig, req AgentRunRequest, projectID string) (AgentRunResult, error) {
-	skills, err := r.enabledAgentSkills(cfg, projectID)
+func (r *Runtime) prepareExecution(ctx context.Context, execution runtimeExecution) (preparedRuntimeExecution, error) {
+	skills, err := r.enabledAgentSkills(execution.config, execution.projectID)
 	if err != nil {
-		return AgentRunResult{Run: run}, err
+		return preparedRuntimeExecution{}, err
 	}
-	role := cfg.Role
+	role := execution.config.Role
 	if role == "" {
 		role = domain.AgentRoleWriter
 	}
-	selection, err := r.selectModel(cfg, role)
+	selection, err := r.selectModel(execution.config, role)
 	if err != nil {
-		return AgentRunResult{Run: run}, err
+		return preparedRuntimeExecution{}, err
 	}
 	modelResolution := buildModelResolution(selection)
 	client, err := r.clients.NewTextClient(selection.Provider)
 	if err != nil {
-		return AgentRunResult{Run: run, ModelResolution: modelResolution}, err
+		return preparedRuntimeExecution{runtimeExecution: execution, modelResolution: modelResolution}, err
 	}
-	contextPack, err := r.buildContextPack(projectID, role, req)
+	contextPack, err := r.buildContextPack(execution.projectID, role, execution.request)
 	if err != nil {
-		return AgentRunResult{Run: run, ModelResolution: modelResolution}, err
+		return preparedRuntimeExecution{runtimeExecution: execution, modelResolution: modelResolution}, err
 	}
-	textReq, err := r.buildTextRequest(cfg, role, req, selection, skills, contextPack)
+	textReq, err := r.buildTextRequest(execution.config, role, execution.request, selection, skills, contextPack)
 	if err != nil {
-		return AgentRunResult{Run: run, ModelResolution: modelResolution}, err
+		return preparedRuntimeExecution{runtimeExecution: execution, modelResolution: modelResolution}, err
 	}
 	if r.tools != nil {
-		tools, err := r.tools.ListProviderTools(ctx, cfg)
+		tools, err := r.tools.ListProviderTools(ctx, execution.config)
 		if err != nil {
-			return AgentRunResult{Run: run, ModelResolution: modelResolution}, err
+			return preparedRuntimeExecution{runtimeExecution: execution, modelResolution: modelResolution}, err
 		}
 		if len(tools) > 0 && selection.Model.SupportsTools {
 			textReq.Tools = tools
 		}
 	}
+	return preparedRuntimeExecution{runtimeExecution: execution, client: client, textRequest: textReq, modelResolution: modelResolution, supportsStreaming: selection.Model.SupportsStreaming}, nil
+}
+
+func (r *Runtime) executePrepared(ctx context.Context, prepared preparedRuntimeExecution, streaming bool, hooks *ToolLoopStreamHooks) (AgentRunResult, error) {
 	var content string
-	toolTrace := []string(nil)
-	if len(textReq.Tools) > 0 && selection.Model.SupportsTools {
+	var toolTrace []string
+	if len(prepared.textRequest.Tools) > 0 {
 		if r.toolExec == nil {
-			return AgentRunResult{Run: run, ModelResolution: modelResolution}, fmt.Errorf("agent runtime tool executor store is not configured")
+			return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, fmt.Errorf("agent runtime tool executor store is not configured")
 		}
-		loopResult, err := RunToolLoop(ctx, client, textReq, NewToolExecutor(r.toolExec), defaultToolLoopMaxRounds)
+		var loopResult ToolLoopResult
+		var err error
+		if streaming {
+			if hooks == nil {
+				return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, fmt.Errorf("agent runtime streaming hooks are not configured")
+			}
+			loopResult, err = RunToolLoopStream(ctx, prepared.client, prepared.textRequest, NewToolExecutor(r.toolExec), defaultToolLoopMaxRounds, *hooks)
+		} else {
+			loopResult, err = RunToolLoop(ctx, prepared.client, prepared.textRequest, NewToolExecutor(r.toolExec), defaultToolLoopMaxRounds)
+		}
 		if err != nil {
-			return AgentRunResult{Run: run, ModelResolution: modelResolution}, err
+			return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, err
 		}
 		content = strings.TrimSpace(loopResult.Response.Content)
 		toolTrace = loopResult.Trace
-	} else {
-		textReq.Tools = nil
-		resp, err := client.Generate(ctx, textReq)
+	} else if streaming {
+		prepared.textRequest.Tools = nil
+		prepared.textRequest.Stream = true
+		if hooks == nil || hooks.OnContentDelta == nil {
+			return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, fmt.Errorf("agent runtime content delta hook is not configured")
+		}
+		resp, err := consumeTextStream(ctx, prepared.client, prepared.textRequest, contentDeltaSinkFunc(hooks.OnContentDelta))
 		if err != nil {
-			return AgentRunResult{Run: run, ModelResolution: modelResolution}, err
+			return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, err
+		}
+		content = strings.TrimSpace(resp.Content)
+	} else {
+		prepared.textRequest.Tools = nil
+		resp, err := prepared.client.Generate(ctx, prepared.textRequest)
+		if err != nil {
+			return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, err
 		}
 		content = strings.TrimSpace(resp.Content)
 	}
 	if content == "" {
-		return AgentRunResult{Run: run, ModelResolution: modelResolution}, fmt.Errorf("agent runtime model returned empty content")
+		return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, fmt.Errorf("agent runtime model returned empty content")
 	}
-	completed, err := r.completeRun(run, content, modelResolution, toolTrace)
+	completed, err := r.completeRun(prepared.run, content, prepared.modelResolution, toolTrace)
 	if err != nil {
-		return AgentRunResult{Run: run, Content: content, ToolTrace: toolTrace, ModelResolution: modelResolution}, err
+		return AgentRunResult{Run: prepared.run, Content: content, ToolTrace: toolTrace, ModelResolution: prepared.modelResolution}, err
 	}
-	return AgentRunResult{Run: completed, Content: content, ToolTrace: toolTrace, ModelResolution: modelResolution}, nil
+	return AgentRunResult{Run: completed, Content: content, ToolTrace: toolTrace, ModelResolution: prepared.modelResolution}, nil
+}
+
+func (r *Runtime) streamExecution(ctx context.Context, execution runtimeExecution, events chan<- AgentRunStreamEvent) {
+	defer close(events)
+	sequence := int64(0)
+	emit := func(event AgentRunStreamEvent) error {
+		event.Sequence = sequence + 1
+		event.RunID = execution.run.ID
+		if err := event.Validate(); err != nil {
+			return fmt.Errorf("validate agent run stream event %q: %w", event.Type, err)
+		}
+		sequence = event.Sequence
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case events <- event:
+			return nil
+		}
+	}
+	if err := emit(AgentRunStreamEvent{Type: AgentRunEventStarted, Run: &execution.run}); err != nil {
+		r.failStreamingExecution(execution.run, AgentRunResult{Run: execution.run}, err, emit)
+		return
+	}
+	prepared, err := r.prepareExecution(ctx, execution)
+	if err != nil {
+		r.failStreamingExecution(execution.run, AgentRunResult{Run: execution.run}, err, emit)
+		return
+	}
+	resolution := prepared.modelResolution
+	if err := emit(AgentRunStreamEvent{Type: AgentRunEventModelResolved, ModelResolution: &resolution}); err != nil {
+		r.failStreamingExecution(execution.run, AgentRunResult{Run: execution.run, ModelResolution: resolution}, err, emit)
+		return
+	}
+	if !prepared.supportsStreaming {
+		r.failStreamingExecution(execution.run, AgentRunResult{Run: execution.run, ModelResolution: resolution}, fmt.Errorf("selected model %q does not support streaming", resolution.ModelID), emit)
+		return
+	}
+	if err := ctx.Err(); err != nil {
+		r.failStreamingExecution(execution.run, AgentRunResult{Run: execution.run, ModelResolution: resolution}, err, emit)
+		return
+	}
+	hooks := ToolLoopStreamHooks{
+		OnContentDelta: func(delta string) error {
+			return emit(AgentRunStreamEvent{Type: AgentRunEventContentDelta, Delta: delta})
+		},
+		OnToolStarted: func(record ToolExecutionRecord) error {
+			tool, err := streamTool(record, "started")
+			if err != nil {
+				return err
+			}
+			return emit(AgentRunStreamEvent{Type: AgentRunEventToolStarted, Tool: &tool})
+		},
+		OnToolCompleted: func(record ToolExecutionRecord) error {
+			tool, err := streamTool(record, "completed")
+			if err != nil {
+				return err
+			}
+			return emit(AgentRunStreamEvent{Type: AgentRunEventToolCompleted, Tool: &tool})
+		},
+	}
+	result, err := r.executePrepared(ctx, prepared, true, &hooks)
+	if err != nil {
+		r.failStreamingExecution(execution.run, result, err, emit)
+		return
+	}
+	if err := emit(AgentRunStreamEvent{Type: AgentRunEventCompleted, Result: &result}); err != nil && ctx.Err() == nil {
+		r.failStreamingExecution(execution.run, result, err, emit)
+	}
+}
+
+func (r *Runtime) failExecution(run domain.AgentRun, result AgentRunResult, cause error) (AgentRunResult, error) {
+	failed, failErr := r.failRun(run, cause)
+	if failErr != nil {
+		return result, fmt.Errorf("%w; update failed agent run: %v", cause, failErr)
+	}
+	result.Run = failed
+	return result, cause
+}
+
+func (r *Runtime) failStreamingExecution(run domain.AgentRun, result AgentRunResult, cause error, emit func(AgentRunStreamEvent) error) {
+	failed, failErr := r.failRun(run, cause)
+	if failErr != nil {
+		cause = fmt.Errorf("%w; update failed agent run: %v", cause, failErr)
+	} else {
+		result.Run = failed
+	}
+	_ = emit(AgentRunStreamEvent{Type: AgentRunEventFailed, Error: cause.Error()})
+}
+
+func streamTool(record ToolExecutionRecord, status string) (AgentRunStreamTool, error) {
+	tool := AgentRunStreamTool{CallID: strings.TrimSpace(record.CallID), Name: strings.TrimSpace(record.Name), Status: status}
+	if tool.CallID == "" || tool.Name == "" {
+		return AgentRunStreamTool{}, fmt.Errorf("stream tool call_id and name must not be empty")
+	}
+	return tool, nil
 }
 
 func (r *Runtime) createRunningRun(req AgentRunRequest, projectID string) (domain.AgentRun, error) {

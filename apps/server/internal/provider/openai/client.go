@@ -63,37 +63,10 @@ func newClient(cfg domain.ProviderConfig, httpClient *http.Client, timeout time.
 }
 
 func (c *Client) Generate(ctx context.Context, req provider.TextRequest) (provider.ModelResponse, error) {
-	if strings.TrimSpace(req.Model) == "" {
-		return provider.ModelResponse{}, fmt.Errorf("openai text request model must not be empty")
+	body, err := openAIChatParams(req)
+	if err != nil {
+		return provider.ModelResponse{}, err
 	}
-	messages := openAIChatMessages(req)
-	if len(messages) == 0 {
-		return provider.ModelResponse{}, fmt.Errorf("openai text request requires at least one message")
-	}
-	body := openaisdk.ChatCompletionNewParams{
-		Model:    openaisdk.ChatModel(req.Model),
-		Messages: messages,
-	}
-	if req.MaxOutputTokens > 0 {
-		body.MaxCompletionTokens = oaiparam.NewOpt(int64(req.MaxOutputTokens))
-	}
-	if req.Temperature > 0 {
-		body.Temperature = oaiparam.NewOpt(req.Temperature)
-	}
-	if req.TopP > 0 {
-		body.TopP = oaiparam.NewOpt(req.TopP)
-	}
-	if len(req.Metadata) > 0 {
-		body.Metadata = shared.Metadata(req.Metadata)
-	}
-	if len(req.Tools) > 0 {
-		tools, err := openAIChatTools(req.Tools)
-		if err != nil {
-			return provider.ModelResponse{}, err
-		}
-		body.Tools = tools
-	}
-
 	completion, err := c.sdk.Chat.Completions.New(ctx, body)
 	if err != nil {
 		return provider.ModelResponse{}, fmt.Errorf("openai chat completion via SDK failed: %w", err)
@@ -122,9 +95,53 @@ func (c *Client) Generate(ctx context.Context, req provider.TextRequest) (provid
 }
 
 func (c *Client) Stream(ctx context.Context, req provider.TextRequest) (<-chan provider.StreamEvent, error) {
-	// 流式后续通过 SDK streaming 深化；当前统一接口仍以一次性 Generate 结果封装为单个 final 事件，避免手写 SSE 协议。
-	resp, err := c.Generate(ctx, req)
-	return provider.StreamSingleEvent(ctx, resp, err)
+	body, err := openAIChatParams(req)
+	if err != nil {
+		return nil, err
+	}
+	body.StreamOptions.IncludeUsage = oaiparam.NewOpt(true)
+	stream := c.sdk.Chat.Completions.NewStreaming(ctx, body)
+	events := make(chan provider.StreamEvent, 8)
+	go func() {
+		defer close(events)
+		defer stream.Close()
+		var accumulator openaisdk.ChatCompletionAccumulator
+		for stream.Next() {
+			chunk := stream.Current()
+			accumulator.AddChunk(chunk)
+			for _, choice := range chunk.Choices {
+				if choice.Delta.Content != "" && !provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "content.delta", Delta: choice.Delta.Content}) {
+					return
+				}
+			}
+		}
+		if err := stream.Err(); err != nil {
+			provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: fmt.Sprintf("openai chat streaming via SDK failed: %v", err)})
+			return
+		}
+		completion := accumulator.ChatCompletion
+		if len(completion.Choices) == 0 {
+			provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: "openai chat streaming returned no choices"})
+			return
+		}
+		choice := completion.Choices[0]
+		response := provider.ModelResponse{
+			ID:           completion.ID,
+			Provider:     string(domain.ProviderOpenAI),
+			Model:        firstNonEmpty(completion.Model, req.Model),
+			Content:      choice.Message.Content,
+			FinishReason: choice.FinishReason,
+			ToolCalls:    parseChatToolCalls(choice.Message),
+			Usage: provider.Usage{
+				InputTokens:  int(completion.Usage.PromptTokens),
+				OutputTokens: int(completion.Usage.CompletionTokens),
+				TotalTokens:  int(completion.Usage.TotalTokens),
+			},
+			Raw: rawJSON(completion.RawJSON(), completion),
+		}
+		provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "final", Response: &response, Usage: &response.Usage, Done: true})
+	}()
+	return events, nil
 }
 
 func (c *Client) Embed(ctx context.Context, req provider.EmbeddingRequest) (provider.EmbeddingResponse, error) {
@@ -191,6 +208,37 @@ func (c *Client) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
 		return nil, fmt.Errorf("openai model list via SDK failed: %w", err)
 	}
 	return models, nil
+}
+
+func openAIChatParams(req provider.TextRequest) (openaisdk.ChatCompletionNewParams, error) {
+	if strings.TrimSpace(req.Model) == "" {
+		return openaisdk.ChatCompletionNewParams{}, fmt.Errorf("openai text request model must not be empty")
+	}
+	messages := openAIChatMessages(req)
+	if len(messages) == 0 {
+		return openaisdk.ChatCompletionNewParams{}, fmt.Errorf("openai text request requires at least one message")
+	}
+	body := openaisdk.ChatCompletionNewParams{Model: openaisdk.ChatModel(req.Model), Messages: messages}
+	if req.MaxOutputTokens > 0 {
+		body.MaxCompletionTokens = oaiparam.NewOpt(int64(req.MaxOutputTokens))
+	}
+	if req.Temperature > 0 {
+		body.Temperature = oaiparam.NewOpt(req.Temperature)
+	}
+	if req.TopP > 0 {
+		body.TopP = oaiparam.NewOpt(req.TopP)
+	}
+	if len(req.Metadata) > 0 {
+		body.Metadata = shared.Metadata(req.Metadata)
+	}
+	if len(req.Tools) > 0 {
+		tools, err := openAIChatTools(req.Tools)
+		if err != nil {
+			return openaisdk.ChatCompletionNewParams{}, err
+		}
+		body.Tools = tools
+	}
+	return body, nil
 }
 
 func openAIOptions(cfg domain.ProviderConfig, httpClient *http.Client, timeout time.Duration) []oaioption.RequestOption {

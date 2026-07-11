@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bot, Check, ChevronDown, History, Play, Plus, Replace, RotateCcw, X } from '@lucide/vue'
+import { Bot, Check, ChevronDown, History, Play, Plus, Replace, RotateCcw, Square, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import UiBadge from '~/components/ui/Badge.vue'
 import UiButton from '~/components/ui/Button.vue'
@@ -9,9 +9,9 @@ import UiInput from '~/components/ui/Input.vue'
 import UiSelect from '~/components/ui/Select.vue'
 import UiSwitch from '~/components/ui/Switch.vue'
 import UiTextarea from '~/components/ui/Textarea.vue'
-import type { AgentConfig } from '~/entities/agent'
+import type { AgentConfig, AgentRunStreamState, AgentRunStreamTool } from '~/entities/agent'
 import type { Chapter, ChapterVersion } from '~/entities/chapter'
-import type { AgentProposal } from '~/features/agent-run'
+import { canCancelAgentRun, type AgentProposal } from '~/features/agent-run'
 import type { ContextSelectState } from '~/features/context-select'
 import type { EditorDraftSnapshot } from '~/features/editor-draft-recovery'
 import type { ModelResolution, StoryBible, ToolTrace } from '~/lib/types'
@@ -32,6 +32,7 @@ const props = defineProps<{
   localDraft: EditorDraftSnapshot | null
   loadingAgents: boolean
   runningAgent: boolean
+  streamState: AgentRunStreamState
   loadingVersions: boolean
   diagnostics: { modelResolution: ModelResolution | null; toolTrace: ToolTrace[] }
 }>()
@@ -42,9 +43,11 @@ const emit = defineEmits<{
   'update:contextState': [value: ContextSelectState]
   retryAgents: []
   run: []
+  cancelRun: []
   insert: [proposalId: string]
   replace: [proposalId: string]
   append: [proposalId: string]
+  overwrite: [proposalId: string]
   reject: [proposalId: string]
   restoreDraft: []
   keepBackend: []
@@ -62,6 +65,24 @@ const agentOptions = computed(() => props.agents.map((agent) => ({
 const currentChapterIndex = computed(() => props.chapters.findIndex((chapter) => chapter.id === props.chapter.id))
 const previousLimit = computed(() => Math.max(0, currentChapterIndex.value))
 const syncedCharacters = computed(() => (props.bible?.characters || []).filter((character) => character.entity_id?.trim()))
+const showStreamingCard = computed(() => props.streamState.status !== 'idle'
+  && !props.proposals.some((proposal) => proposal.runId === props.streamState.runId))
+const showStreamWaiting = computed(() => !props.streamState.content && props.runningAgent)
+const canCancelRun = computed(() => canCancelAgentRun(props.streamState.status))
+const streamTone = computed(() => {
+  if (props.streamState.status === 'failed') return 'danger' as const
+  if (props.streamState.status === 'cancelled') return 'muted' as const
+  if (props.streamState.status === 'completed') return 'success' as const
+  return 'info' as const
+})
+
+function toolLabel(tool: AgentRunStreamTool) {
+  return tool.name.trim() || t('editor.stream.unknownTool')
+}
+
+function toolStatus(tool: AgentRunStreamTool) {
+  return t(`editor.stream.toolStatus.${tool.status}`)
+}
 
 function patchContext(patch: Partial<ContextSelectState>) {
   emit('update:contextState', { ...props.contextState, ...patch })
@@ -80,7 +101,7 @@ function versionLabel(version: ChapterVersion) {
 </script>
 
 <template>
-  <div class="space-y-5">
+  <div data-testid="assistant-panel" class="space-y-5">
     <UiInlineNotice
       v-if="localDraft"
       tone="warning"
@@ -140,10 +161,16 @@ function versionLabel(version: ChapterVersion) {
           :placeholder="t('editor.assistant.promptPlaceholder')"
           @update:model-value="emit('update:prompt', $event)"
         />
-        <UiButton class="w-full" :loading="runningAgent" :disabled="!selectedAgentId || !prompt.trim()" @click="emit('run')">
-          <Play class="h-4 w-4" />
-          {{ t('editor.actions.runAgent') }}
-        </UiButton>
+        <div class="grid gap-2" :class="canCancelRun ? 'grid-cols-[1fr_auto]' : 'grid-cols-1'">
+          <UiButton class="w-full" :loading="runningAgent" :disabled="runningAgent || !selectedAgentId || !prompt.trim()" @click="emit('run')">
+            <Play class="h-4 w-4" />
+            {{ t('editor.actions.runAgent') }}
+          </UiButton>
+          <UiButton v-if="canCancelRun" variant="outline" :aria-label="t('editor.stream.cancel')" @click="emit('cancelRun')">
+            <Square class="h-4 w-4" />
+            {{ t('editor.stream.cancel') }}
+          </UiButton>
+        </div>
       </div>
     </section>
 
@@ -200,8 +227,40 @@ function versionLabel(version: ChapterVersion) {
         </div>
         <UiBadge tone="muted">{{ proposals.filter((proposal) => proposal.status === 'pending').length }}</UiBadge>
       </div>
-      <UiEmptyState v-if="proposals.length === 0" class="min-h-32" :title="t('editor.proposals.emptyTitle')" :description="t('editor.proposals.emptyDescription')" />
-      <article v-for="proposal in proposals" v-else :key="proposal.id" class="border border-current/15 bg-background/45 p-4">
+      <UiEmptyState v-if="proposals.length === 0 && !showStreamingCard" class="min-h-32" :title="t('editor.proposals.emptyTitle')" :description="t('editor.proposals.emptyDescription')" />
+      <article
+        v-if="showStreamingCard"
+        data-testid="agent-stream-card"
+        class="border border-current/15 bg-background/45 p-4"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <div role="status" aria-live="polite" aria-atomic="true">
+            <UiBadge :tone="streamTone">{{ t(`editor.stream.status.${streamState.status}`) }}</UiBadge>
+          </div>
+          <span v-if="streamState.runId" class="max-w-36 truncate text-[11px] text-muted-foreground">{{ streamState.runId }}</span>
+        </div>
+        <pre
+          v-if="streamState.content"
+          data-testid="agent-stream-content"
+          class="mt-3 max-h-72 overflow-auto whitespace-pre-wrap font-serif text-sm leading-7 subtle-scrollbar"
+        >{{ streamState.content }}</pre>
+        <p v-else-if="showStreamWaiting" class="mt-3 text-sm text-muted-foreground">{{ t('editor.stream.waiting') }}</p>
+        <div v-if="streamState.tools.length" class="mt-3 space-y-2 border-t border-current/10 pt-3">
+          <p class="text-xs font-semibold">{{ t('editor.stream.tools') }}</p>
+          <div v-for="(tool, index) in streamState.tools" :key="`${index}-${toolLabel(tool)}`" class="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span class="truncate">{{ toolLabel(tool) }}</span>
+            <UiBadge tone="muted">{{ toolStatus(tool) || t('editor.stream.toolRunning') }}</UiBadge>
+          </div>
+        </div>
+        <UiInlineNotice
+          v-if="streamState.error"
+          class="mt-3"
+          :tone="streamState.status === 'failed' ? 'danger' : 'warning'"
+          :title="streamState.status === 'cancelled' ? t('editor.stream.cancelledTitle') : t('editor.stream.failedTitle')"
+          :description="streamState.error"
+        />
+      </article>
+      <article v-for="proposal in proposals" :key="proposal.id" class="border border-current/15 bg-background/45 p-4">
         <div class="flex items-center justify-between gap-3">
           <UiBadge :tone="proposal.status === 'pending' ? 'info' : proposal.status === 'applied' ? 'success' : 'muted'">
             {{ t(`editor.proposals.status.${proposal.status}`) }}
@@ -213,7 +272,8 @@ function versionLabel(version: ChapterVersion) {
           <UiButton size="sm" variant="outline" @click="emit('insert', proposal.id)"><Plus class="h-4 w-4" />{{ t('editor.proposals.insert') }}</UiButton>
           <UiButton size="sm" variant="outline" :disabled="!selectedText" @click="emit('replace', proposal.id)"><Replace class="h-4 w-4" />{{ t('editor.proposals.replace') }}</UiButton>
           <UiButton size="sm" variant="outline" @click="emit('append', proposal.id)"><Check class="h-4 w-4" />{{ t('editor.proposals.append') }}</UiButton>
-          <UiButton size="sm" variant="ghost" @click="emit('reject', proposal.id)"><X class="h-4 w-4" />{{ t('editor.proposals.reject') }}</UiButton>
+          <UiButton size="sm" variant="outline" @click="emit('overwrite', proposal.id)"><Replace class="h-4 w-4" />{{ t('editor.proposals.overwrite') }}</UiButton>
+          <UiButton class="col-span-2" size="sm" variant="ghost" @click="emit('reject', proposal.id)"><X class="h-4 w-4" />{{ t('editor.proposals.reject') }}</UiButton>
         </div>
       </article>
     </section>

@@ -66,7 +66,17 @@ function unlockBodyScroll() {
   delete body.dataset.aeonScrollLocks
 }
 
-export function useModalFocus(open: Ref<boolean>, container: Ref<HTMLElement | null>, requestClose: () => void) {
+export interface ModalFocusOptions {
+  restoreFocus?: boolean | (() => boolean)
+  onAfterClose?: () => void | Promise<void>
+}
+
+export function useModalFocus(
+  open: Ref<boolean>,
+  container: Ref<HTMLElement | null>,
+  requestClose: () => void,
+  options: ModalFocusOptions = {}
+) {
   const overlayId = Symbol('aeon-overlay')
   let restoreFocusElement: HTMLElement | null = null
   let active = false
@@ -125,8 +135,12 @@ export function useModalFocus(open: Ref<boolean>, container: Ref<HTMLElement | n
     document.addEventListener('keydown', handleKeydown)
   }
 
+  function shouldRestoreFocus() {
+    return typeof options.restoreFocus === 'function' ? options.restoreFocus() : options.restoreFocus !== false
+  }
+
   function deactivate(restoreFocus = true) {
-    if (!active || typeof document === 'undefined') return
+    if (!active || typeof document === 'undefined') return false
     active = false
     const stackIndex = overlayStack.lastIndexOf(overlayId)
     if (stackIndex >= 0) overlayStack.splice(stackIndex, 1)
@@ -137,6 +151,7 @@ export function useModalFocus(open: Ref<boolean>, container: Ref<HTMLElement | n
       restoreFocusElement.focus({ preventScroll: true })
     }
     restoreFocusElement = null
+    return true
   }
 
   watch(
@@ -151,7 +166,11 @@ export function useModalFocus(open: Ref<boolean>, container: Ref<HTMLElement | n
         focusInitialElement()
       } else {
         await nextTick()
-        deactivate()
+        const deactivated = deactivate(shouldRestoreFocus())
+        if (deactivated && options.onAfterClose) {
+          await nextTick()
+          await options.onAfterClose()
+        }
       }
     },
     { immediate: true, flush: 'post' }

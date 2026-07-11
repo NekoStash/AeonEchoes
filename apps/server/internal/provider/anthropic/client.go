@@ -62,35 +62,10 @@ func newClient(cfg domain.ProviderConfig, httpClient *http.Client, timeout time.
 }
 
 func (c *Client) Generate(ctx context.Context, req provider.TextRequest) (provider.ModelResponse, error) {
-	if strings.TrimSpace(req.Model) == "" {
-		return provider.ModelResponse{}, fmt.Errorf("anthropic text request model must not be empty")
+	body, err := anthropicMessageParams(req)
+	if err != nil {
+		return provider.ModelResponse{}, err
 	}
-	messages := anthropicMessages(req)
-	if len(messages) == 0 {
-		return provider.ModelResponse{}, fmt.Errorf("anthropic text request requires at least one user or assistant message")
-	}
-	body := anthropicsdk.MessageNewParams{
-		Model:     anthropicsdk.Model(req.Model),
-		Messages:  messages,
-		MaxTokens: maxInt64(1, int64(req.MaxOutputTokens)),
-	}
-	if strings.TrimSpace(req.SystemPrompt) != "" {
-		body.System = []anthropicsdk.TextBlockParam{{Text: req.SystemPrompt}}
-	}
-	if req.Temperature > 0 {
-		body.Temperature = anthroparam.NewOpt(req.Temperature)
-	}
-	if req.TopP > 0 {
-		body.TopP = anthroparam.NewOpt(req.TopP)
-	}
-	if len(req.Tools) > 0 {
-		tools, err := anthropicTools(req.Tools)
-		if err != nil {
-			return provider.ModelResponse{}, err
-		}
-		body.Tools = tools
-	}
-
 	msg, err := c.sdk.Messages.New(ctx, body)
 	if err != nil {
 		return provider.ModelResponse{}, fmt.Errorf("anthropic messages via SDK failed: %w", err)
@@ -98,27 +73,44 @@ func (c *Client) Generate(ctx context.Context, req provider.TextRequest) (provid
 	if msg == nil {
 		return provider.ModelResponse{}, fmt.Errorf("anthropic messages via SDK returned nil response")
 	}
-	inputTokens := msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens + msg.Usage.CacheReadInputTokens
-	return provider.ModelResponse{
-		ID:           msg.ID,
-		Provider:     string(domain.ProviderAnthropic),
-		Model:        firstNonEmpty(string(msg.Model), req.Model),
-		Content:      collectContent(msg.Content),
-		FinishReason: string(msg.StopReason),
-		ToolCalls:    collectToolCalls(msg.Content),
-		Usage: provider.Usage{
-			InputTokens:  int(inputTokens),
-			OutputTokens: int(msg.Usage.OutputTokens),
-			TotalTokens:  int(inputTokens + msg.Usage.OutputTokens),
-		},
-		Raw: rawJSON(msg.RawJSON(), msg),
-	}, nil
+	return anthropicModelResponse(msg, req.Model), nil
 }
 
 func (c *Client) Stream(ctx context.Context, req provider.TextRequest) (<-chan provider.StreamEvent, error) {
-	// 流式后续通过 SDK streaming 深化；当前统一接口仍以一次性 Generate 结果封装为单个 final 事件，避免手写 SSE 协议。
-	resp, err := c.Generate(ctx, req)
-	return provider.StreamSingleEvent(ctx, resp, err)
+	body, err := anthropicMessageParams(req)
+	if err != nil {
+		return nil, err
+	}
+	stream := c.sdk.Messages.NewStreaming(ctx, body)
+	events := make(chan provider.StreamEvent, 8)
+	go func() {
+		defer close(events)
+		defer stream.Close()
+		var message anthropicsdk.Message
+		for stream.Next() {
+			event := stream.Current()
+			if err := message.Accumulate(event); err != nil {
+				provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: fmt.Sprintf("accumulate anthropic stream event: %v", err)})
+				return
+			}
+			if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" && event.Delta.Text != "" {
+				if !provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "content.delta", Delta: event.Delta.Text}) {
+					return
+				}
+			}
+		}
+		if err := stream.Err(); err != nil {
+			provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: fmt.Sprintf("anthropic messages streaming via SDK failed: %v", err)})
+			return
+		}
+		if strings.TrimSpace(message.ID) == "" {
+			provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: "anthropic messages streaming ended without a complete message"})
+			return
+		}
+		response := anthropicModelResponse(&message, req.Model)
+		provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "final", Response: &response, Usage: &response.Usage, Done: true})
+	}()
+	return events, nil
 }
 
 func (c *Client) Embed(ctx context.Context, req provider.EmbeddingRequest) (provider.EmbeddingResponse, error) {
@@ -149,6 +141,52 @@ func (c *Client) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
 		return nil, fmt.Errorf("anthropic model list via SDK failed: %w", err)
 	}
 	return models, nil
+}
+
+func anthropicMessageParams(req provider.TextRequest) (anthropicsdk.MessageNewParams, error) {
+	if strings.TrimSpace(req.Model) == "" {
+		return anthropicsdk.MessageNewParams{}, fmt.Errorf("anthropic text request model must not be empty")
+	}
+	messages := anthropicMessages(req)
+	if len(messages) == 0 {
+		return anthropicsdk.MessageNewParams{}, fmt.Errorf("anthropic text request requires at least one user or assistant message")
+	}
+	body := anthropicsdk.MessageNewParams{Model: anthropicsdk.Model(req.Model), Messages: messages, MaxTokens: maxInt64(1, int64(req.MaxOutputTokens))}
+	if strings.TrimSpace(req.SystemPrompt) != "" {
+		body.System = []anthropicsdk.TextBlockParam{{Text: req.SystemPrompt}}
+	}
+	if req.Temperature > 0 {
+		body.Temperature = anthroparam.NewOpt(req.Temperature)
+	}
+	if req.TopP > 0 {
+		body.TopP = anthroparam.NewOpt(req.TopP)
+	}
+	if len(req.Tools) > 0 {
+		tools, err := anthropicTools(req.Tools)
+		if err != nil {
+			return anthropicsdk.MessageNewParams{}, err
+		}
+		body.Tools = tools
+	}
+	return body, nil
+}
+
+func anthropicModelResponse(msg *anthropicsdk.Message, requestModel string) provider.ModelResponse {
+	inputTokens := msg.Usage.InputTokens + msg.Usage.CacheCreationInputTokens + msg.Usage.CacheReadInputTokens
+	return provider.ModelResponse{
+		ID:           msg.ID,
+		Provider:     string(domain.ProviderAnthropic),
+		Model:        firstNonEmpty(string(msg.Model), requestModel),
+		Content:      collectContent(msg.Content),
+		FinishReason: string(msg.StopReason),
+		ToolCalls:    collectToolCalls(msg.Content),
+		Usage: provider.Usage{
+			InputTokens:  int(inputTokens),
+			OutputTokens: int(msg.Usage.OutputTokens),
+			TotalTokens:  int(inputTokens + msg.Usage.OutputTokens),
+		},
+		Raw: rawJSON(msg.RawJSON(), msg),
+	}
 }
 
 func anthropicOptions(cfg domain.ProviderConfig, httpClient *http.Client, timeout time.Duration) []anthrooption.RequestOption {

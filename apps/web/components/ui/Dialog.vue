@@ -12,16 +12,19 @@ const props = withDefaults(defineProps<{
   ariaLabel?: string
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
   closeOnBackdrop?: boolean
+  restoreFocus?: boolean
   class?: string
 }>(), {
   description: '',
   ariaLabel: undefined,
   size: 'md',
-  closeOnBackdrop: true
+  closeOnBackdrop: true,
+  restoreFocus: true
 })
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
+  afterClose: []
 }>()
 
 const titleId = `dialog-title-${useId()}`
@@ -42,7 +45,10 @@ function close() {
   emit('update:open', false)
 }
 
-useModalFocus(openRef, dialogRef, close)
+useModalFocus(openRef, dialogRef, close, {
+  restoreFocus: () => props.restoreFocus,
+  onAfterClose: () => emit('afterClose')
+})
 </script>
 
 <template>

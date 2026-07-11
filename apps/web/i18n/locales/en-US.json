@@ -1005,15 +1005,43 @@
       "sheetTitle": "AI assistant",
       "sheetDescription": "Choose context and run an Agent. You decide how every result is applied."
     },
+    "stream": {
+      "cancel": "Cancel generation",
+      "waiting": "Connecting and waiting for the first content chunk…",
+      "tools": "Tool progress",
+      "toolRunning": "Running",
+      "unknownTool": "Unknown tool",
+      "toolStatus": {
+        "started": "Running",
+        "completed": "Completed"
+      },
+      "failedTitle": "Generation failed",
+      "cancelledTitle": "Generation cancelled",
+      "cancelledDescription": "Generation was cancelled. Received partial prose remains visible but cannot be applied.",
+      "status": {
+        "idle": "Idle",
+        "connecting": "Connecting",
+        "streaming": "Generating",
+        "tool-running": "Running tool",
+        "finalizing": "Finalizing proposal",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      }
+    },
     "proposals": {
       "title": "Proposal area",
-      "description": "Proposals never enter prose automatically. Insert at the caret, replace a valid selection, append, or reject.",
+      "description": "Proposals never enter prose automatically. Insert at the caret, replace a valid selection, append, or reject; overwriting the full prose requires confirmation.",
       "emptyTitle": "No proposals",
       "emptyDescription": "Agent results appear here before they can affect prose.",
       "received": "Agent proposal received",
       "insert": "Insert",
       "replace": "Replace selection",
       "append": "Append",
+      "overwrite": "Overwrite current prose",
+      "overwriteConfirmTitle": "Overwrite current prose?",
+      "overwriteConfirmDescription": "This replaces the complete unsaved prose with the proposal. The chapter title stays unchanged, and no version is created automatically.",
+      "overwriteConfirmAction": "Overwrite prose",
       "reject": "Reject",
       "status": {
         "pending": "Pending",

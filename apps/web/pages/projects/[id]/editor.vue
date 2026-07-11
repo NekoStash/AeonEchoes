@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ArrowLeft, Bot, FileWarning, Loader2 } from '@lucide/vue'
 import UiButton from '~/components/ui/Button.vue'
+import UiConfirm from '~/components/ui/Confirm.vue'
 import UiDialog from '~/components/ui/Dialog.vue'
 import UiEmptyState from '~/components/ui/EmptyState.vue'
 import UiInlineNotice from '~/components/ui/InlineNotice.vue'
 import UiSheet from '~/components/ui/Sheet.vue'
-import { applyAgentProposal, createAgentProposal, type AgentProposal, type ProposalApplyMode } from '~/features/agent-run'
+import { applyAgentProposal, canCancelAgentRun, createAgentProposal, isAgentRunActive, type AgentProposal, type ProposalApplyMode } from '~/features/agent-run'
 import { buildChapterVersionPayload, latestChapterVersion, loadChapterVersion, sortChapterVersions } from '~/features/chapter-version'
 import { countWritingMetrics, resolveStrictChapter, type TextSelection } from '~/features/chapter-write'
 import { buildContextSelection, createContextSelectState, type ContextSelectState } from '~/features/context-select'
@@ -20,7 +21,7 @@ import {
 } from '~/features/editor-draft-recovery'
 import AssistantPanel from '~/widgets/assistant-panel/AssistantPanel.vue'
 import WritingWorkspace from '~/widgets/writing-workspace/WritingWorkspace.vue'
-import type { AgentRunResult } from '~/entities/agent'
+import type { AgentRunResult, AgentRunStreamEvent, AgentRunStreamState, AgentRunStreamTool } from '~/entities/agent'
 import { preferredAgent, useAgentStore } from '~/entities/agent'
 import type { Chapter, ChapterVersion } from '~/entities/chapter'
 import { useChapterStore } from '~/entities/chapter'
@@ -67,34 +68,85 @@ const loading = ref(true)
 const loadingAgents = ref(false)
 const loadingVersions = computed(() => chapterStore.versionListRequest.loading)
 const savingVersion = computed(() => chapterStore.versionSaveRequest.loading)
-const runningAgent = computed(() => agentStore.runRequest.loading)
 const assistantOpen = ref(false)
 const fullscreen = ref(false)
 const diffOpen = ref(false)
 const diffLines = ref<DiffLine[]>([])
 const latestAgentRun = ref<AgentRunResult | null>(null)
+const streamState = reactive<AgentRunStreamState>({
+  status: 'idle',
+  chapterId: '',
+  runId: '',
+  content: '',
+  tools: [],
+  modelResolution: null,
+  error: ''
+})
+const runningAgent = computed(() => isAgentRunActive(streamState.status))
+const overwriteConfirmOpen = ref(false)
+const pendingOverwriteProposalId = ref('')
 const writingWorkspace = ref<{ focus: () => void; setSelection: (selection: TextSelection) => void } | null>(null)
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let loadSequence = 0
+let streamSession = 0
+let streamController: AbortController | null = null
 
 const dirty = computed(() => title.value !== baseTitle.value || content.value !== baseContent.value)
 const metrics = computed(() => countWritingMetrics(content.value))
 const selectedText = computed(() => content.value.slice(selection.value.start, selection.value.end))
 const diagnostics = computed(() => ({
-  modelResolution: latestAgentRun.value?.model_resolution || null,
+  modelResolution: streamState.modelResolution || latestAgentRun.value?.model_resolution || null,
   toolTrace: latestAgentRun.value?.tool_trace || []
 }))
 
 onMounted(loadEditor)
 onBeforeUnmount(() => {
+  abortAgentRun('', true)
   if (persistTimer) clearTimeout(persistTimer)
   persistLocalDraftNow()
 })
 
 watch(routeChapterId, () => {
+  abortAgentRun('', true)
   if (!chapterLoadError.value) void loadCurrentChapter()
 })
 watch([title, content], () => scheduleDraftPersist())
+
+function resetStreamState() {
+  Object.assign(streamState, {
+    status: 'idle',
+    chapterId: '',
+    runId: '',
+    content: '',
+    tools: [],
+    modelResolution: null,
+    error: ''
+  } satisfies AgentRunStreamState)
+}
+
+function abortAgentRun(message: string, reset = false) {
+  streamSession += 1
+  const controller = streamController
+  streamController = null
+  controller?.abort()
+  if (reset) {
+    resetStreamState()
+    return
+  }
+  if (controller || runningAgent.value) {
+    streamState.status = 'cancelled'
+    streamState.error = message || t('editor.stream.cancelledDescription')
+  }
+}
+
+function cancelAgentRun() {
+  if (!canCancelAgentRun(streamState.status)) return
+  abortAgentRun(t('editor.stream.cancelledDescription'))
+}
+
+function isAbortError(cause: unknown) {
+  return cause instanceof Error && cause.name === 'AbortError'
+}
 
 async function loadEditor() {
   loading.value = true
@@ -137,6 +189,7 @@ async function loadAgents() {
 }
 
 async function loadCurrentChapter() {
+  abortAgentRun('', true)
   const sequence = ++loadSequence
   pageError.value = ''
   proposals.value = []
@@ -183,6 +236,7 @@ async function selectChapter(id: string) {
     pageError.value = t('editor.errors.chapterDoesNotExist', { id })
     return
   }
+  abortAgentRun('', true)
   persistLocalDraftNow()
   await router.push({ path: route.path, query: { ...route.query, chapter: id } })
 }
@@ -310,7 +364,69 @@ async function saveVersion() {
   }
 }
 
+function streamToolKey(tool: AgentRunStreamTool) {
+  return tool.call_id || tool.name
+}
+
+function updateStreamTool(tool: AgentRunStreamTool) {
+  const key = streamToolKey(tool)
+  const index = streamState.tools.findIndex((item) => streamToolKey(item) === key)
+  if (index < 0) streamState.tools.push(tool)
+  else streamState.tools[index] = tool
+}
+
+function handleAgentStreamEvent(event: AgentRunStreamEvent, session: number, runChapterId: string) {
+  if (session !== streamSession || runChapterId !== chapterId.value || streamState.chapterId !== runChapterId) return
+  if (streamState.runId && streamState.runId !== event.run_id) {
+    console.error('[AeonEchoes Editor] Ignored an Agent stream event with a mismatched run ID.', { expected: streamState.runId, actual: event.run_id })
+    return
+  }
+
+  if (event.type === 'run.started') {
+    streamState.runId = event.run_id
+    streamState.status = 'streaming'
+    return
+  }
+  if (!streamState.runId) {
+    console.error('[AeonEchoes Editor] Ignored an Agent stream event before run.started.', event)
+    return
+  }
+  if (event.type === 'model.resolved') {
+    streamState.modelResolution = event.model_resolution
+    return
+  }
+  if (event.type === 'tool.started') {
+    updateStreamTool(event.tool)
+    streamState.status = 'tool-running'
+    return
+  }
+  if (event.type === 'tool.completed') {
+    updateStreamTool(event.tool)
+    streamState.status = 'streaming'
+    return
+  }
+  if (event.type === 'content.delta') {
+    streamState.content += event.delta
+    streamState.status = 'streaming'
+    return
+  }
+  if (event.type === 'run.failed') {
+    streamState.status = 'failed'
+    streamState.error = event.error
+    return
+  }
+
+  streamState.runId = event.run_id
+  streamState.content = event.result.content
+  streamState.modelResolution = event.result.model_resolution
+  streamState.status = 'finalizing'
+}
+
 async function runAgent() {
+  if (runningAgent.value) {
+    console.error('[AeonEchoes Editor] Refused a concurrent Agent stream run.')
+    return
+  }
   if (strictResolution.value.state !== 'ready') {
     pageError.value = t('editor.errors.realChapterRequired')
     return
@@ -320,27 +436,62 @@ async function runAgent() {
     pageError.value = t('editor.errors.noAgentConfigured')
     return
   }
+
+  abortAgentRun('', true)
+  const runChapterId = chapterId.value
+  const session = ++streamSession
+  const controller = new AbortController()
+  streamController = controller
+  Object.assign(streamState, {
+    status: 'connecting',
+    chapterId: runChapterId,
+    runId: '',
+    content: '',
+    tools: [],
+    modelResolution: null,
+    error: ''
+  } satisfies AgentRunStreamState)
   pageError.value = ''
+
   try {
-    const contextSelection = buildContextSelection(chapters.value, storyBible.value, projectId.value, chapterId.value, contextState.value)
-    const result = await agentStore.run(agent.id, {
+    const contextSelection = buildContextSelection(chapters.value, storyBible.value, projectId.value, runChapterId, contextState.value)
+    const result = await agentStore.runStream(agent.id, {
       project_id: projectId.value,
       task_type: 'generic',
       input: {
-        chapter_id: chapterId.value,
+        chapter_id: runChapterId,
         instruction: prompt.value.trim(),
         title: title.value,
         content: content.value,
         selected_text: selectedText.value || undefined
       },
       context_selection: contextSelection
+    }, {
+      signal: controller.signal,
+      onEvent: (event) => handleAgentStreamEvent(event, session, runChapterId)
     })
-    latestAgentRun.value = result.data
-    proposals.value = [createAgentProposal(agent.id, result.data), ...proposals.value]
+    if (session !== streamSession || runChapterId !== chapterId.value || streamState.runId !== result.run.id) return
+    const proposal = createAgentProposal(agent.id, result)
+    latestAgentRun.value = result
+    streamState.content = result.content
+    streamState.modelResolution = result.model_resolution
+    proposals.value = [proposal, ...proposals.value]
+    streamState.status = 'completed'
     toast.success(t('editor.proposals.received'))
   } catch (cause) {
-    console.error('[AeonEchoes Editor] Agent Run failed.', cause)
-    pageError.value = agentStore.runRequest.error?.message || (cause instanceof Error ? cause.message : t('editor.errors.agentRunFailed'))
+    if (session !== streamSession || runChapterId !== chapterId.value) return
+    if (isAbortError(cause)) {
+      if (streamState.status !== 'cancelled') {
+        streamState.status = 'cancelled'
+        streamState.error = t('editor.stream.cancelledDescription')
+      }
+      return
+    }
+    console.error('[AeonEchoes Editor] Agent stream failed.', cause)
+    streamState.status = 'failed'
+    streamState.error = streamState.error || agentStore.streamRequest.error?.message || (cause instanceof Error ? cause.message : t('editor.errors.agentRunFailed'))
+  } finally {
+    if (session === streamSession && streamController === controller) streamController = null
   }
 }
 
@@ -354,11 +505,40 @@ function handleProposal(proposalId: string, mode: ProposalApplyMode) {
       content.value = application.content
       selection.value = application.selection
       assistantOpen.value = false
-      nextTick(() => writingWorkspace.value?.setSelection(application.selection))
+      nextTick(() => {
+        if (mode === 'overwrite') persistLocalDraftNow()
+        writingWorkspace.value?.setSelection(application.selection)
+      })
     }
   } catch (cause) {
     pageError.value = cause instanceof Error ? cause.message : t('editor.errors.proposalApplyFailed')
   }
+}
+
+function focusWritingSelection() {
+  nextTick(() => writingWorkspace.value?.setSelection(selection.value))
+}
+
+function requestProposalOverwrite(proposalId: string) {
+  if (!content.value) {
+    handleProposal(proposalId, 'overwrite')
+    return
+  }
+  pendingOverwriteProposalId.value = proposalId
+  assistantOpen.value = false
+  nextTick(() => { overwriteConfirmOpen.value = true })
+}
+
+function setOverwriteConfirmOpen(value: boolean) {
+  overwriteConfirmOpen.value = value
+  if (!value) pendingOverwriteProposalId.value = ''
+}
+
+function confirmProposalOverwrite() {
+  const proposalId = pendingOverwriteProposalId.value
+  overwriteConfirmOpen.value = false
+  pendingOverwriteProposalId.value = ''
+  if (proposalId) handleProposal(proposalId, 'overwrite')
 }
 
 function loadVersion(versionId: string) {
@@ -448,6 +628,7 @@ function loadVersion(versionId: string) {
 
         <aside data-testid="editor-assistant" class="sticky top-[calc(var(--layout-height-topbar)+1rem)] hidden max-h-[calc(100dvh-var(--layout-height-topbar)-2rem)] overflow-y-auto border border-border bg-surface-muted p-3 text-surface-foreground subtle-scrollbar xl:block">
           <AssistantPanel
+            v-if="!assistantOpen"
             :agents="agents"
             :project-id="projectId"
             :agent-load-error="agentLoadError"
@@ -463,6 +644,7 @@ function loadVersion(versionId: string) {
             :local-draft="localDraft"
             :loading-agents="loadingAgents"
             :running-agent="runningAgent"
+            :stream-state="streamState"
             :loading-versions="loadingVersions"
             :diagnostics="diagnostics"
             @update:prompt="prompt = $event"
@@ -470,9 +652,11 @@ function loadVersion(versionId: string) {
             @update:context-state="contextState = $event"
             @retry-agents="loadAgents"
             @run="runAgent"
+            @cancel-run="cancelAgentRun"
             @insert="handleProposal($event, 'insert')"
             @replace="handleProposal($event, 'replace')"
             @append="handleProposal($event, 'append')"
+            @overwrite="requestProposalOverwrite"
             @reject="handleProposal($event, 'reject')"
             @restore-draft="restoreLocalDraft"
             @keep-backend="keepBackendDraft"
@@ -504,6 +688,7 @@ function loadVersion(versionId: string) {
           :local-draft="localDraft"
           :loading-agents="loadingAgents"
           :running-agent="runningAgent"
+          :stream-state="streamState"
           :loading-versions="loadingVersions"
           :diagnostics="diagnostics"
           @update:prompt="prompt = $event"
@@ -511,9 +696,11 @@ function loadVersion(versionId: string) {
           @update:context-state="contextState = $event"
           @retry-agents="loadAgents"
           @run="runAgent"
+          @cancel-run="cancelAgentRun"
           @insert="handleProposal($event, 'insert')"
           @replace="handleProposal($event, 'replace')"
           @append="handleProposal($event, 'append')"
+          @overwrite="requestProposalOverwrite"
           @reject="handleProposal($event, 'reject')"
           @restore-draft="restoreLocalDraft"
           @keep-backend="keepBackendDraft"
@@ -521,6 +708,18 @@ function loadVersion(versionId: string) {
           @load-version="loadVersion"
         />
       </UiSheet>
+
+      <UiConfirm
+        :open="overwriteConfirmOpen"
+        tone="danger"
+        :title="t('editor.proposals.overwriteConfirmTitle')"
+        :description="t('editor.proposals.overwriteConfirmDescription')"
+        :confirm-label="t('editor.proposals.overwriteConfirmAction')"
+        :restore-focus="false"
+        @update:open="setOverwriteConfirmOpen"
+        @confirm="confirmProposalOverwrite"
+        @after-close="focusWritingSelection"
+      />
 
       <UiDialog v-model:open="diffOpen" size="xl" :title="t('editor.recovery.diffTitle')" :description="t('editor.recovery.diffDescription')">
         <div class="overflow-hidden border border-border bg-surface font-mono text-xs text-surface-foreground">

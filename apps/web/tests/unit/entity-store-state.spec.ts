@@ -85,6 +85,30 @@ describe('Agent 查询作用域', () => {
     expect(store.itemsFor(options)).toEqual([])
   })
 
+  it('取消旧流后立即启动新流时，旧 finally/error 不覆盖新请求状态', async () => {
+    let rejectFirst!: (cause: unknown) => void
+    let resolveSecond!: (value: unknown) => void
+    const first = new Promise((_resolve, reject) => { rejectFirst = reject })
+    const second = new Promise((resolve) => { resolveSecond = resolve })
+    const runAgentStream = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second)
+    vi.stubGlobal('useApi', () => ({ agent: { runAgentStream } }))
+    const store = useAgentStore()
+
+    const firstRun = store.runStream('agent-1', { input: { instruction: 'first' } })
+    const secondRun = store.runStream('agent-1', { input: { instruction: 'second' } })
+    const abort = new Error('aborted')
+    abort.name = 'AbortError'
+    rejectFirst(abort)
+
+    await expect(firstRun).rejects.toMatchObject({ name: 'AbortError' })
+    expect(store.streamRequest).toEqual({ loading: true, error: null })
+
+    const result = { run: { id: 'run-2', agent_id: 'agent-1', status: 'completed' }, content: 'second', model_resolution: {} }
+    resolveSecond(result)
+    await expect(secondRun).resolves.toBe(result)
+    expect(store.streamRequest).toEqual({ loading: false, error: null })
+  })
+
   it('自动选择优先项目 writer，再全局 writer，再项目任意，再全局任意', () => {
     const globalWriter = agent('global-writer', undefined)
     const projectWriter = agent('project-writer', 'project-1')

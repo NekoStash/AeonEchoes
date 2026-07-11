@@ -9,17 +9,20 @@ const props = withDefaults(defineProps<{
   cancelLabel?: string
   tone?: 'default' | 'danger'
   loading?: boolean
+  restoreFocus?: boolean
 }>(), {
   description: '',
   confirmLabel: undefined,
   cancelLabel: undefined,
   tone: 'danger',
-  loading: false
+  loading: false,
+  restoreFocus: true
 })
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
   confirm: []
+  afterClose: []
 }>()
 
 const openModel = computed({
@@ -29,7 +32,14 @@ const openModel = computed({
 </script>
 
 <template>
-  <UiDialog v-model:open="openModel" :title="title" :description="description" size="sm">
+  <UiDialog
+    v-model:open="openModel"
+    :title="title"
+    :description="description"
+    :restore-focus="restoreFocus"
+    size="sm"
+    @after-close="emit('afterClose')"
+  >
     <slot />
     <template #footer>
       <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { applyAgentProposal, createAgentProposal } from '../../features/agent-run'
+import { applyAgentProposal, canCancelAgentRun, createAgentProposal, isAgentRunActive } from '../../features/agent-run'
 import { buildChapterVersionPayload, loadChapterVersion } from '../../features/chapter-version'
 import { resolveStrictChapter } from '../../features/chapter-write'
 import {
@@ -122,6 +122,12 @@ describe('编辑器本地草稿恢复', () => {
 })
 
 describe('Agent Run 提案行为', () => {
+  it('finalizing 保持运行锁但禁止取消', () => {
+    expect(isAgentRunActive('finalizing')).toBe(true)
+    expect(canCancelAgentRun('finalizing')).toBe(false)
+    expect(['connecting', 'streaming', 'tool-running'].every(status => canCancelAgentRun(status as 'connecting' | 'streaming' | 'tool-running'))).toBe(true)
+  })
+
   it('Agent 结果创建为 pending 提案且不修改正文', () => {
     const source = '原正文'
     const proposal = createAgentProposal('agent-1', agentRun('提案正文'), '2026-01-01T00:00:00Z')
@@ -140,6 +146,15 @@ describe('Agent Run 提案行为', () => {
       content: '正文',
       proposal: { status: 'rejected' }
     })
+  })
+
+  it('覆盖模式用完整提案替换正文、保持标题职责在编辑器外且光标落在末尾', () => {
+    const proposal = createAgentProposal('agent-1', agentRun('完整替换正文'))
+    const application = applyAgentProposal('未保存旧正文', proposal, 'overwrite', { start: 2, end: 4 })
+
+    expect(application.content).toBe('完整替换正文')
+    expect(application.selection).toEqual({ start: 6, end: 6 })
+    expect(application.proposal.status).toBe('applied')
   })
 
   it('空选区不能执行替换', () => {

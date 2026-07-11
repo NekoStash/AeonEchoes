@@ -40,6 +40,10 @@ func (s *Router) RunAgent(w http.ResponseWriter, r *http.Request, id v1openapi.I
 	s.v1RunAgent(w, r)
 }
 
+func (s *Router) StreamAgentRun(w http.ResponseWriter, r *http.Request, id v1openapi.ID) {
+	s.v1StreamAgentRun(w, r)
+}
+
 func (s *Router) GetHealth(w http.ResponseWriter, r *http.Request) {
 	s.v1Health(w, r)
 }

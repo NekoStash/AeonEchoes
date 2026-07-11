@@ -14,6 +14,57 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AgentRunStreamEventType.
+const (
+	ContentDelta  AgentRunStreamEventType = "content.delta"
+	ModelResolved AgentRunStreamEventType = "model.resolved"
+	RunCompleted  AgentRunStreamEventType = "run.completed"
+	RunFailed     AgentRunStreamEventType = "run.failed"
+	RunStarted    AgentRunStreamEventType = "run.started"
+	ToolCompleted AgentRunStreamEventType = "tool.completed"
+	ToolStarted   AgentRunStreamEventType = "tool.started"
+)
+
+// Valid indicates whether the value is a known member of the AgentRunStreamEventType enum.
+func (e AgentRunStreamEventType) Valid() bool {
+	switch e {
+	case ContentDelta:
+		return true
+	case ModelResolved:
+		return true
+	case RunCompleted:
+		return true
+	case RunFailed:
+		return true
+	case RunStarted:
+		return true
+	case ToolCompleted:
+		return true
+	case ToolStarted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentRunStreamToolStatus.
+const (
+	Completed AgentRunStreamToolStatus = "completed"
+	Started   AgentRunStreamToolStatus = "started"
+)
+
+// Valid indicates whether the value is a known member of the AgentRunStreamToolStatus enum.
+func (e AgentRunStreamToolStatus) Valid() bool {
+	switch e {
+	case Completed:
+		return true
+	case Started:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChapterStatus.
 const (
 	Drafting  ChapterStatus = "drafting"
@@ -236,6 +287,34 @@ type AgentRunResult struct {
 	Run             *AgentRun        `json:"run,omitempty"`
 	ToolTrace       *[]ToolTrace     `json:"tool_trace,omitempty"`
 }
+
+// AgentRunStreamEvent Unified SSE business-event data object validated by the server before emission. Exactly one type-specific payload is allowed: run.started requires run; model.resolved requires model_resolution; tool.started and tool.completed require tool with matching status; content.delta requires a non-empty delta; run.completed requires the complete AgentRunResult in result; run.failed requires a non-empty error. Heartbeats are SSE comments and are not represented by this schema.
+type AgentRunStreamEvent struct {
+	Delta           *string          `json:"delta,omitempty"`
+	Error           *string          `json:"error,omitempty"`
+	ModelResolution *ModelResolution `json:"model_resolution,omitempty"`
+	Result          *AgentRunResult  `json:"result,omitempty"`
+	Run             *AgentRun        `json:"run,omitempty"`
+	RunId           string           `json:"run_id"`
+	Sequence        int64            `json:"sequence"`
+
+	// Tool Public tool lifecycle identity only. Tool arguments and results are intentionally excluded because they may contain secrets or manuscript content.
+	Tool *AgentRunStreamTool     `json:"tool,omitempty"`
+	Type AgentRunStreamEventType `json:"type"`
+}
+
+// AgentRunStreamEventType defines model for AgentRunStreamEvent.Type.
+type AgentRunStreamEventType string
+
+// AgentRunStreamTool Public tool lifecycle identity only. Tool arguments and results are intentionally excluded because they may contain secrets or manuscript content.
+type AgentRunStreamTool struct {
+	CallId string                   `json:"call_id"`
+	Name   string                   `json:"name"`
+	Status AgentRunStreamToolStatus `json:"status"`
+}
+
+// AgentRunStreamToolStatus defines model for AgentRunStreamTool.Status.
+type AgentRunStreamToolStatus string
 
 // AppSetting defines model for AppSetting.
 type AppSetting struct {
@@ -1139,6 +1218,9 @@ type NotFound = ErrorEnvelope
 // ServerError defines model for ServerError.
 type ServerError = ErrorEnvelope
 
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = ErrorEnvelope
+
 // ListAgentRunsParams defines parameters for ListAgentRuns.
 type ListAgentRunsParams struct {
 	ProjectId *ProjectIDQuery `form:"project_id,omitempty" json:"project_id,omitempty"`
@@ -1230,6 +1312,9 @@ type UpdateAgentJSONRequestBody = Agent
 
 // RunAgentJSONRequestBody defines body for RunAgent for application/json ContentType.
 type RunAgentJSONRequestBody = AgentRunRequest
+
+// StreamAgentRunJSONRequestBody defines body for StreamAgentRun for application/json ContentType.
+type StreamAgentRunJSONRequestBody = AgentRunRequest
 
 // CreateMCPServerJSONRequestBody defines body for CreateMCPServer for application/json ContentType.
 type CreateMCPServerJSONRequestBody = MCPServerRequest
@@ -1341,6 +1426,9 @@ type ServerInterface interface {
 
 	// (POST /agents/{id}/runs)
 	RunAgent(w http.ResponseWriter, r *http.Request, id ID)
+
+	// (POST /agents/{id}/runs/stream)
+	StreamAgentRun(w http.ResponseWriter, r *http.Request, id ID)
 
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -1813,6 +1901,32 @@ func (siw *ServerInterfaceWrapper) RunAgent(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RunAgent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamAgentRun operation middleware
+func (siw *ServerInterfaceWrapper) StreamAgentRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamAgentRun(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3899,6 +4013,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/agents/{id}", wrapper.GetAgent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/agents/{id}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/agents/{id}/runs", wrapper.RunAgent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/agents/{id}/runs/stream", wrapper.StreamAgentRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/index-jobs", wrapper.ListIndexJobs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/index-jobs/{id}/runs", wrapper.RunIndexJob)

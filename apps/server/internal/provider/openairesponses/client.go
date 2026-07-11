@@ -64,40 +64,10 @@ func newClient(cfg domain.ProviderConfig, httpClient *http.Client, timeout time.
 }
 
 func (c *Client) Generate(ctx context.Context, req provider.TextRequest) (provider.ModelResponse, error) {
-	if strings.TrimSpace(req.Model) == "" {
-		return provider.ModelResponse{}, fmt.Errorf("openai-responses text request model must not be empty")
+	body, err := responsesParams(req)
+	if err != nil {
+		return provider.ModelResponse{}, err
 	}
-	input, hasInput := responsesInput(req)
-	if !hasInput {
-		return provider.ModelResponse{}, fmt.Errorf("openai-responses text request requires at least one message")
-	}
-	body := responses.ResponseNewParams{
-		Model: shared.ResponsesModel(req.Model),
-		Input: input,
-	}
-	if strings.TrimSpace(req.SystemPrompt) != "" {
-		body.Instructions = oaiparam.NewOpt(req.SystemPrompt)
-	}
-	if req.MaxOutputTokens > 0 {
-		body.MaxOutputTokens = oaiparam.NewOpt(int64(req.MaxOutputTokens))
-	}
-	if req.Temperature > 0 {
-		body.Temperature = oaiparam.NewOpt(req.Temperature)
-	}
-	if req.TopP > 0 {
-		body.TopP = oaiparam.NewOpt(req.TopP)
-	}
-	if len(req.Metadata) > 0 {
-		body.Metadata = shared.Metadata(req.Metadata)
-	}
-	if len(req.Tools) > 0 {
-		tools, err := responsesTools(req.Tools)
-		if err != nil {
-			return provider.ModelResponse{}, err
-		}
-		body.Tools = tools
-	}
-
 	resp, err := c.sdk.Responses.New(ctx, body)
 	if err != nil {
 		return provider.ModelResponse{}, fmt.Errorf("openai responses API via SDK failed: %w", err)
@@ -105,26 +75,54 @@ func (c *Client) Generate(ctx context.Context, req provider.TextRequest) (provid
 	if resp == nil {
 		return provider.ModelResponse{}, fmt.Errorf("openai responses API via SDK returned nil response")
 	}
-	return provider.ModelResponse{
-		ID:           resp.ID,
-		Provider:     string(domain.ProviderOpenAIResponses),
-		Model:        firstNonEmpty(resp.Model, req.Model),
-		Content:      strings.TrimSpace(resp.OutputText()),
-		FinishReason: string(resp.Status),
-		ToolCalls:    collectResponseToolCalls(resp.Output),
-		Usage: provider.Usage{
-			InputTokens:  int(resp.Usage.InputTokens),
-			OutputTokens: int(resp.Usage.OutputTokens),
-			TotalTokens:  int(resp.Usage.TotalTokens),
-		},
-		Raw: rawJSON(resp.RawJSON(), resp),
-	}, nil
+	return modelResponse(resp, req.Model), nil
 }
 
 func (c *Client) Stream(ctx context.Context, req provider.TextRequest) (<-chan provider.StreamEvent, error) {
-	// 流式后续通过 SDK streaming 深化；当前统一接口仍以一次性 Generate 结果封装为单个 final 事件，避免手写 SSE 协议。
-	resp, err := c.Generate(ctx, req)
-	return provider.StreamSingleEvent(ctx, resp, err)
+	body, err := responsesParams(req)
+	if err != nil {
+		return nil, err
+	}
+	stream := c.sdk.Responses.NewStreaming(ctx, body)
+	events := make(chan provider.StreamEvent, 8)
+	go func() {
+		defer close(events)
+		defer stream.Close()
+		var completed *responses.Response
+		for stream.Next() {
+			event := stream.Current()
+			switch event.Type {
+			case "response.output_text.delta":
+				if event.Delta != "" && !provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "content.delta", Delta: event.Delta}) {
+					return
+				}
+			case "response.completed":
+				response := event.Response
+				completed = &response
+			case "response.failed", "response.incomplete":
+				provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: fmt.Sprintf("openai responses streaming ended with %s", event.Type)})
+				return
+			case "error":
+				message := strings.TrimSpace(event.Message)
+				if message == "" {
+					message = "openai responses streaming returned an error event"
+				}
+				provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: message})
+				return
+			}
+		}
+		if err := stream.Err(); err != nil {
+			provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: fmt.Sprintf("openai responses streaming via SDK failed: %v", err)})
+			return
+		}
+		if completed == nil {
+			provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: "openai responses streaming ended without response.completed"})
+			return
+		}
+		response := modelResponse(completed, req.Model)
+		provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "final", Response: &response, Usage: &response.Usage, Done: true})
+	}()
+	return events, nil
 }
 
 func (c *Client) Embed(ctx context.Context, req provider.EmbeddingRequest) (provider.EmbeddingResponse, error) {
@@ -191,6 +189,57 @@ func (c *Client) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
 		return nil, fmt.Errorf("openai-responses model list via SDK failed: %w", err)
 	}
 	return models, nil
+}
+
+func responsesParams(req provider.TextRequest) (responses.ResponseNewParams, error) {
+	if strings.TrimSpace(req.Model) == "" {
+		return responses.ResponseNewParams{}, fmt.Errorf("openai-responses text request model must not be empty")
+	}
+	input, hasInput := responsesInput(req)
+	if !hasInput {
+		return responses.ResponseNewParams{}, fmt.Errorf("openai-responses text request requires at least one message")
+	}
+	body := responses.ResponseNewParams{Model: shared.ResponsesModel(req.Model), Input: input}
+	if strings.TrimSpace(req.SystemPrompt) != "" {
+		body.Instructions = oaiparam.NewOpt(req.SystemPrompt)
+	}
+	if req.MaxOutputTokens > 0 {
+		body.MaxOutputTokens = oaiparam.NewOpt(int64(req.MaxOutputTokens))
+	}
+	if req.Temperature > 0 {
+		body.Temperature = oaiparam.NewOpt(req.Temperature)
+	}
+	if req.TopP > 0 {
+		body.TopP = oaiparam.NewOpt(req.TopP)
+	}
+	if len(req.Metadata) > 0 {
+		body.Metadata = shared.Metadata(req.Metadata)
+	}
+	if len(req.Tools) > 0 {
+		tools, err := responsesTools(req.Tools)
+		if err != nil {
+			return responses.ResponseNewParams{}, err
+		}
+		body.Tools = tools
+	}
+	return body, nil
+}
+
+func modelResponse(resp *responses.Response, requestModel string) provider.ModelResponse {
+	return provider.ModelResponse{
+		ID:           resp.ID,
+		Provider:     string(domain.ProviderOpenAIResponses),
+		Model:        firstNonEmpty(resp.Model, requestModel),
+		Content:      strings.TrimSpace(resp.OutputText()),
+		FinishReason: string(resp.Status),
+		ToolCalls:    collectResponseToolCalls(resp.Output),
+		Usage: provider.Usage{
+			InputTokens:  int(resp.Usage.InputTokens),
+			OutputTokens: int(resp.Usage.OutputTokens),
+			TotalTokens:  int(resp.Usage.TotalTokens),
+		},
+		Raw: rawJSON(resp.RawJSON(), resp),
+	}
 }
 
 func openAIOptions(cfg domain.ProviderConfig, httpClient *http.Client, timeout time.Duration) []oaioption.RequestOption {

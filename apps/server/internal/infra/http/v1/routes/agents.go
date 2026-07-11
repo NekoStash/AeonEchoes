@@ -1,9 +1,12 @@
 package routes
 
 import (
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"aeonechoes/server/internal/domain"
 	"aeonechoes/server/internal/infra/http/v1/dto"
@@ -92,6 +95,69 @@ func (s *Router) v1RunAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond.Data(w, r, http.StatusCreated, mappers.AgentRunResultDTOFromAgent(result))
+}
+
+func (s *Router) v1StreamAgentRun(w http.ResponseWriter, r *http.Request) {
+	if s.agentRuntime == nil {
+		respond.Error(w, r, http.StatusServiceUnavailable, "service_unavailable", "agent runtime is not configured", nil)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		respond.Error(w, r, http.StatusInternalServerError, "streaming_unsupported", "http response writer does not support streaming", nil)
+		return
+	}
+	var input dto.AgentRunRequestDTO
+	if !respond.Decode(w, r, &input) {
+		return
+	}
+	events, err := s.agentRuntime.Stream(r.Context(), mappers.AgentRunRequestToAgent(r.PathValue("id"), input))
+	if err != nil {
+		respond.ErrorFromErr(w, r, http.StatusBadRequest, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-heartbeat.C:
+			if _, err := w.Write([]byte(": heartbeat\n\n")); err != nil {
+				return
+			}
+			flusher.Flush()
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			payload, err := json.Marshal(event)
+			if err != nil {
+				slog.Error("encode agent run server-sent event", "run_id", event.RunID, "event_type", event.Type, "error", err)
+				failed := map[string]any{"type": "run.failed", "sequence": event.Sequence + 1, "run_id": event.RunID, "error": fmt.Sprintf("encode server-sent event: %v", err)}
+				payload, err = json.Marshal(failed)
+				if err != nil {
+					slog.Error("encode agent run failed server-sent event", "run_id", event.RunID, "error", err)
+					return
+				}
+				if _, err := fmt.Fprintf(w, "event: run.failed\ndata: %s\n\n", payload); err != nil {
+					return
+				}
+				flusher.Flush()
+				return
+			}
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, payload); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }
 
 func (s *Router) v1ListAgentRuns(w http.ResponseWriter, r *http.Request) {

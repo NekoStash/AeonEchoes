@@ -109,9 +109,80 @@ func (c *Client) Generate(ctx context.Context, req provider.TextRequest) (provid
 }
 
 func (c *Client) Stream(ctx context.Context, req provider.TextRequest) (<-chan provider.StreamEvent, error) {
-	// 流式后续通过 SDK streaming 深化；当前统一接口仍以一次性 Generate 结果封装为单个 final 事件，避免手写 SSE 协议。
-	resp, err := c.Generate(ctx, req)
-	return provider.StreamSingleEvent(ctx, resp, err)
+	if strings.TrimSpace(req.Model) == "" {
+		return nil, fmt.Errorf("gemini text request model must not be empty")
+	}
+	contents := geminiContents(req)
+	if len(contents) == 0 {
+		return nil, fmt.Errorf("gemini text request requires at least one message")
+	}
+	config, err := geminiGenerateConfig(req)
+	if err != nil {
+		return nil, err
+	}
+	sequence := c.sdk.Models.GenerateContentStream(ctx, req.Model, contents, config)
+	events := make(chan provider.StreamEvent, 8)
+	go func() {
+		defer close(events)
+		var content strings.Builder
+		var responseID string
+		var model string
+		var finishReason string
+		var usage provider.Usage
+		var toolCalls []provider.ToolCall
+		seenToolCalls := map[string]provider.ToolCall{}
+		rawChunks := make([]json.RawMessage, 0)
+		for chunk, streamErr := range sequence {
+			if streamErr != nil {
+				provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: fmt.Sprintf("gemini generate content streaming via SDK failed: %v", streamErr)})
+				return
+			}
+			if chunk == nil {
+				provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: "gemini generate content streaming returned nil chunk"})
+				return
+			}
+			if raw := rawJSON(chunk); len(raw) > 0 {
+				rawChunks = append(rawChunks, raw)
+			}
+			responseID = firstNonEmpty(chunk.ResponseID, responseID)
+			model = firstNonEmpty(chunk.ModelVersion, model, req.Model)
+			if current := geminiFinishReason(chunk); current != "" {
+				finishReason = current
+			}
+			if chunk.UsageMetadata != nil {
+				usage = geminiUsage(chunk.UsageMetadata)
+			}
+			delta := chunk.Text()
+			if delta != "" {
+				content.WriteString(delta)
+				if !provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "content.delta", Delta: delta}) {
+					return
+				}
+			}
+			var mergeErr error
+			toolCalls, mergeErr = appendGeminiToolCalls(toolCalls, seenToolCalls, geminiFunctionCalls(chunk.FunctionCalls()))
+			if mergeErr != nil {
+				provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: mergeErr.Error()})
+				return
+			}
+		}
+		response := provider.ModelResponse{
+			ID:           responseID,
+			Provider:     string(domain.ProviderGemini),
+			Model:        firstNonEmpty(model, req.Model),
+			Content:      content.String(),
+			FinishReason: finishReason,
+			ToolCalls:    toolCalls,
+			Usage:        usage,
+			Raw:          rawJSON(rawChunks),
+		}
+		if response.Content == "" && len(response.ToolCalls) == 0 {
+			provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "error", Done: true, Error: "gemini generate content streaming returned no content or tool calls"})
+			return
+		}
+		provider.SendStreamEvent(ctx, events, provider.StreamEvent{Type: "final", Response: &response, Usage: &response.Usage, Done: true})
+	}()
+	return events, nil
 }
 
 func (c *Client) Embed(ctx context.Context, req provider.EmbeddingRequest) (provider.EmbeddingResponse, error) {
@@ -284,6 +355,33 @@ func geminiFunctionCalls(calls []*genai.FunctionCall) []provider.ToolCall {
 		result = append(result, provider.ToolCall{ID: call.ID, Type: "function_call", Name: call.Name, Arguments: raw})
 	}
 	return result
+}
+
+func appendGeminiToolCalls(current []provider.ToolCall, seen map[string]provider.ToolCall, incoming []provider.ToolCall) ([]provider.ToolCall, error) {
+	anonymousOccurrences := map[string]int{}
+	for _, call := range incoming {
+		key := "id:" + strings.TrimSpace(call.ID)
+		if strings.TrimSpace(call.ID) == "" {
+			// Gemini API emits complete function calls rather than partial argument
+			// fragments. Anonymous calls use a complete name+arguments fingerprint
+			// plus their occurrence within the chunk. Repeated cumulative chunks
+			// dedupe, while multiple same-name calls (even identical ones) preserve
+			// stable arrival order.
+			fingerprint := "anonymous:" + call.Name + "\x00" + string(call.Arguments)
+			occurrence := anonymousOccurrences[fingerprint]
+			anonymousOccurrences[fingerprint] = occurrence + 1
+			key = fmt.Sprintf("%s\x00occurrence:%d", fingerprint, occurrence)
+		}
+		if previous, ok := seen[key]; ok {
+			if previous.Name != call.Name || string(previous.Arguments) != string(call.Arguments) {
+				return nil, fmt.Errorf("gemini streaming returned inconsistent repeated tool call %q", key)
+			}
+			continue
+		}
+		seen[key] = call
+		current = append(current, call)
+	}
+	return current, nil
 }
 
 func geminiUsage(raw *genai.GenerateContentResponseUsageMetadata) provider.Usage {

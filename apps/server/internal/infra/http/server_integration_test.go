@@ -48,8 +48,9 @@ type integrationFakeTextClientFactory struct {
 }
 
 type integrationFakeTextClient struct {
-	responses []provider.ModelResponse
-	requests  []provider.TextRequest
+	responses    []provider.ModelResponse
+	streamRounds [][]provider.StreamEvent
+	requests     []provider.TextRequest
 }
 
 func (f *integrationFakeTextClientFactory) NewTextClient(_ domain.ProviderConfig) (provider.TextModelClient, error) {
@@ -71,8 +72,23 @@ func (c *integrationFakeTextClient) Generate(_ context.Context, req provider.Tex
 }
 
 func (c *integrationFakeTextClient) Stream(ctx context.Context, req provider.TextRequest) (<-chan provider.StreamEvent, error) {
-	response, err := c.Generate(ctx, req)
-	return provider.StreamSingleEvent(ctx, response, err)
+	c.requests = append(c.requests, req)
+	if len(c.streamRounds) > 0 {
+		round := c.streamRounds[0]
+		c.streamRounds = c.streamRounds[1:]
+		events := make(chan provider.StreamEvent, len(round))
+		for _, event := range round {
+			events <- event
+		}
+		close(events)
+		return events, nil
+	}
+	if len(c.responses) == 0 {
+		return nil, fmt.Errorf("integration fake text stream responses are not configured")
+	}
+	response := c.responses[0]
+	c.responses = c.responses[1:]
+	return provider.StreamSingleEvent(ctx, response, nil)
 }
 
 func (f integrationFakeProviderFactory) NewEmbeddingClient(cfg domain.ProviderConfig) (provider.EmbeddingModelClient, error) {
@@ -80,6 +96,14 @@ func (f integrationFakeProviderFactory) NewEmbeddingClient(cfg domain.ProviderCo
 		return nil, fmt.Errorf("integration fake embedding client is not configured")
 	}
 	return f.client, nil
+}
+
+type integrationFixedToolCatalog struct {
+	tools []provider.ToolSpec
+}
+
+func (c integrationFixedToolCatalog) ListProviderTools(context.Context, domain.AgentConfig) ([]provider.ToolSpec, error) {
+	return append([]provider.ToolSpec(nil), c.tools...), nil
 }
 
 type integrationFakeVectorIndex struct {
@@ -688,6 +712,141 @@ func TestHandlerRunAgentEnforcesProjectScope(t *testing.T) {
 	}
 }
 
+func TestHandlerStreamAgentRunSSEContract(t *testing.T) {
+	newFixture := func(t *testing.T, streamRounds [][]provider.StreamEvent) (http.Handler, *memory.Store, string) {
+		t.Helper()
+		store := memory.NewStore()
+		providerCfg, err := store.CreateProvider(domain.ProviderConfig{ID: "provider_http_stream", Name: "HTTP Stream Provider", Type: domain.ProviderOpenAI, Enabled: true})
+		if err != nil {
+			t.Fatalf("CreateProvider() error: %v", err)
+		}
+		_, err = store.CreateModel(domain.ModelConfig{ID: "model_http_stream", ProviderID: providerCfg.ID, Name: "http-stream-model", Kind: domain.ModelKindText, Enabled: true, DefaultForKind: true, SupportsStreaming: true, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleWriter}})
+		if err != nil {
+			t.Fatalf("CreateModel() error: %v", err)
+		}
+		agentCfg, err := store.CreateAgentConfig(domain.AgentConfig{ID: "agent_http_stream", Name: "HTTP Stream Writer", Role: domain.AgentRoleWriter, Enabled: true})
+		if err != nil {
+			t.Fatalf("CreateAgentConfig() error: %v", err)
+		}
+		textClient := &integrationFakeTextClient{streamRounds: streamRounds}
+		clientFactory := &integrationFakeTextClientFactory{client: textClient}
+		runtime := agent.NewRuntime(store, agent.NewModelRouter(store, agent.NewAgentRoleRegistry()), nil, clientFactory, nil)
+		server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		server.ConfigureAgents(runtime, nil, nil, time.Second)
+		return server.Handler(), store, agentCfg.ID
+	}
+
+	t.Run("completed stream", func(t *testing.T) {
+		final := provider.ModelResponse{ID: "resp_http_stream", Content: "流式完成", FinishReason: "stop", Usage: provider.Usage{TotalTokens: 6}}
+		handler, store, agentID := newFixture(t, [][]provider.StreamEvent{{
+			{Type: "content.delta", Delta: "流式"},
+			{Type: "content.delta", Delta: "完成"},
+			{Type: "final", Response: &final, Done: true},
+		}})
+		response := sendJSON(t, handler, http.MethodPost, "/api/v1/agents/"+agentID+"/runs/stream", map[string]any{"input": map[string]any{"brief": "write"}})
+		assertStatus(t, response, http.StatusOK)
+		if got := response.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/event-stream") {
+			t.Fatalf("Content-Type = %q", got)
+		}
+		if response.Header().Get("Cache-Control") != "no-cache, no-transform" || response.Header().Get("X-Accel-Buffering") != "no" {
+			t.Fatalf("stream headers = %+v", response.Header())
+		}
+		events := decodeSSEAgentEvents(t, response.Body.String())
+		wantTypes := []string{agent.AgentRunEventStarted, agent.AgentRunEventModelResolved, agent.AgentRunEventContentDelta, agent.AgentRunEventContentDelta, agent.AgentRunEventCompleted}
+		if len(events) != len(wantTypes) {
+			t.Fatalf("events = %+v; raw=%s", events, response.Body.String())
+		}
+		for index, event := range events {
+			if event.Type != wantTypes[index] || event.Sequence != int64(index+1) || event.RunID == "" {
+				t.Fatalf("event[%d] = %+v", index, event)
+			}
+		}
+		completed := events[len(events)-1]
+		if completed.Result == nil || completed.Result.Content != "流式完成" || completed.Result.Run.Status != domain.AgentRunStatusCompleted {
+			t.Fatalf("completed event = %+v", completed)
+		}
+		persisted, err := store.GetAgentRun(completed.RunID)
+		if err != nil {
+			t.Fatalf("GetAgentRun() error: %v", err)
+		}
+		if persisted.Status != domain.AgentRunStatusCompleted || persisted.CompletedAt == nil {
+			t.Fatalf("persisted run = %+v", persisted)
+		}
+	})
+
+	t.Run("provider error after stream start", func(t *testing.T) {
+		handler, store, agentID := newFixture(t, [][]provider.StreamEvent{{{Type: "error", Error: "provider exploded", Done: true}}})
+		response := sendJSON(t, handler, http.MethodPost, "/api/v1/agents/"+agentID+"/runs/stream", map[string]any{"input": map[string]any{"brief": "write"}})
+		assertStatus(t, response, http.StatusOK)
+		events := decodeSSEAgentEvents(t, response.Body.String())
+		if len(events) != 3 || events[0].Type != agent.AgentRunEventStarted || events[1].Type != agent.AgentRunEventModelResolved || events[2].Type != agent.AgentRunEventFailed {
+			t.Fatalf("events = %+v; raw=%s", events, response.Body.String())
+		}
+		failed := events[2]
+		if failed.Error == "" || !strings.Contains(failed.Error, "provider exploded") {
+			t.Fatalf("failed event = %+v", failed)
+		}
+		persisted, err := store.GetAgentRun(failed.RunID)
+		if err != nil {
+			t.Fatalf("GetAgentRun() error: %v", err)
+		}
+		if persisted.Status != domain.AgentRunStatusFailed || persisted.CompletedAt == nil || persisted.Error == "" {
+			t.Fatalf("persisted failed run = %+v", persisted)
+		}
+	})
+
+	t.Run("tool lifecycle events exclude arguments and results", func(t *testing.T) {
+		store := memory.NewStore()
+		providerCfg, err := store.CreateProvider(domain.ProviderConfig{ID: "provider_http_tool_privacy", Name: "HTTP Tool Privacy Provider", Type: domain.ProviderOpenAI, Enabled: true})
+		if err != nil {
+			t.Fatalf("CreateProvider() error: %v", err)
+		}
+		_, err = store.CreateModel(domain.ModelConfig{ID: "model_http_tool_privacy", ProviderID: providerCfg.ID, Name: "http-tool-privacy-model", Kind: domain.ModelKindText, Enabled: true, DefaultForKind: true, SupportsStreaming: true, SupportsTools: true, AllowedAgentRoles: []domain.AgentRole{domain.AgentRoleWriter}})
+		if err != nil {
+			t.Fatalf("CreateModel() error: %v", err)
+		}
+		agentCfg, err := store.CreateAgentConfig(domain.AgentConfig{ID: "agent_http_tool_privacy", Name: "HTTP Tool Privacy Writer", Role: domain.AgentRoleWriter, Enabled: true})
+		if err != nil {
+			t.Fatalf("CreateAgentConfig() error: %v", err)
+		}
+		argumentSecret := "argument-secret-api-key"
+		resultSecret := "result-secret-novel-body"
+		largeResult := strings.Repeat(resultSecret, 4096)
+		if _, err := store.SaveEntity(domain.Entity{ProjectID: "project-tool-privacy", Name: "Secret Character", Type: "character", Summary: argumentSecret + largeResult, Status: "active"}); err != nil {
+			t.Fatalf("SaveEntity() error: %v", err)
+		}
+		arguments, err := json.Marshal(map[string]any{"project_id": "project-tool-privacy", "query": argumentSecret})
+		if err != nil {
+			t.Fatalf("marshal tool arguments: %v", err)
+		}
+		toolRound := provider.ModelResponse{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{{ID: "call-private", Name: "character.search", Arguments: arguments}}}
+		finalRound := provider.ModelResponse{Content: "safe final proposal", FinishReason: "stop"}
+		textClient := &integrationFakeTextClient{streamRounds: [][]provider.StreamEvent{
+			{{Type: "content.delta", Delta: argumentSecret}, {Type: "final", Response: &toolRound, Done: true}},
+			{{Type: "content.delta", Delta: "safe final proposal"}, {Type: "final", Response: &finalRound, Done: true}},
+		}}
+		runtime := agent.NewRuntime(store, agent.NewModelRouter(store, agent.NewAgentRoleRegistry()), nil, &integrationFakeTextClientFactory{client: textClient}, integrationFixedToolCatalog{tools: []provider.ToolSpec{agent.NarrativeToolSpecs()[0]}})
+		server := httpapi.NewServer(config.Config{Host: "127.0.0.1", Port: 1, DataDir: t.TempDir(), DefaultProviderTimeout: time.Second}, store, providerregistry.New(nil, time.Second), nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		server.ConfigureAgents(runtime, nil, nil, time.Second)
+		response := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/agents/"+agentCfg.ID+"/runs/stream", map[string]any{"project_id": "project-tool-privacy", "input": map[string]any{"brief": "write"}})
+		assertStatus(t, response, http.StatusOK)
+		body := response.Body.String()
+		if strings.Contains(body, argumentSecret) || strings.Contains(body, resultSecret) || strings.Contains(body, largeResult) {
+			t.Fatalf("SSE exposed tool arguments or result content: %s", body)
+		}
+		events := decodeSSEAgentEvents(t, body)
+		var tools []agent.AgentRunStreamTool
+		for _, event := range events {
+			if event.Tool != nil {
+				tools = append(tools, *event.Tool)
+			}
+		}
+		if len(tools) != 2 || tools[0].CallID != "call-private" || tools[0].Status != "started" || tools[1].Status != "completed" {
+			t.Fatalf("public tool lifecycle = %+v", tools)
+		}
+	})
+}
+
 func TestHandlerAgentCRUDAndRunListing(t *testing.T) {
 	handler, store := newAgentTestHandler(t)
 	project, _, err := store.CreateProject(domain.Project{Title: "智能体项目", Slug: "agents"}, domain.StoryBible{Title: "智能体项目", Logline: "测试智能体"})
@@ -1184,6 +1343,40 @@ func decodeJSON(t *testing.T, response *httptest.ResponseRecorder, out any) {
 	if err := json.Unmarshal(payload, out); err != nil {
 		t.Fatalf("decode response body %q: %v", response.Body.String(), err)
 	}
+}
+
+func decodeSSEAgentEvents(t *testing.T, body string) []agent.AgentRunStreamEvent {
+	t.Helper()
+	blocks := strings.Split(strings.TrimSpace(body), "\n\n")
+	events := make([]agent.AgentRunStreamEvent, 0, len(blocks))
+	for _, block := range blocks {
+		if strings.HasPrefix(block, ":") || strings.TrimSpace(block) == "" {
+			continue
+		}
+		lines := strings.Split(block, "\n")
+		eventName := ""
+		data := ""
+		for _, line := range lines {
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				eventName = strings.TrimSpace(strings.TrimPrefix(line, "event: "))
+			case strings.HasPrefix(line, "data: "):
+				data = strings.TrimPrefix(line, "data: ")
+			}
+		}
+		if eventName == "" || data == "" {
+			t.Fatalf("invalid SSE block %q", block)
+		}
+		var event agent.AgentRunStreamEvent
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			t.Fatalf("decode SSE data %q: %v", data, err)
+		}
+		if event.Type != eventName {
+			t.Fatalf("SSE event name %q != data type %q", eventName, event.Type)
+		}
+		events = append(events, event)
+	}
+	return events
 }
 
 func decodeRawJSON(t *testing.T, response *httptest.ResponseRecorder, out any) {

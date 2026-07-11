@@ -30,6 +30,13 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const componentId = useId()
+const workspaceHeadingId = `${componentId}-workspace-heading`
+const titleInputId = `${componentId}-title-input`
+const titleLabelId = `${componentId}-title-label`
+const chapterMetaId = `${componentId}-chapter-meta`
+const contentInputId = `${componentId}-content-input`
+const contentLabelId = `${componentId}-content-label`
 const textarea = ref<HTMLTextAreaElement | null>(null)
 const chapterOptions = computed(() => props.chapters.map((chapter) => ({
   label: chapter.title || t('editor.chapterFallbackTitle', { number: chapter.number }),
@@ -57,14 +64,18 @@ defineExpose({
 <template>
   <section
     data-testid="writing-workspace"
+    :aria-labelledby="workspaceHeadingId"
     :class="[
-      'writing-workspace relative min-w-0 overflow-hidden border border-border bg-surface-muted text-surface-foreground',
-      fullscreen && 'fixed inset-0 z-40 h-[100dvh] border-0'
+      'writing-workspace relative min-w-0 border border-border bg-surface-muted text-surface-foreground',
+      fullscreen
+        ? 'fixed inset-0 z-50 min-h-[100dvh] overflow-y-auto border-0'
+        : 'overflow-hidden'
     ]"
   >
-    <div class="flex min-h-12 flex-col gap-2 border-b border-current/15 bg-surface px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4 lg:px-5">
+    <header class="flex min-h-12 flex-col gap-2 border-b border-current/15 bg-surface px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:px-4 lg:px-5">
+      <h2 :id="workspaceHeadingId" class="sr-only">{{ t('editor.eyebrow') }}</h2>
       <div class="flex min-w-0 flex-1 items-center gap-2">
-        <div class="hidden h-8 w-1 bg-current/80 sm:block" />
+        <span class="hidden h-8 w-1 bg-current/80 sm:block" aria-hidden="true" />
         <UiSelect
           :model-value="selectedChapterId"
           :options="chapterOptions"
@@ -79,56 +90,81 @@ defineExpose({
           {{ dirty ? t('editor.workspace.unsaved') : t('editor.workspace.savedLocally') }}
         </UiBadge>
         <UiButton :class="fullscreen ? '' : 'xl:hidden'" size="sm" variant="outline" @click="emit('assistant')">
-          <PanelRightOpen class="h-4 w-4" />
+          <PanelRightOpen class="h-4 w-4" aria-hidden="true" />
           {{ t('editor.actions.openAssistant') }}
         </UiButton>
         <UiButton size="icon" variant="ghost" :icon-label="fullscreen ? t('editor.actions.exitFullscreen') : t('editor.actions.fullscreen')" @click="emit('update:fullscreen', !fullscreen)">
-          <Minimize2 v-if="fullscreen" class="h-4 w-4" />
-          <Maximize2 v-else class="h-4 w-4" />
+          <Minimize2 v-if="fullscreen" class="h-4 w-4" aria-hidden="true" />
+          <Maximize2 v-else class="h-4 w-4" aria-hidden="true" />
         </UiButton>
         <UiButton size="sm" :loading="saving" :disabled="!dirty" @click="emit('save')">
-          <Save class="h-4 w-4" />
+          <Save class="h-4 w-4" aria-hidden="true" />
           {{ t('editor.actions.createVersion') }}
         </UiButton>
       </div>
-    </div>
+    </header>
 
     <div
       data-testid="writing-surface"
-      :class="[
-        'bg-surface-muted py-3 sm:py-4',
-        fullscreen ? 'px-0 sm:px-4' : 'px-0'
-      ]"
+      class="bg-surface-muted px-3 py-3 sm:px-4 sm:py-4 lg:px-5"
     >
-      <div
+      <article
         data-testid="writing-paper"
-        class="mx-auto flex w-full max-w-[48rem] flex-col border border-border bg-surface-elevated px-4 py-5 shadow-none ring-ring transition-shadow focus-within:ring-2 focus-within:ring-inset sm:px-7 sm:py-6 lg:px-9 lg:py-7"
+        :aria-labelledby="titleLabelId"
+        class="mx-auto flex w-full max-w-[48rem] flex-col gap-3 sm:gap-4"
       >
-        <label class="block">
-          <span class="sr-only">{{ t('editor.fields.title') }}</span>
+        <header data-testid="chapter-title-surface" class="border border-border bg-surface-raised p-4 sm:p-5 lg:p-6">
+          <label
+            :id="titleLabelId"
+            :for="titleInputId"
+            class="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+          >
+            {{ t('editor.fields.title') }}
+          </label>
           <input
+            :id="titleInputId"
             :value="title"
-            class="w-full rounded-none border-0 bg-transparent font-serif text-3xl font-semibold tracking-tight text-current outline-none placeholder:text-current/35 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring sm:text-4xl"
+            :aria-describedby="chapterMetaId"
+            class="w-full rounded-none border-0 bg-transparent font-serif text-3xl font-semibold tracking-tight text-current outline-none placeholder:text-current/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:text-4xl"
             :placeholder="chapter.title || t('editor.fields.titlePlaceholder')"
             @input="emit('update:title', ($event.target as HTMLInputElement).value)"
           >
-        </label>
-        <div data-testid="chapter-meta" class="mt-3 flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-current/55">
-          <span>{{ t('editor.workspace.chapterNumber', { number: chapter.number }) }}</span>
-          <span class="h-px flex-1 bg-current/20" />
-        </div>
-        <textarea
-          ref="textarea"
-          :value="content"
-          data-testid="chapter-content"
-          class="mt-5 min-h-[42dvh] w-full flex-1 resize-none rounded-none border-0 bg-transparent font-serif text-[1.08rem] [line-height:1.9] text-current outline-none placeholder:text-current/35 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ring sm:min-h-[48dvh] sm:text-[1.15rem] lg:min-h-[34rem]"
-          :placeholder="t('editor.fields.contentPlaceholder')"
-          @input="emit('update:content', ($event.target as HTMLTextAreaElement).value); emitSelection()"
-          @select="emitSelection"
-          @keyup="emitSelection"
-          @click="emitSelection"
-        />
-      </div>
+          <div
+            :id="chapterMetaId"
+            data-testid="chapter-meta"
+            class="mt-3 flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-muted-foreground"
+          >
+            <span>{{ t('editor.workspace.chapterNumber', { number: chapter.number }) }}</span>
+            <span class="h-px flex-1 bg-current/25" aria-hidden="true" />
+          </div>
+        </header>
+
+        <section
+          data-testid="chapter-content-surface"
+          :aria-labelledby="contentLabelId"
+          class="border border-border bg-surface-elevated p-4 sm:p-5 lg:p-6"
+        >
+          <label
+            :id="contentLabelId"
+            :for="contentInputId"
+            class="block text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+          >
+            {{ t('editor.content') }}
+          </label>
+          <textarea
+            :id="contentInputId"
+            ref="textarea"
+            :value="content"
+            data-testid="chapter-content"
+            class="mt-3 min-h-[clamp(18rem,48dvh,36rem)] w-full resize-none rounded-none border-0 bg-transparent font-serif text-[1.08rem] [line-height:1.9] text-current outline-none placeholder:text-current/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:min-h-[clamp(24rem,52dvh,40rem)] sm:text-[1.15rem] lg:min-h-[clamp(28rem,58dvh,42rem)]"
+            :placeholder="t('editor.fields.contentPlaceholder')"
+            @input="emit('update:content', ($event.target as HTMLTextAreaElement).value); emitSelection()"
+            @select="emitSelection"
+            @keyup="emitSelection"
+            @click="emitSelection"
+          />
+        </section>
+      </article>
     </div>
   </section>
 </template>

@@ -276,7 +276,17 @@ func parseErrorMessage(body []byte) string {
 	return strings.TrimSpace(string(body))
 }
 
-// StreamSingleEvent is a convenience helper for adapters that expose a non-streaming core implementation.
+// SendStreamEvent publishes one normalized provider event unless the request was cancelled.
+func SendStreamEvent(ctx context.Context, ch chan<- StreamEvent, event StreamEvent) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case ch <- event:
+		return true
+	}
+}
+
+// StreamSingleEvent is a test helper for deterministic clients that already hold a complete response.
 func StreamSingleEvent(ctx context.Context, resp ModelResponse, err error) (<-chan StreamEvent, error) {
 	if err != nil {
 		return nil, err

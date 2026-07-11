@@ -3,7 +3,7 @@ import type { TextSelection } from '~/features/chapter-write'
 import { normalizeTextSelection } from '~/features/chapter-write'
 
 export type ProposalStatus = 'pending' | 'applied' | 'rejected'
-export type ProposalApplyMode = 'insert' | 'replace' | 'append' | 'reject'
+export type ProposalApplyMode = 'insert' | 'replace' | 'append' | 'overwrite' | 'reject'
 
 export interface AgentProposal {
   id: string
@@ -60,6 +60,9 @@ export function applyAgentProposal(
   } else if (mode === 'replace') {
     content = `${source.slice(0, normalized.start)}${proposal.content}${source.slice(normalized.end)}`
     caret = normalized.start + proposal.content.length
+  } else if (mode === 'overwrite') {
+    content = proposal.content
+    caret = content.length
   } else {
     const separator = source.trim() ? '\n\n' : ''
     content = `${source}${separator}${proposal.content}`

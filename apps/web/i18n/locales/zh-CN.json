@@ -1005,15 +1005,43 @@
       "sheetTitle": "AI 助手",
       "sheetDescription": "选择上下文并运行 Agent；结果必须由你决定如何应用。"
     },
+    "stream": {
+      "cancel": "取消生成",
+      "waiting": "正在连接并等待首段内容……",
+      "tools": "工具进度",
+      "toolRunning": "执行中",
+      "unknownTool": "未知工具",
+      "toolStatus": {
+        "started": "执行中",
+        "completed": "已完成"
+      },
+      "failedTitle": "生成失败",
+      "cancelledTitle": "生成已取消",
+      "cancelledDescription": "生成已取消；已接收的部分正文仅供查看，不能应用。",
+      "status": {
+        "idle": "空闲",
+        "connecting": "连接中",
+        "streaming": "生成中",
+        "tool-running": "工具执行中",
+        "finalizing": "正在整理提案",
+        "completed": "已完成",
+        "failed": "失败",
+        "cancelled": "已取消"
+      }
+    },
     "proposals": {
       "title": "提案区",
-      "description": "提案不会自动进入正文。可在光标处插入、替换有效选区、追加或拒绝。",
+      "description": "提案不会自动进入正文。可在光标处插入、替换有效选区、追加或拒绝；覆盖全文需要再次确认。",
       "emptyTitle": "暂无提案",
       "emptyDescription": "运行 Agent 后，结果会先出现在这里。",
       "received": "Agent 提案已收到",
       "insert": "插入",
       "replace": "替换选区",
       "append": "追加",
+      "overwrite": "覆盖当前正文",
+      "overwriteConfirmTitle": "覆盖当前正文？",
+      "overwriteConfirmDescription": "这会用提案完整替换当前未保存正文；不改标题，也不会自动创建版本。",
+      "overwriteConfirmAction": "确认覆盖正文",
       "reject": "拒绝",
       "status": {
         "pending": "待处理",

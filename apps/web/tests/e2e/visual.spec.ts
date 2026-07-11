@@ -121,6 +121,30 @@ async function capture(page: Page, name: string) {
   await expect(page).toHaveScreenshot(name, { fullPage: true, animations: 'disabled', caret: 'hide' })
 }
 
+async function captureWorkspace(page: Page, name: string) {
+  const workspace = page.getByTestId('writing-workspace')
+  await expect(workspace).toBeVisible()
+  const clip = await workspace.boundingBox()
+  if (!clip) throw new Error('Writing workspace has no visual bounds.')
+  await expect(page).toHaveScreenshot(name, { clip, animations: 'disabled', caret: 'hide' })
+}
+
+async function readyEditor(page: Page) {
+  const workspace = page.getByTestId('writing-workspace')
+  const title = page.getByRole('textbox', { name: '章节标题' })
+  const content = page.getByRole('textbox', { name: '正文' })
+  await expect(workspace).toBeVisible()
+  await expect(title).toBeVisible()
+  await expect(content).toBeVisible()
+  await expect(page.getByTestId('editor-assistant').getByText('写作 Agent')).toBeAttached()
+
+  const surfaceColors = await Promise.all([
+    page.getByTestId('chapter-title-surface'),
+    page.getByTestId('chapter-content-surface')
+  ].map(locator => locator.evaluate(element => getComputedStyle(element).backgroundColor)))
+  for (const color of surfaceColors) expect(color).not.toBe('rgba(0, 0, 0, 0)')
+}
+
 test.beforeEach(async ({ page }) => {
   await mockApi(page)
 })
@@ -129,7 +153,7 @@ const cases = [
   { name: 'home', path: '/', ready: (page: Page) => expect(page.getByRole('button', { name: /墨色档案/ })).toBeVisible() },
   { name: 'projects', path: '/projects', ready: (page: Page) => expect(page.getByRole('heading', { name: '项目库', exact: true })).toBeVisible() },
   { name: 'project-workspace', path: '/projects/project-1', ready: (page: Page) => expect(page.getByRole('heading', { name: '墨色档案' })).toBeVisible() },
-  { name: 'editor', path: '/projects/project-1/editor?chapter=chapter-1', ready: (page: Page) => expect(page.getByTestId('writing-workspace')).toBeVisible() },
+  { name: 'editor', path: '/projects/project-1/editor?chapter=chapter-1', ready: readyEditor },
   { name: 'settings', path: '/settings/providers', ready: (page: Page) => expect(page.getByRole('heading', { name: '提供商连接' })).toBeVisible() },
   { name: 'models-settings', path: '/settings/models', ready: (page: Page) => expect(page.getByText('叙事模型 14')).toBeAttached() },
   { name: 'graph', path: '/projects/project-1/graph', ready: async (page: Page) => {
@@ -154,3 +178,48 @@ for (const item of cases) {
     await capture(page, `${item.name}-mobile.png`)
   })
 }
+
+test('@visual editor dark desktop workspace', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium')
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/projects/project-1/editor?chapter=chapter-1', { waitUntil: 'domcontentloaded' })
+  await readyEditor(page)
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await captureWorkspace(page, 'editor-dark-desktop.png')
+})
+
+test('@visual editor single content focus desktop', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium')
+  await page.goto('/projects/project-1/editor?chapter=chapter-1', { waitUntil: 'domcontentloaded' })
+  await readyEditor(page)
+
+  const paper = page.getByTestId('writing-paper')
+  const title = page.getByRole('textbox', { name: '章节标题' })
+  const content = page.getByRole('textbox', { name: '正文' })
+  const paperShadow = await paper.evaluate(element => getComputedStyle(element).boxShadow)
+
+  await title.focus()
+  await expect(title).toBeFocused()
+  expect(await title.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none')
+  expect(await paper.evaluate(element => getComputedStyle(element).boxShadow)).toBe(paperShadow)
+
+  await content.focus()
+  await expect(content).toBeFocused()
+  expect(await content.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none')
+  expect(await paper.evaluate(element => getComputedStyle(element).boxShadow)).toBe(paperShadow)
+  await captureWorkspace(page, 'editor-content-focus-desktop.png')
+})
+
+test('@visual editor fullscreen mobile landscape', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-chromium')
+  await page.setViewportSize({ width: 915, height: 412 })
+  await page.goto('/projects/project-1/editor?chapter=chapter-1', { waitUntil: 'domcontentloaded' })
+  await readyEditor(page)
+
+  await page.getByRole('button', { name: '正文全屏' }).click()
+  const workspace = page.getByTestId('writing-workspace')
+  await expect(workspace).toHaveClass(/fixed/)
+  await expect(page.getByRole('button', { name: '退出全屏' })).toBeVisible()
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await captureWorkspace(page, 'editor-fullscreen-landscape.png')
+})

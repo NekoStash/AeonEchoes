@@ -1,6 +1,24 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 const now = '2026-01-01T00:00:00Z'
+const pageErrors = new WeakMap<Page, string[]>()
+
+test.beforeEach(async ({ page }) => {
+  const errors: string[] = []
+  pageErrors.set(page, errors)
+  page.on('pageerror', (error) => {
+    errors.push(`${error.name}: ${error.message}`)
+    console.error('[writing-editor pageerror]', error)
+  })
+})
+
+test.afterEach(async ({ page }) => {
+  const producerErrors = await page.evaluate(() => {
+    return (window as Window & { __agentStreamProducerErrors?: string[] }).__agentStreamProducerErrors || []
+  })
+  expect(producerErrors, 'stream producer errors').toEqual([])
+  expect(pageErrors.get(page) || [], 'unhandled page errors').toEqual([])
+})
 
 function envelope(data: unknown) {
   return JSON.stringify({ data, meta: { request_id: 'editor-e2e' } })
@@ -10,8 +28,86 @@ async function fulfill(route: Route, data: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: envelope(data) })
 }
 
+function streamEvent(name: string, data: Record<string, unknown>) {
+  return `event: ${name}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`
+}
+
+function agentResult(content: string, runId = 'run-1') {
+  return {
+    run: { id: runId, agent_id: 'agent-1', project_id: 'project-1', status: 'completed', input: {}, output: {}, created_at: now },
+    content,
+    tool_trace: [],
+    model_resolution: {
+      route_key: 'writer',
+      resolution_source: 'agent',
+      provider_id: 'provider-1',
+      provider_name: 'Provider',
+      provider_type: 'openai',
+      model_id: 'model-1',
+      model_name: 'Model',
+      model_kind: 'text'
+    }
+  }
+}
+
+function completedStream(content: string, runId = 'run-1') {
+  return [
+    streamEvent('run.started', { type: 'run.started', sequence: 1, run_id: runId, run: { id: runId, agent_id: 'agent-1', project_id: 'project-1', status: 'running' } }),
+    streamEvent('content.delta', { type: 'content.delta', sequence: 2, run_id: runId, delta: content }),
+    streamEvent('run.completed', { type: 'run.completed', sequence: 3, run_id: runId, result: agentResult(content, runId) })
+  ].join('')
+}
+
+async function installChunkedAgentStream(
+  page: Page,
+  chunks: Array<{ text: string; delay?: number }>,
+  ignoreAbort = false,
+  cancelDelay = 0
+) {
+  await page.addInitScript(({ serializedChunks, shouldIgnoreAbort, readerCancelDelay }) => {
+    const testWindow = window as Window & { __agentStreamFetchCount?: number; __agentStreamProducerErrors?: string[] }
+    testWindow.__agentStreamFetchCount = 0
+    testWindow.__agentStreamProducerErrors = []
+    const nativeFetch = window.fetch.bind(window)
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (!url.endsWith('/agents/agent-1/runs/stream')) return nativeFetch(input, init)
+      testWindow.__agentStreamFetchCount = (testWindow.__agentStreamFetchCount || 0) + 1
+      const encoder = new TextEncoder()
+      const signal = init?.signal
+      let consumerCancelled = false
+      return new Response(new ReadableStream({
+        start(controller) {
+          let signalAborted = false
+          if (!shouldIgnoreAbort && signal) {
+            signal.addEventListener('abort', () => {
+              signalAborted = true
+              controller.error(new DOMException('Aborted', 'AbortError'))
+            }, { once: true })
+          }
+          void (async () => {
+            for (const chunk of serializedChunks) {
+              if (chunk.delay) await new Promise(resolve => setTimeout(resolve, chunk.delay))
+              if (signalAborted || consumerCancelled) return
+              controller.enqueue(encoder.encode(chunk.text))
+            }
+            if (!signalAborted && !consumerCancelled && readerCancelDelay === 0) controller.close()
+          })().catch((error) => {
+            const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+            testWindow.__agentStreamProducerErrors?.push(message)
+            console.error('[writing-editor stream producer]', error)
+          })
+        },
+        async cancel() {
+          consumerCancelled = true
+          if (readerCancelDelay > 0) await new Promise(resolve => setTimeout(resolve, readerCancelDelay))
+        }
+      }), { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } })
+    }
+  }, { serializedChunks: chunks, shouldIgnoreAbort: ignoreAbort, readerCancelDelay: cancelDelay })
+}
+
 async function mockEditorApi(page: Page, options?: { chapters?: unknown[]; versions?: unknown[]; agents?: unknown[]; agentContent?: string; agentListStatus?: number; chapterListStatus?: number; chapterUpdateStatus?: number }) {
-  page.on('pageerror', (error) => console.error('[writing-editor pageerror]', error))
   page.on('console', (message) => {
     if (message.type() === 'error') console.error('[writing-editor console]', message.text())
   })
@@ -102,21 +198,11 @@ async function mockEditorApi(page: Page, options?: { chapters?: unknown[]; versi
       }
       return fulfill(route, options?.agents ?? [{ id: 'agent-1', project_id: 'project-1', name: '写作 Agent', role: 'writer', enabled: true }])
     }
-    if (path.endsWith('/agents/agent-1/runs')) {
-      return fulfill(route, {
-        run: { id: 'run-1', agent_id: 'agent-1', project_id: 'project-1', status: 'completed', input: {}, output: {}, created_at: now },
-        content: options?.agentContent || 'AI 提案正文',
-        tool_trace: [],
-        model_resolution: {
-          route_key: 'writer',
-          resolution_source: 'agent',
-          provider_id: 'provider-1',
-          provider_name: 'Provider',
-          provider_type: 'openai',
-          model_id: 'model-1',
-          model_name: 'Model',
-          model_kind: 'text'
-        }
+    if (path.endsWith('/agents/agent-1/runs/stream')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream; charset=utf-8',
+        body: completedStream(options?.agentContent || 'AI 提案正文')
       })
     }
     return fulfill(route, [])
@@ -203,96 +289,78 @@ test('Agent 加载失败显示重试而不是空态', async ({ page }, testInfo)
   await expect(page.getByRole('button', { name: '重试' }).first()).toBeVisible()
 })
 
-test('Tab 聚焦标题和正文时纸面显示无跳动的直角焦点环', async ({ page }, testInfo) => {
+test('标题与正文使用独立非透明 surface，并仅在当前字段显示单一焦点提示', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium')
   await mockEditorApi(page)
   await page.goto('/projects/project-1/editor?chapter=chapter-1')
 
-  const paper = page.getByTestId('writing-paper')
-  const title = page.locator('input[placeholder="第一章"]')
-  const editor = page.getByTestId('chapter-content')
-  const paperBoxBeforeFocus = await paper.boundingBox()
-  const titleBoxBeforeFocus = await title.boundingBox()
-  const editorBoxBeforeFocus = await editor.boundingBox()
+  const titleSurface = page.getByTestId('chapter-title-surface')
+  const contentSurface = page.getByTestId('chapter-content-surface')
+  const title = page.getByRole('textbox', { name: '章节标题' })
+  const editor = page.getByRole('textbox', { name: '正文' })
+  const titleSurfaceBox = await titleSurface.boundingBox()
+  const contentSurfaceBox = await contentSurface.boundingBox()
+  const surfaceStyles = await Promise.all([titleSurface, contentSurface].map(locator => locator.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { backgroundColor: style.backgroundColor, boxShadow: style.boxShadow, borderRadius: style.borderRadius }
+  })))
+  const titleSurfaceStyle = surfaceStyles[0]!
+  const contentSurfaceStyle = surfaceStyles[1]!
+
+  expect(titleSurfaceStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+  expect(contentSurfaceStyle.backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+  expect(titleSurfaceStyle.backgroundColor).not.toBe(contentSurfaceStyle.backgroundColor)
+  expect(titleSurfaceStyle.borderRadius).toBe('0px')
+  expect(contentSurfaceStyle.borderRadius).toBe('0px')
 
   await page.getByRole('button', { name: '正文全屏' }).focus()
   await page.keyboard.press('Tab')
   await expect(title).toBeFocused()
-  const titleFocusStyle = await title.evaluate((element) => {
-    const style = getComputedStyle(element)
-    return { borderRadius: style.borderRadius, outlineStyle: style.outlineStyle, backgroundColor: style.backgroundColor }
-  })
-  const paperFocusStyle = await paper.evaluate((element) => {
-    const style = getComputedStyle(element)
-    return { borderRadius: style.borderRadius, boxShadow: style.boxShadow }
-  })
-  expect(titleFocusStyle.borderRadius).toBe('0px')
-  expect(titleFocusStyle.outlineStyle).not.toBe('none')
-  expect(titleFocusStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)')
-  expect(paperFocusStyle.borderRadius).toBe('0px')
-  expect(paperFocusStyle.boxShadow).not.toBe('none')
-  expect(await paper.boundingBox()).toEqual(paperBoxBeforeFocus)
-  expect(await title.boundingBox()).toEqual(titleBoxBeforeFocus)
+  expect(await title.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none')
+  expect(await contentSurface.evaluate(element => getComputedStyle(element).boxShadow)).toBe(contentSurfaceStyle.boxShadow)
+  expect(await titleSurface.boundingBox()).toEqual(titleSurfaceBox)
 
   await page.keyboard.press('Tab')
   await expect(editor).toBeFocused()
-  const editorFocusStyle = await editor.evaluate((element) => {
-    const style = getComputedStyle(element)
-    return { borderRadius: style.borderRadius, outlineStyle: style.outlineStyle, backgroundColor: style.backgroundColor }
-  })
-  expect(editorFocusStyle.borderRadius).toBe('0px')
-  expect(editorFocusStyle.outlineStyle).not.toBe('none')
-  expect(editorFocusStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)')
-  expect(await paper.boundingBox()).toEqual(paperBoxBeforeFocus)
-  expect(await editor.boundingBox()).toEqual(editorBoxBeforeFocus)
+  expect(await editor.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none')
+  expect(await titleSurface.evaluate(element => getComputedStyle(element).boxShadow)).toBe(titleSurfaceStyle.boxShadow)
+  expect(await contentSurface.boundingBox()).toEqual(contentSurfaceBox)
 })
 
-test('桌面写作纸面、内边距与助手栏采用紧凑布局', async ({ page }, testInfo) => {
+test('桌面独立写作 surface、正文高度与助手栏采用紧凑布局', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium')
   await mockEditorApi(page)
   await page.goto('/projects/project-1/editor?chapter=chapter-1')
 
-  const pageShell = page.getByTestId('editor-page')
   const layout = page.getByTestId('editor-layout')
   const workspace = page.getByTestId('writing-workspace')
+  const writingSurface = page.getByTestId('writing-surface')
   const assistant = page.getByTestId('editor-assistant')
   const paper = page.getByTestId('writing-paper')
-  const title = page.locator('input[placeholder="第一章"]')
-  const editor = page.getByTestId('chapter-content')
+  const titleSurface = page.getByTestId('chapter-title-surface')
+  const contentSurface = page.getByTestId('chapter-content-surface')
+  const editor = page.getByRole('textbox', { name: '正文' })
 
-  const colors = await Promise.all([pageShell, workspace, paper].map(locator => locator.evaluate(element => getComputedStyle(element).backgroundColor)))
-  expect(colors[2]).not.toBe(colors[0])
-  expect(colors[2]).not.toBe(colors[1])
-
-  const paperStyle = await paper.evaluate((element) => {
+  const surfacePadding = await Promise.all([titleSurface, contentSurface].map(locator => locator.evaluate((element) => {
     const style = getComputedStyle(element)
-    return {
-      paddingInline: parseFloat(style.paddingLeft),
-      paddingBlock: parseFloat(style.paddingTop),
-      maxWidth: parseFloat(style.maxWidth),
-      borderRadius: style.borderRadius
-    }
-  })
-  expect(paperStyle.paddingInline).toBeGreaterThanOrEqual(34)
-  expect(paperStyle.paddingInline).toBeLessThanOrEqual(38)
-  expect(paperStyle.paddingBlock).toBeGreaterThanOrEqual(26)
-  expect(paperStyle.paddingBlock).toBeLessThanOrEqual(30)
-  expect(paperStyle.maxWidth).toBe(768)
-  expect(paperStyle.borderRadius).toBe('0px')
-
-  const titleBox = await title.boundingBox()
-  const editorBox = await editor.boundingBox()
-  expect(titleBox).not.toBeNull()
-  expect(editorBox).not.toBeNull()
-  expect(editorBox!.y - (titleBox!.y + titleBox!.height)).toBeLessThanOrEqual(58)
+    return { inline: parseFloat(style.paddingLeft), block: parseFloat(style.paddingTop), background: style.backgroundColor }
+  })))
+  const titleSurfacePadding = surfacePadding[0]!
+  const contentSurfacePadding = surfacePadding[1]!
+  expect(titleSurfacePadding.inline).toBe(24)
+  expect(contentSurfacePadding.inline).toBe(24)
+  expect(titleSurfacePadding.block).toBe(24)
+  expect(contentSurfacePadding.block).toBe(24)
+  expect(titleSurfacePadding.background).not.toBe(contentSurfacePadding.background)
+  expect(await paper.evaluate(element => parseFloat(getComputedStyle(element).maxWidth))).toBe(768)
+  expect(await writingSurface.evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBe(20)
 
   const editorStyle = await editor.evaluate((element) => {
     const style = getComputedStyle(element)
     return { minHeight: parseFloat(style.minHeight), lineHeight: parseFloat(style.lineHeight), fontSize: parseFloat(style.fontSize) }
   })
-  expect(editorStyle.minHeight).toBeGreaterThanOrEqual(540)
-  expect(editorStyle.minHeight).toBeLessThanOrEqual(548)
-  expect(editorStyle.minHeight).not.toBeCloseTo(page.viewportSize()!.height * 0.62, 0)
+  const expectedMinHeight = Math.min(672, Math.max(448, page.viewportSize()!.height * 0.58))
+  expect(editorStyle.minHeight).toBeCloseTo(expectedMinHeight, 0)
   expect(editorStyle.lineHeight / editorStyle.fontSize).toBeCloseTo(1.9, 1)
 
   const layoutBox = await layout.boundingBox()
@@ -338,80 +406,218 @@ test('章节标题更新失败时错误可见且不会创建版本', async ({ pa
   expect(versionPosts).toBe(0)
 })
 
-test('Agent Run 结果只进入提案区，用户追加后仍需手动创建版本', async ({ page }, testInfo) => {
+test('多 chunk 首段实时显示、完成原位转 pending，覆盖只写本地草稿且手动保存', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium')
-  const versionPosts: unknown[] = []
+  const writes: Array<{ method: string; path: string; body: unknown }> = []
+  const runId = 'run-stream-1'
+  const result = agentResult('首段续写完成', runId)
+  await installChunkedAgentStream(page, [
+    { text: streamEvent('run.started', { type: 'run.started', sequence: 1, run_id: runId, run: { id: runId, agent_id: 'agent-1', status: 'running' } }) },
+    { text: streamEvent('content.delta', { type: 'content.delta', sequence: 2, run_id: runId, delta: '首段' }) },
+    { text: streamEvent('content.delta', { type: 'content.delta', sequence: 3, run_id: runId, delta: '续写完成' }), delay: 700 },
+    { text: `${streamEvent('run.completed', { type: 'run.completed', sequence: 4, run_id: runId, result })}${streamEvent('mystery.event', { type: 'mystery.event', sequence: 5, run_id: runId })}` }
+  ])
   await mockEditorApi(page)
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname
-    if (request.method() === 'POST' && path.endsWith('/projects/project-1/chapters/chapter-1/versions')) {
-      versionPosts.push(request.postDataJSON())
+    if ((request.method() === 'PUT' || request.method() === 'POST') && path.includes('/projects/project-1/chapters/')) {
+      writes.push({ method: request.method(), path, body: request.postDataJSON() })
     }
   })
 
   await page.goto('/projects/project-1/editor?chapter=chapter-1')
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(1)
   const editor = page.getByTestId('chapter-content')
+  const title = page.locator('input[placeholder="第一章"]')
   await expect(editor).toHaveValue('后端正文')
 
   await page.getByPlaceholder('说明你希望 Agent 提供什么写作提案……').fill('继续这一幕')
   await page.getByRole('button', { name: '运行 Agent' }).click()
-  await expect(page.getByText('AI 提案正文')).toBeVisible()
+  await expect(page.getByTestId('agent-stream-content')).toHaveText('首段')
+  await expect(page.getByTestId('agent-stream-content')).not.toContainText('续写完成')
   await expect(editor).toHaveValue('后端正文')
-  expect(versionPosts).toHaveLength(0)
 
-  await page.getByRole('button', { name: '追加', exact: true }).click()
-  await expect(editor).toHaveValue('后端正文\n\nAI 提案正文')
-  expect(versionPosts).toHaveLength(0)
+  await expect(page.getByText('首段续写完成')).toBeVisible()
+  await expect(page.getByText('生成失败', { exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('agent-stream-card')).toHaveCount(0)
+  await page.getByRole('button', { name: '覆盖当前正文' }).click()
+  const confirm = page.getByRole('dialog', { name: '覆盖当前正文？' })
+  await expect(confirm).toContainText('不改标题')
+  await expect(confirm).toContainText('不会自动创建版本')
+  await confirm.getByRole('button', { name: '确认覆盖正文' }).click()
+
+  await expect(editor).toHaveValue('首段续写完成')
+  await expect(confirm).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid || '')).toBe('chapter-content')
+  await expect(title).toHaveValue('第一章')
+  expect(writes).toHaveLength(0)
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('aeon-echoes:chapter-draft:v2:project-1:chapter-1') || 'null')?.content)).toBe('首段续写完成')
 
   await page.getByRole('button', { name: '创建版本' }).click()
-  await expect.poll(() => versionPosts.length).toBe(1)
-  expect(versionPosts[0]).toMatchObject({
-    content: '后端正文\n\nAI 提案正文',
-    parent_version_id: 'version-1'
+  await expect.poll(() => writes.length).toBe(1)
+  expect(writes[0]).toMatchObject({
+    method: 'POST',
+    body: { content: '首段续写完成', parent_version_id: 'version-1' }
   })
+})
+
+test('completed 已到但 reader.cancel 延迟期间保持运行锁，Promise 返回并提交 proposal 后才解锁', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium')
+  const runId = 'run-finalizing'
+  const result = agentResult('等待清理完成', runId)
+  await installChunkedAgentStream(page, [
+    { text: streamEvent('run.started', { type: 'run.started', sequence: 1, run_id: runId, run: { id: runId, agent_id: 'agent-1', status: 'running' } }) },
+    { text: streamEvent('content.delta', { type: 'content.delta', sequence: 2, run_id: runId, delta: '等待清理完成' }) },
+    { text: streamEvent('run.completed', { type: 'run.completed', sequence: 3, run_id: runId, result }) }
+  ], false, 700)
+  await mockEditorApi(page)
+
+  await page.goto('/projects/project-1/editor?chapter=chapter-1')
+  await page.getByPlaceholder('说明你希望 Agent 提供什么写作提案……').fill('测试最终清理锁')
+  const runButton = page.getByRole('button', { name: '运行 Agent' })
+  await runButton.click()
+  await expect(page.getByTestId('agent-stream-content')).toHaveText('等待清理完成')
+  await expect(page.getByTestId('agent-stream-card')).toBeVisible()
+  await expect(page.getByTestId('agent-stream-card').getByRole('status')).toHaveText('正在整理提案')
+  await expect(page.getByRole('button', { name: '取消生成' })).toHaveCount(0)
+  await expect(runButton).toBeDisabled()
+  await runButton.evaluate((button: HTMLButtonElement) => button.click())
+  expect(await page.evaluate(() => (window as Window & { __agentStreamFetchCount?: number }).__agentStreamFetchCount)).toBe(1)
+  await expect(page.getByRole('button', { name: '覆盖当前正文' })).toBeVisible()
+  await expect(page.getByTestId('agent-stream-card')).toHaveCount(0)
+  await expect(runButton).toBeEnabled()
+  expect(await page.evaluate(() => (window as Window & { __agentStreamFetchCount?: number }).__agentStreamFetchCount)).toBe(1)
+})
+
+test('run.failed 保留部分文本但 Promise 失败不会留下可应用提案', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium')
+  const runId = 'run-failed'
+  await installChunkedAgentStream(page, [
+    { text: streamEvent('run.started', { type: 'run.started', sequence: 1, run_id: runId, run: { id: runId, agent_id: 'agent-1', status: 'running' } }) },
+    { text: streamEvent('content.delta', { type: 'content.delta', sequence: 2, run_id: runId, delta: '失败前部分文本' }) },
+    { text: streamEvent('run.failed', { type: 'run.failed', sequence: 3, run_id: runId, error: '模型流失败' }) }
+  ])
+  await mockEditorApi(page)
+
+  await page.goto('/projects/project-1/editor?chapter=chapter-1')
+  await page.getByPlaceholder('说明你希望 Agent 提供什么写作提案……').fill('触发失败')
+  await page.getByRole('button', { name: '运行 Agent' }).click()
+
+  await expect(page.getByText('失败前部分文本')).toBeVisible()
+  await expect(page.getByText('生成失败', { exact: true })).toBeVisible()
+  await expect(page.getByText('模型流失败')).toBeVisible()
+  await expect(page.getByRole('button', { name: '覆盖当前正文' })).toHaveCount(0)
+})
+
+test('取消后保留部分文本但不可应用，章节切换隔离迟到旧流事件', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'chromium')
+  const chapters = [
+    { id: 'chapter-1', project_id: 'project-1', number: 1, title: '第一章', status: 'drafting', summary: '从雨夜开始。', metadata: {} },
+    { id: 'chapter-2', project_id: 'project-1', number: 2, title: '第二章', status: 'drafting', summary: '转入清晨。', metadata: {} }
+  ]
+  const runId = 'run-stale'
+  await installChunkedAgentStream(page, [
+    { text: streamEvent('run.started', { type: 'run.started', sequence: 1, run_id: runId, run: { id: runId, agent_id: 'agent-1', status: 'running' } }) },
+    { text: streamEvent('content.delta', { type: 'content.delta', sequence: 2, run_id: runId, delta: '旧章部分文本' }) },
+    { text: streamEvent('content.delta', { type: 'content.delta', sequence: 3, run_id: runId, delta: '不应污染新章' }), delay: 700 },
+    { text: streamEvent('run.completed', { type: 'run.completed', sequence: 4, run_id: runId, result: agentResult('旧章部分文本不应污染新章', runId) }) }
+  ], true)
+  await mockEditorApi(page, { chapters })
+
+  await page.goto('/projects/project-1/editor?chapter=chapter-1')
+  await page.getByPlaceholder('说明你希望 Agent 提供什么写作提案……').fill('继续这一幕')
+  await page.getByRole('button', { name: '运行 Agent' }).click()
+  await expect(page.getByTestId('agent-stream-content')).toHaveText('旧章部分文本')
+  await page.getByRole('button', { name: '取消生成' }).click()
+  await expect(page.getByText('生成已取消', { exact: true })).toBeVisible()
+  await expect(page.getByText('旧章部分文本')).toBeVisible()
+  await expect(page.getByRole('button', { name: '覆盖当前正文' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: '当前章节' }).click()
+  await page.getByRole('option', { name: /第二章/ }).click()
+  await expect(page).toHaveURL(/chapter=chapter-2/)
+  await expect(page.locator('input[placeholder="第二章"]')).toBeVisible()
+  await page.waitForTimeout(900)
+
+  await expect(page.getByText('旧章部分文本')).toHaveCount(0)
+  await expect(page.getByText('旧章部分文本不应污染新章')).toHaveCount(0)
+  await expect(page.getByTestId('chapter-content')).toHaveValue('')
+})
+
+test('移动 Sheet 与桌面 resize 始终只有一份 AssistantPanel，覆盖确认关闭后焦点稳定回正文', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-chromium')
+  const mobileViewport = page.viewportSize()!
+  await mockEditorApi(page)
+  await page.goto('/projects/project-1/editor?chapter=chapter-1')
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(1)
+
+  await page.getByRole('button', { name: 'AI 助手' }).first().click()
+  const sheet = page.getByRole('dialog', { name: 'AI 助手' })
+  await expect(sheet).toBeVisible()
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(1)
+
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await expect(sheet).toBeVisible()
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(1)
+  await page.setViewportSize(mobileViewport)
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(1)
+
+  await page.getByPlaceholder('说明你希望 Agent 提供什么写作提案……').fill('覆盖正文')
+  await page.getByRole('button', { name: '运行 Agent' }).click()
+  await expect(page.getByText('AI 提案正文')).toBeVisible()
+  await page.getByRole('button', { name: '覆盖当前正文' }).click()
+
+  const confirm = page.getByRole('dialog', { name: '覆盖当前正文？' })
+  await expect(confirm).toBeVisible()
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(1)
+  await confirm.getByRole('button', { name: '确认覆盖正文' }).click()
+  await expect(confirm).toHaveCount(0)
+  await expect(page.getByTestId('chapter-content')).toHaveValue('AI 提案正文')
+  await expect.poll(() => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testid || '')).toBe('chapter-content')
 })
 
 test('移动端保持安全文字边距、正文高度、全屏与 AI Sheet', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-chromium')
   await mockEditorApi(page)
   await page.goto('/projects/project-1/editor?chapter=chapter-1')
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(1)
 
   const workspace = page.getByTestId('writing-workspace')
-  const paper = page.getByTestId('writing-paper')
-  const title = page.locator('input[placeholder="第一章"]')
-  const editor = page.getByTestId('chapter-content')
+  const writingSurface = page.getByTestId('writing-surface')
+  const titleSurface = page.getByTestId('chapter-title-surface')
+  const contentSurface = page.getByTestId('chapter-content-surface')
+  const title = page.getByRole('textbox', { name: '章节标题' })
+  const editor = page.getByRole('textbox', { name: '正文' })
   const viewport = page.viewportSize()!
-  const paperStyle = await paper.evaluate((element) => {
-    const style = getComputedStyle(element)
-    return { paddingInline: parseFloat(style.paddingLeft), paddingBlock: parseFloat(style.paddingTop) }
-  })
-  expect(paperStyle.paddingInline).toBe(16)
-  expect(paperStyle.paddingBlock).toBe(20)
+  expect(await writingSurface.evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBe(12)
+  expect(await titleSurface.evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBe(16)
+  expect(await contentSurface.evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBe(16)
 
   const titleBox = await title.boundingBox()
   const editorBox = await editor.boundingBox()
   expect(titleBox).not.toBeNull()
   expect(editorBox).not.toBeNull()
-  expect(titleBox!.x).toBeGreaterThanOrEqual(29)
-  expect(titleBox!.x).toBeLessThanOrEqual(32)
-  expect(viewport.width - titleBox!.x - titleBox!.width).toBeGreaterThanOrEqual(29)
-  expect(viewport.width - titleBox!.x - titleBox!.width).toBeLessThanOrEqual(32)
-  expect(editorBox!.y - (titleBox!.y + titleBox!.height)).toBeLessThanOrEqual(58)
+  expect(titleBox!.x).toBeGreaterThanOrEqual(28)
+  expect(viewport.width - titleBox!.x - titleBox!.width).toBeGreaterThanOrEqual(28)
+  expect(editorBox!.x).toBeGreaterThanOrEqual(28)
+  expect(viewport.width - editorBox!.x - editorBox!.width).toBeGreaterThanOrEqual(28)
 
   const editorMinHeight = await editor.evaluate(element => parseFloat(getComputedStyle(element).minHeight))
-  expect(editorMinHeight).toBeCloseTo(viewport.height * 0.42, 0)
-  expect(editorMinHeight).not.toBeCloseTo(viewport.height * 0.62, 0)
-  const colors = await Promise.all([workspace, paper].map(locator => locator.evaluate(element => getComputedStyle(element).backgroundColor)))
-  expect(colors[1]).not.toBe(colors[0])
+  expect(editorMinHeight).toBeCloseTo(Math.min(576, Math.max(288, viewport.height * 0.48)), 0)
+  const colors = await Promise.all([titleSurface, contentSurface].map(locator => locator.evaluate(element => getComputedStyle(element).backgroundColor)))
+  expect(colors[0]).not.toBe('rgba(0, 0, 0, 0)')
+  expect(colors[1]).not.toBe('rgba(0, 0, 0, 0)')
+  expect(colors[0]).not.toBe(colors[1])
 
   await page.getByRole('button', { name: 'AI 助手' }).first().click()
   await expect(page.getByRole('dialog', { name: 'AI 助手' })).toBeVisible()
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(1)
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: '正文全屏' }).click()
   await expect(workspace).toHaveClass(/fixed/)
 
   const fullscreenTitleBox = await title.boundingBox()
   expect(fullscreenTitleBox).not.toBeNull()
-  expect(fullscreenTitleBox!.x).toBeGreaterThanOrEqual(29)
-  expect(fullscreenTitleBox!.x).toBeLessThanOrEqual(32)
+  expect(fullscreenTitleBox!.x).toBeGreaterThanOrEqual(28)
+  expect(viewport.width - fullscreenTitleBox!.x - fullscreenTitleBox!.width).toBeGreaterThanOrEqual(28)
 })
