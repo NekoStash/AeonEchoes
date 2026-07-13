@@ -2,6 +2,7 @@
 import { Maximize2, ZoomIn, ZoomOut } from '@lucide/vue'
 import type { Core, ElementDefinition } from 'cytoscape'
 import type { GraphEdge, GraphNode } from '~/lib/types'
+import { cssColor as formatCssColor } from './graph-view'
 
 const props = defineProps<{
   nodes: GraphNode[]
@@ -116,11 +117,14 @@ function fitGraph() {
 }
 
 function graphStyle() {
-  const foreground = cssColor('--foreground', 'hsl(220 15% 12%)')
-  const background = cssColor('--background', 'hsl(42 20% 96%)')
-  const muted = cssColor('--muted-foreground', 'hsl(218 9% 40%)')
-  const border = cssColor('--border', 'hsl(38 10% 75%)')
-  const danger = cssColor('--state-danger', 'hsl(3 57% 43%)')
+  const foreground = cssColor('--foreground', 'hsl(220, 15%, 12%)')
+  const background = cssColor('--background', 'hsl(42, 20%, 96%)')
+  const muted = cssColor('--muted-foreground', 'hsl(218, 9%, 40%)')
+  const border = cssColor('--border', 'hsl(38, 10%, 75%)')
+  const danger = cssColor('--state-danger', 'hsl(3, 57%, 43%)')
+  const info = cssColor('--state-info', 'hsl(212, 72%, 42%)')
+  const success = cssColor('--state-success', 'hsl(148, 42%, 32%)')
+  const warning = cssColor('--state-warning', 'hsl(34, 78%, 42%)')
   return [
     {
       selector: 'node',
@@ -134,14 +138,17 @@ function graphStyle() {
         'background-color': muted,
         'border-color': border,
         'border-width': 2,
-        width: 'mapData(importance, 0, 1, 32, 58)',
-        height: 'mapData(importance, 0, 1, 32, 58)'
+        // 后端 importance 常见为 0..100 整数（如 50），不是 0..1 小数
+        width: 'mapData(importance, 0, 100, 32, 58)',
+        height: 'mapData(importance, 0, 100, 32, 58)'
       }
     },
-    { selector: 'node[type = "character"]', style: { 'background-color': cssColor('--state-info', muted) } },
+    { selector: 'node[type = "character"]', style: { 'background-color': info } },
     { selector: 'node[type = "event"]', style: { 'background-color': danger } },
-    { selector: 'node[type = "rule"]', style: { 'background-color': cssColor('--state-success', muted) } },
+    { selector: 'node[type = "rule"]', style: { 'background-color': success } },
     { selector: 'node[type = "chapter"]', style: { 'background-color': foreground } },
+    { selector: 'node[type = "location"]', style: { 'background-color': warning } },
+    { selector: 'node[type = "clue"]', style: { 'background-color': cssColor('--state-info-foreground', 'hsl(212, 80%, 28%)') } },
     { selector: 'node[status = "conflict"]', style: { 'border-color': danger, 'border-width': 4 } },
     { selector: 'node.is-selected', style: { 'border-color': foreground, 'border-width': 6 } },
     {
@@ -166,8 +173,7 @@ function graphStyle() {
 
 function cssColor(token: string, fallback: string) {
   if (!import.meta.client) return fallback
-  const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim()
-  return value ? `hsl(${value})` : fallback
+  return formatCssColor(token, fallback, (name) => getComputedStyle(document.documentElement).getPropertyValue(name))
 }
 </script>
 

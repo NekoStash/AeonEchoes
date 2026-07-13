@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"aeonechoes/server/internal/domain"
@@ -78,6 +79,65 @@ func TestStreamAggregatesMultipleDeltasAndCompletedResponse(t *testing.T) {
 	}
 	if deltas != "正文" || final == nil || final.Content != "正文" || final.Usage.TotalTokens != 4 {
 		t.Fatalf("deltas=%q final=%+v", deltas, final)
+	}
+}
+
+func TestGenerateSerializesNativeToolHistory(t *testing.T) {
+	var seen map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&seen); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp_tools","model":"gpt-5-test","status":"completed","output":[{"id":"msg_1","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done","annotations":[]}]}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}`))
+	}))
+	defer server.Close()
+
+	client, err := (Factory{HTTPClient: server.Client()}).NewTextClient(domain.ProviderConfig{Type: domain.ProviderOpenAIResponses, BaseURL: server.URL, APIKey: "test-key", Enabled: true})
+	if err != nil {
+		t.Fatalf("NewTextClient() error: %v", err)
+	}
+	_, err = client.Generate(context.Background(), provider.TextRequest{
+		Model: "gpt-5-test",
+		Messages: []provider.Message{
+			{Role: "user", Content: "查找角色"},
+			{
+				Role: "assistant",
+				ToolCalls: []provider.ToolCall{{
+					ID:        "call_1",
+					Type:      "function_call",
+					Name:      "character.search",
+					Arguments: json.RawMessage(`{"project_id":"p1","query":"林烬"}`),
+				}},
+			},
+			{Role: "tool", Name: "character.search", ToolCallID: "call_1", Content: `{"count":0}`},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+	raw, err := json.Marshal(seen["input"])
+	if err != nil {
+		t.Fatalf("marshal input: %v", err)
+	}
+	payload := string(raw)
+	if !strings.Contains(payload, `"type":"function_call"`) || !strings.Contains(payload, `"call_id":"call_1"`) {
+		t.Fatalf("function_call missing from payload: %s", payload)
+	}
+	if !strings.Contains(payload, `"type":"function_call_output"`) {
+		t.Fatalf("function_call_output missing from payload: %s", payload)
+	}
+	if strings.Contains(payload, "Tool result for") || strings.Contains(payload, "Assistant requested tool calls") {
+		t.Fatalf("payload still uses text fallback history: %s", payload)
+	}
+}
+
+func TestResponsesInputRejectsToolWithoutCallID(t *testing.T) {
+	_, _, err := responsesInput(provider.TextRequest{
+		Messages: []provider.Message{{Role: "tool", Name: "character.search", Content: `{}`}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "tool_call_id") {
+		t.Fatalf("error = %v, want tool_call_id", err)
 	}
 }
 

@@ -793,10 +793,10 @@ export type AgentRunResult = {
 };
 
 /**
- * Unified SSE business-event data object validated by the server before emission. Exactly one type-specific payload is allowed: run.started requires run; model.resolved requires model_resolution; tool.started and tool.completed require tool with matching status; content.delta requires a non-empty delta; run.completed requires the complete AgentRunResult in result; run.failed requires a non-empty error. Heartbeats are SSE comments and are not represented by this schema.
+ * Unified SSE business-event data object validated by the server before emission. Exactly one type-specific payload is allowed: run.started requires run; model.resolved requires model_resolution; tool.started and tool.completed require tool with matching status; content.delta requires a non-empty delta; content.reset clears provisional streamed text when a tool round supersedes it and carries no payload fields; run.completed requires the complete AgentRunResult in result; run.failed requires a non-empty error. Heartbeats are SSE comments and are not represented by this schema.
  */
 export type AgentRunStreamEvent = {
-    type: 'run.started' | 'model.resolved' | 'tool.started' | 'tool.completed' | 'content.delta' | 'run.completed' | 'run.failed';
+    type: 'run.started' | 'model.resolved' | 'tool.started' | 'tool.completed' | 'content.delta' | 'content.reset' | 'run.completed' | 'run.failed';
     sequence: number;
     run_id: string;
     delta?: string;
@@ -808,12 +808,24 @@ export type AgentRunStreamEvent = {
 };
 
 /**
- * Public tool lifecycle identity only. Tool arguments and results are intentionally excluded because they may contain secrets or manuscript content.
+ * Tool lifecycle payload for Agent run SSE. Includes optional arguments and result so clients can inspect narrative tool I/O after a proposal is produced.
  */
 export type AgentRunStreamTool = {
     call_id: string;
     name: string;
     status: 'started' | 'completed';
+    /**
+     * Tool call arguments as a JSON object when available (typically present from tool.started onward).
+     */
+    arguments?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Tool execution result as a JSON object when status is completed.
+     */
+    result?: {
+        [key: string]: unknown;
+    };
 };
 
 export type SkillScanResult = {

@@ -120,6 +120,16 @@ describe('Agent 查询作用域', () => {
     expect(preferredAgent([globalEditor, projectEditor], 'project-1')?.id).toBe('project-editor')
     expect(preferredAgent([globalEditor], 'project-1')?.id).toBe('global-editor')
   })
+
+  it('可优先选择指定 role（空章 plot-architect）', () => {
+    const projectWriter = agent('project-writer', 'project-1', 'writer')
+    const projectArchitect = agent('project-architect', 'project-1', 'plot-architect')
+    const globalArchitect = agent('global-architect', undefined, 'plot-architect')
+
+    expect(preferredAgent([projectWriter, globalArchitect], 'project-1', 'plot-architect')?.id).toBe('global-architect')
+    expect(preferredAgent([projectWriter, projectArchitect, globalArchitect], 'project-1', 'plot-architect')?.id).toBe('project-architect')
+    expect(preferredAgent([projectWriter], 'project-1', 'plot-architect')?.id).toBe('project-writer')
+  })
 })
 
 describe('实体 Store 状态收敛', () => {

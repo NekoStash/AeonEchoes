@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { ArrowRight, FileText } from '@lucide/vue'
-import type { Chapter } from '~/entities/chapter'
+import { CHAPTER_STATUS_VALUES, type Chapter, type ChapterStatus } from '~/entities/chapter'
 
 const { t } = useI18n()
 defineProps<{
   projectId: string
   chapters: Chapter[]
   loading?: boolean
+  updating?: boolean
 }>()
+const emit = defineEmits<{
+  'update-status': [payload: { chapterId: string; status: ChapterStatus }]
+}>()
+
+const statusOptions = computed(() => CHAPTER_STATUS_VALUES.map((status) => ({
+  label: t(`status.chapter.${status}`),
+  value: status
+})))
 </script>
 
 <template>
@@ -29,7 +38,7 @@ defineProps<{
     </div>
 
     <ol v-else class="relative mt-6 border-y border-border before:absolute before:bottom-0 before:left-[1.65rem] before:top-0 before:w-px before:bg-border">
-      <li v-for="chapter in chapters" :key="chapter.id" class="relative grid gap-4 border-b border-border py-5 pl-14 last:border-b-0 sm:grid-cols-[5rem_minmax(0,1fr)_auto] sm:items-center">
+      <li v-for="chapter in chapters" :key="chapter.id" class="relative grid gap-4 border-b border-border py-5 pl-14 last:border-b-0 sm:grid-cols-[5rem_minmax(0,1fr)_12rem_auto] sm:items-center">
         <span class="absolute left-5 top-8 h-3 w-3 border-2 border-foreground bg-background" aria-hidden="true" />
         <p class="font-serif text-2xl text-muted-foreground">{{ String(chapter.number).padStart(2, '0') }}</p>
         <div class="min-w-0">
@@ -39,6 +48,16 @@ defineProps<{
           </div>
           <p class="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{{ chapter.summary || t('common.emptyValue') }}</p>
         </div>
+        <label class="block min-w-0 space-y-1">
+          <span class="sr-only">{{ t('projectOverview.fields.chapterStatus') }}</span>
+          <UiSelect
+            :model-value="chapter.status"
+            :options="statusOptions"
+            :disabled="updating"
+            :aria-label="t('projectOverview.chapterStatus.label', { title: chapter.title })"
+            @update:model-value="emit('update-status', { chapterId: chapter.id, status: $event as ChapterStatus })"
+          />
+        </label>
         <UiButton variant="outline" :to="`/projects/${projectId}/editor?chapter=${encodeURIComponent(chapter.id)}`">
           {{ t('projectOverview.openChapter') }}
           <ArrowRight class="h-4 w-4" aria-hidden="true" />

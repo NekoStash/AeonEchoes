@@ -30,7 +30,7 @@ const bible: StoryBible = {
 
 describe('项目创作流程', () => {
   it('章节创建请求只在显式执行创建操作时发送，失败不污染真实章节缓存', async () => {
-    const request = toCreateChapterRequest({ title: '第一章', status: 'planned', summary: '', planId: '' }, [])
+    const request = toCreateChapterRequest({ title: '第一章', status: 'planned', summary: '' }, [])
     const createChapter = vi.fn().mockRejectedValue(new Error('network failed'))
     const api = {
       createChapter,
@@ -47,20 +47,18 @@ describe('项目创作流程', () => {
     expect(current).toEqual([])
   })
 
-  it('章节规划 ID 只作为显式元数据写入创建请求', () => {
+  it('真实章节创建请求按既有章节序号递增且不附带规划元数据', () => {
     const request = toCreateChapterRequest({
       title: '雨夜档案',
       status: 'drafting',
-      summary: '调查第一份冲突记录。',
-      planId: 'chapter-plan-7'
+      summary: '调查第一份冲突记录。'
     }, [{ id: 'chapter-4', project_id: 'project-1', number: 4, title: '旧章', status: 'locked', summary: '' }])
 
     expect(request).toEqual({
       number: 5,
       title: '雨夜档案',
       status: 'drafting',
-      summary: '调查第一份冲突记录。',
-      metadata: { story_bible_chapter_plan_id: 'chapter-plan-7' }
+      summary: '调查第一份冲突记录。'
     })
   })
 

@@ -20,6 +20,7 @@ export type AgentRunStreamEvent =
   | (AgentRunStreamEventBase<'tool.started'> & { tool: AgentRunStreamTool })
   | (AgentRunStreamEventBase<'tool.completed'> & { tool: AgentRunStreamTool })
   | (AgentRunStreamEventBase<'content.delta'> & { delta: string })
+  | AgentRunStreamEventBase<'content.reset'>
   | (AgentRunStreamEventBase<'run.completed'> & { result: AgentRunResult })
   | (AgentRunStreamEventBase<'run.failed'> & { error: string })
 

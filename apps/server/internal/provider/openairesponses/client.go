@@ -195,7 +195,10 @@ func responsesParams(req provider.TextRequest) (responses.ResponseNewParams, err
 	if strings.TrimSpace(req.Model) == "" {
 		return responses.ResponseNewParams{}, fmt.Errorf("openai-responses text request model must not be empty")
 	}
-	input, hasInput := responsesInput(req)
+	input, hasInput, err := responsesInput(req)
+	if err != nil {
+		return responses.ResponseNewParams{}, err
+	}
 	if !hasInput {
 		return responses.ResponseNewParams{}, fmt.Errorf("openai-responses text request requires at least one message")
 	}
@@ -278,31 +281,82 @@ func normalizeOpenAIBaseURL(baseURL string) string {
 	return trimmed + "/v1"
 }
 
-func responsesInput(req provider.TextRequest) (responses.ResponseNewParamsInputUnion, bool) {
+func responsesInput(req provider.TextRequest) (responses.ResponseNewParamsInputUnion, bool, error) {
 	items := make([]responses.ResponseInputItemUnionParam, 0, len(req.Messages)+1)
-	for _, msg := range req.Messages {
-		content := provider.MessageContent(msg)
-		if strings.TrimSpace(content) == "" {
-			continue
-		}
-		role := responses.EasyInputMessageRoleUser
-		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
+	for index, msg := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		switch role {
 		case "system":
-			role = responses.EasyInputMessageRoleSystem
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				return responses.ResponseNewParamsInputUnion{}, false, fmt.Errorf("openai-responses message[%d] system content must not be empty", index)
+			}
+			items = append(items, easyInputMessage(responses.EasyInputMessageRoleSystem, content))
 		case "developer":
-			role = responses.EasyInputMessageRoleDeveloper
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				return responses.ResponseNewParamsInputUnion{}, false, fmt.Errorf("openai-responses message[%d] developer content must not be empty", index)
+			}
+			items = append(items, easyInputMessage(responses.EasyInputMessageRoleDeveloper, content))
 		case "assistant":
-			role = responses.EasyInputMessageRoleAssistant
+			assistantItems, err := responsesAssistantItems(msg, index)
+			if err != nil {
+				return responses.ResponseNewParamsInputUnion{}, false, err
+			}
+			items = append(items, assistantItems...)
+		case "tool":
+			callID := strings.TrimSpace(msg.ToolCallID)
+			if callID == "" {
+				return responses.ResponseNewParamsInputUnion{}, false, fmt.Errorf("openai-responses message[%d] tool role requires tool_call_id", index)
+			}
+			output := msg.Content
+			if strings.TrimSpace(output) == "" {
+				output = "{}"
+			}
+			items = append(items, responses.ResponseInputItemParamOfFunctionCallOutput(callID, output))
+		case "user", "":
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				return responses.ResponseNewParamsInputUnion{}, false, fmt.Errorf("openai-responses message[%d] user content must not be empty", index)
+			}
+			items = append(items, easyInputMessage(responses.EasyInputMessageRoleUser, content))
+		default:
+			return responses.ResponseNewParamsInputUnion{}, false, fmt.Errorf("openai-responses message[%d] has unsupported role %q", index, msg.Role)
 		}
-		items = append(items, easyInputMessage(role, content))
 	}
 	if strings.TrimSpace(req.UserPrompt) != "" {
 		items = append(items, easyInputMessage(responses.EasyInputMessageRoleUser, req.UserPrompt))
 	}
 	if len(items) == 0 {
-		return responses.ResponseNewParamsInputUnion{}, false
+		return responses.ResponseNewParamsInputUnion{}, false, nil
 	}
-	return responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(items)}, true
+	return responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(items)}, true, nil
+}
+
+func responsesAssistantItems(msg provider.Message, index int) ([]responses.ResponseInputItemUnionParam, error) {
+	items := make([]responses.ResponseInputItemUnionParam, 0, len(msg.ToolCalls)+1)
+	if content := strings.TrimSpace(msg.Content); content != "" {
+		items = append(items, easyInputMessage(responses.EasyInputMessageRoleAssistant, content))
+	}
+	for callIndex, call := range msg.ToolCalls {
+		name := strings.TrimSpace(call.Name)
+		if name == "" {
+			return nil, fmt.Errorf("openai-responses message[%d] tool_calls[%d] name must not be empty", index, callIndex)
+		}
+		callID := strings.TrimSpace(call.ID)
+		if callID == "" {
+			return nil, fmt.Errorf("openai-responses message[%d] tool_calls[%d] id must not be empty", index, callIndex)
+		}
+		arguments := strings.TrimSpace(string(call.Arguments))
+		if arguments == "" {
+			arguments = "{}"
+		}
+		items = append(items, responses.ResponseInputItemParamOfFunctionCall(arguments, callID, name))
+	}
+	if len(items) == 0 {
+		return nil, fmt.Errorf("openai-responses message[%d] assistant content or tool_calls must not be empty", index)
+	}
+	return items, nil
 }
 
 func easyInputMessage(role responses.EasyInputMessageRole, content string) responses.ResponseInputItemUnionParam {

@@ -1,5 +1,10 @@
 import type { AgentConfig, AgentRole, MCPServerConfig, Skill } from '~/lib/types'
 
+export const CHAPTER_AUDIT_TOOL_ID = 'builtin:chapter.audit'
+export const AUDIT_MAX_ROUNDS_KEY = 'audit_max_rounds'
+export const DEFAULT_AUDIT_MAX_ROUNDS = 2
+export const HARD_AUDIT_MAX_ROUNDS = 6
+
 export interface AgentFormState {
   id: string
   project_id: string
@@ -15,6 +20,8 @@ export interface AgentFormState {
   memoryPolicyText: string
   runtimeOptionsText: string
   metadataText: string
+  auditReflectEnabled: boolean
+  auditMaxRounds: string
   created_at?: string
 }
 
@@ -50,17 +57,54 @@ export interface MCPFormState {
 }
 
 export function createAgentForm(agent?: AgentConfig): AgentFormState {
+  const toolIds = agent?.tool_ids || []
+  const runtimeOptions = { ...(agent?.runtime_options || {}) }
+  const auditReflectEnabled = toolIds.includes(CHAPTER_AUDIT_TOOL_ID)
+  const auditMaxRounds = readAuditMaxRounds(runtimeOptions)
+  // Dedicated UI owns audit_max_rounds; keep the free-form JSON free of the managed key.
+  delete runtimeOptions[AUDIT_MAX_ROUNDS_KEY]
   return {
     id: agent?.id || '', project_id: agent?.project_id || '', name: agent?.name || '', description: agent?.description || '', role: agent?.role || 'writer', model_id: agent?.model_id || '', enabled: agent?.enabled ?? true, system_prompt: agent?.system_prompt || '',
-    skillIdsText: joinIds(agent?.skill_ids), toolIdsText: joinIds(agent?.tool_ids), mcpServerIdsText: joinIds(agent?.mcp_server_ids), memoryPolicyText: stringify(agent?.memory_policy), runtimeOptionsText: stringify(agent?.runtime_options), metadataText: stringify(agent?.metadata), created_at: agent?.created_at
+    skillIdsText: joinIds(agent?.skill_ids), toolIdsText: joinIds(toolIds.filter((id) => id !== CHAPTER_AUDIT_TOOL_ID)), mcpServerIdsText: joinIds(agent?.mcp_server_ids), memoryPolicyText: stringify(agent?.memory_policy), runtimeOptionsText: stringify(runtimeOptions), metadataText: stringify(agent?.metadata),
+    auditReflectEnabled, auditMaxRounds: String(auditMaxRounds), created_at: agent?.created_at
   }
 }
 
 export function agentFormToConfig(form: AgentFormState, original?: AgentConfig): AgentConfig {
+  const toolIds = applyChapterAuditTool(parseIds(form.toolIdsText), form.auditReflectEnabled)
+  const runtimeOptions = applyAuditMaxRounds(parseObject(form.runtimeOptionsText, 'runtime_options'), form.auditReflectEnabled, form.auditMaxRounds)
   return {
     ...(original || {}), id: form.id.trim(), project_id: optional(form.project_id), name: required(form.name, 'name'), description: optional(form.description), role: form.role, model_id: optional(form.model_id), enabled: form.enabled, system_prompt: optional(form.system_prompt),
-    skill_ids: parseIds(form.skillIdsText), tool_ids: parseIds(form.toolIdsText), mcp_server_ids: parseIds(form.mcpServerIdsText), memory_policy: parseObject(form.memoryPolicyText, 'memory_policy'), runtime_options: parseObject(form.runtimeOptionsText, 'runtime_options'), metadata: parseStringObject(form.metadataText, 'metadata'), created_at: original?.created_at
+    skill_ids: parseIds(form.skillIdsText), tool_ids: toolIds, mcp_server_ids: parseIds(form.mcpServerIdsText), memory_policy: parseObject(form.memoryPolicyText, 'memory_policy'), runtime_options: runtimeOptions, metadata: parseStringObject(form.metadataText, 'metadata'), created_at: original?.created_at
   }
+}
+
+export function applyChapterAuditTool(toolIds: string[], enabled: boolean): string[] {
+  const next = toolIds.filter((id) => id !== CHAPTER_AUDIT_TOOL_ID)
+  if (enabled) next.push(CHAPTER_AUDIT_TOOL_ID)
+  return next
+}
+
+export function applyAuditMaxRounds(runtimeOptions: Record<string, unknown> | undefined, enabled: boolean, roundsText: string): Record<string, unknown> | undefined {
+  const next: Record<string, unknown> = { ...(runtimeOptions || {}) }
+  delete next[AUDIT_MAX_ROUNDS_KEY]
+  if (!enabled) {
+    return Object.keys(next).length ? next : undefined
+  }
+  const rounds = Number(String(roundsText || '').trim())
+  if (!Number.isInteger(rounds) || rounds < 1 || rounds > HARD_AUDIT_MAX_ROUNDS) {
+    throw validationError(AUDIT_MAX_ROUNDS_KEY, `audit_max_rounds must be an integer between 1 and ${HARD_AUDIT_MAX_ROUNDS}.`)
+  }
+  next[AUDIT_MAX_ROUNDS_KEY] = rounds
+  return next
+}
+
+function readAuditMaxRounds(runtimeOptions: Record<string, unknown>): number {
+  const raw = runtimeOptions[AUDIT_MAX_ROUNDS_KEY]
+  if (raw == null || raw === '') return DEFAULT_AUDIT_MAX_ROUNDS
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 1 || value > HARD_AUDIT_MAX_ROUNDS) return DEFAULT_AUDIT_MAX_ROUNDS
+  return value
 }
 
 export function createSkillForm(skill?: Skill): SkillFormState {

@@ -9,6 +9,7 @@ const STREAM_EVENT_NAMES: AgentRunStreamEventName[] = [
   'tool.started',
   'tool.completed',
   'content.delta',
+  'content.reset',
   'run.completed',
   'run.failed'
 ]
@@ -78,9 +79,14 @@ function decodeModelResolution(value: unknown, field: string): ModelResolution {
   }
 }
 
+function optionalJSONObject(value: unknown, field: string): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) return undefined
+  return requireRecord(value, field)
+}
+
 function decodeTool(value: unknown, field: string, expectedStatus: AgentRunStreamTool['status']): AgentRunStreamTool {
   const tool = requireRecord(value, field)
-  const allowed = new Set(['call_id', 'name', 'status'])
+  const allowed = new Set(['call_id', 'name', 'status', 'arguments', 'result'])
   for (const key of Object.keys(tool)) {
     if (!allowed.has(key)) streamFailure(`invalid_sse_stream: unsupported ${field} field ${key}`, tool, `${field}.${key}`)
   }
@@ -88,12 +94,21 @@ function decodeTool(value: unknown, field: string, expectedStatus: AgentRunStrea
   if (status !== expectedStatus) {
     streamFailure(`invalid_sse_stream: ${field}.status must be ${expectedStatus} for this event`, status, `${field}.status`)
   }
-  return {
+  const decoded: AgentRunStreamTool = {
     call_id: requireString(tool.call_id, `${field}.call_id`),
     name: requireString(tool.name, `${field}.name`),
     status: expectedStatus
   }
+  const args = optionalJSONObject(tool.arguments, `${field}.arguments`)
+  if (args) decoded.arguments = args
+  const result = optionalJSONObject(tool.result, `${field}.result`)
+  if (result) decoded.result = result
+  if (expectedStatus === 'completed' && tool.result !== undefined && tool.result !== null && !result) {
+    streamFailure(`invalid_sse_stream: ${field}.result must be an object when present`, tool.result, `${field}.result`)
+  }
+  return decoded
 }
+
 
 function decodeError(value: unknown, field: string): string {
   return requireString(value, field)
@@ -161,6 +176,9 @@ export function decodeAgentRunStreamEvent(eventName: string, value: unknown): Ag
     case 'content.delta':
       assertEnvelopeFields(payload, 'delta')
       return { ...base, type: eventName, delta: requireString(payload.delta, 'delta', true) }
+    case 'content.reset':
+      assertEnvelopeFields(payload, '')
+      return { ...base, type: eventName }
     case 'run.completed': {
       assertEnvelopeFields(payload, 'result')
       const result = decodeAgentRunResult(payload.result, 'result')

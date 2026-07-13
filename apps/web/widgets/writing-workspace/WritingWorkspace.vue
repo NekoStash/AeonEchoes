@@ -3,7 +3,7 @@ import { Maximize2, Minimize2, PanelRightOpen, Save } from '@lucide/vue'
 import UiBadge from '~/components/ui/Badge.vue'
 import UiButton from '~/components/ui/Button.vue'
 import UiSelect from '~/components/ui/Select.vue'
-import type { Chapter } from '~/entities/chapter'
+import { CHAPTER_STATUS_VALUES, type Chapter, type ChapterStatus } from '~/entities/chapter'
 import type { TextSelection } from '~/features/chapter-write'
 
 const props = defineProps<{
@@ -17,6 +17,7 @@ const props = defineProps<{
   dirty: boolean
   saving: boolean
   fullscreen: boolean
+  statusUpdating?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,6 +25,7 @@ const emit = defineEmits<{
   'update:content': [value: string]
   'update:selectedChapterId': [value: string]
   'update:fullscreen': [value: boolean]
+  'update:status': [value: ChapterStatus]
   selection: [value: TextSelection]
   save: []
   assistant: []
@@ -42,6 +44,10 @@ const chapterOptions = computed(() => props.chapters.map((chapter) => ({
   label: chapter.title || t('editor.chapterFallbackTitle', { number: chapter.number }),
   value: chapter.id,
   description: t('editor.chapterOptionDescription', { number: chapter.number, status: t(`status.chapter.${chapter.status}`) })
+})))
+const statusOptions = computed(() => CHAPTER_STATUS_VALUES.map((status) => ({
+  label: t(`status.chapter.${status}`),
+  value: status
 })))
 
 function emitSelection() {
@@ -132,10 +138,21 @@ defineExpose({
           <div
             :id="chapterMetaId"
             data-testid="chapter-meta"
-            class="mt-3 flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-muted-foreground"
+            class="mt-3 flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.2em] text-muted-foreground"
           >
             <span>{{ t('editor.workspace.chapterNumber', { number: chapter.number }) }}</span>
-            <span class="h-px flex-1 bg-current/25" aria-hidden="true" />
+            <span class="h-px min-w-8 flex-1 bg-current/25" aria-hidden="true" />
+            <label class="flex min-w-[10rem] items-center gap-2 normal-case tracking-normal">
+              <span class="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{{ t('editor.fields.chapterStatus') }}</span>
+              <UiSelect
+                :model-value="chapter.status"
+                :options="statusOptions"
+                :disabled="statusUpdating"
+                :aria-label="t('editor.fields.chapterStatus')"
+                class="min-w-[8rem]"
+                @update:model-value="emit('update:status', $event as ChapterStatus)"
+              />
+            </label>
           </div>
         </header>
 

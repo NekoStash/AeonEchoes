@@ -214,7 +214,10 @@ func openAIChatParams(req provider.TextRequest) (openaisdk.ChatCompletionNewPara
 	if strings.TrimSpace(req.Model) == "" {
 		return openaisdk.ChatCompletionNewParams{}, fmt.Errorf("openai text request model must not be empty")
 	}
-	messages := openAIChatMessages(req)
+	messages, err := openAIChatMessages(req)
+	if err != nil {
+		return openaisdk.ChatCompletionNewParams{}, err
+	}
 	if len(messages) == 0 {
 		return openaisdk.ChatCompletionNewParams{}, fmt.Errorf("openai text request requires at least one message")
 	}
@@ -277,29 +280,89 @@ func normalizeOpenAIBaseURL(baseURL string) string {
 	return trimmed + "/v1"
 }
 
-func openAIChatMessages(req provider.TextRequest) []openaisdk.ChatCompletionMessageParamUnion {
+func openAIChatMessages(req provider.TextRequest) ([]openaisdk.ChatCompletionMessageParamUnion, error) {
 	messages := make([]openaisdk.ChatCompletionMessageParamUnion, 0, len(req.Messages)+2)
 	if strings.TrimSpace(req.SystemPrompt) != "" {
 		messages = append(messages, openaisdk.SystemMessage(req.SystemPrompt))
 	}
-	for _, msg := range req.Messages {
-		content := provider.MessageContent(msg)
-		if strings.TrimSpace(content) == "" {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
+	for index, msg := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		switch role {
 		case "system", "developer":
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				return nil, fmt.Errorf("openai message[%d] system content must not be empty", index)
+			}
 			messages = append(messages, openaisdk.SystemMessage(content))
 		case "assistant":
-			messages = append(messages, openaisdk.AssistantMessage(content))
-		default:
+			assistant, err := openAIAssistantMessage(msg, index)
+			if err != nil {
+				return nil, err
+			}
+			messages = append(messages, assistant)
+		case "tool":
+			toolCallID := strings.TrimSpace(msg.ToolCallID)
+			if toolCallID == "" {
+				return nil, fmt.Errorf("openai message[%d] tool role requires tool_call_id", index)
+			}
+			content := msg.Content
+			if strings.TrimSpace(content) == "" {
+				content = "{}"
+			}
+			messages = append(messages, openaisdk.ToolMessage(content, toolCallID))
+		case "user", "":
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				return nil, fmt.Errorf("openai message[%d] user content must not be empty", index)
+			}
 			messages = append(messages, openaisdk.UserMessage(content))
+		default:
+			return nil, fmt.Errorf("openai message[%d] has unsupported role %q", index, msg.Role)
 		}
 	}
 	if strings.TrimSpace(req.UserPrompt) != "" {
 		messages = append(messages, openaisdk.UserMessage(req.UserPrompt))
 	}
-	return messages
+	return messages, nil
+}
+
+func openAIAssistantMessage(msg provider.Message, index int) (openaisdk.ChatCompletionMessageParamUnion, error) {
+	content := strings.TrimSpace(msg.Content)
+	if content == "" && len(msg.ToolCalls) == 0 {
+		return openaisdk.ChatCompletionMessageParamUnion{}, fmt.Errorf("openai message[%d] assistant content or tool_calls must not be empty", index)
+	}
+	var assistant openaisdk.ChatCompletionAssistantMessageParam
+	if content != "" {
+		assistant.Content.OfString = oaiparam.NewOpt(content)
+	}
+	if len(msg.ToolCalls) > 0 {
+		toolCalls := make([]openaisdk.ChatCompletionMessageToolCallUnionParam, 0, len(msg.ToolCalls))
+		for callIndex, call := range msg.ToolCalls {
+			name := strings.TrimSpace(call.Name)
+			if name == "" {
+				return openaisdk.ChatCompletionMessageParamUnion{}, fmt.Errorf("openai message[%d] tool_calls[%d] name must not be empty", index, callIndex)
+			}
+			id := strings.TrimSpace(call.ID)
+			if id == "" {
+				return openaisdk.ChatCompletionMessageParamUnion{}, fmt.Errorf("openai message[%d] tool_calls[%d] id must not be empty", index, callIndex)
+			}
+			arguments := strings.TrimSpace(string(call.Arguments))
+			if arguments == "" {
+				arguments = "{}"
+			}
+			toolCalls = append(toolCalls, openaisdk.ChatCompletionMessageToolCallUnionParam{
+				OfFunction: &openaisdk.ChatCompletionMessageFunctionToolCallParam{
+					ID: id,
+					Function: openaisdk.ChatCompletionMessageFunctionToolCallFunctionParam{
+						Name:      name,
+						Arguments: arguments,
+					},
+				},
+			})
+		}
+		assistant.ToolCalls = toolCalls
+	}
+	return openaisdk.ChatCompletionMessageParamUnion{OfAssistant: &assistant}, nil
 }
 
 func openAIChatTools(tools []provider.ToolSpec) ([]openaisdk.ChatCompletionToolUnionParam, error) {

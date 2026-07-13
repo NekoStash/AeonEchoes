@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createGraphExpandRequest, filterGraphEdges, filterGraphNodes, parseEntityIds } from '../../features/graph-explore/graph-view'
+import { createGraphExpandRequest, cssColor, filterGraphEdges, filterGraphNodes, parseEntityIds } from '../../features/graph-explore/graph-view'
 import type { GraphEdge, GraphNode } from '../../lib/types'
 
 const now = '2026-01-01T00:00:00Z'
@@ -36,5 +36,18 @@ describe('graph explore query boundary', () => {
 
   it('非法 depth 会快速失败', () => {
     expect(() => createGraphExpandRequest('project-1', '', 0)).toThrow(/depth/i)
+  })
+
+  it('cssColor 把 space-separated 组件值转成逗号式 hsl', () => {
+    const readToken = (token: string) => {
+      if (token === '--foreground') return '220 15% 12%'
+      if (token === '--hex') return '#112233'
+      if (token === '--already') return 'hsl(10, 20%, 30%)'
+      return ''
+    }
+    expect(cssColor('--foreground', 'hsl(0, 0%, 0%)', readToken)).toBe('hsl(220, 15%, 12%)')
+    expect(cssColor('--hex', 'hsl(0, 0%, 0%)', readToken)).toBe('#112233')
+    expect(cssColor('--already', 'hsl(0, 0%, 0%)', readToken)).toBe('hsl(10, 20%, 30%)')
+    expect(cssColor('--missing', 'hsl(1, 2%, 3%)', readToken)).toBe('hsl(1, 2%, 3%)')
   })
 })

@@ -130,10 +130,17 @@ describe('Agent Run 提案行为', () => {
 
   it('Agent 结果创建为 pending 提案且不修改正文', () => {
     const source = '原正文'
-    const proposal = createAgentProposal('agent-1', agentRun('提案正文'), '2026-01-01T00:00:00Z')
+    const proposal = createAgentProposal('agent-1', agentRun('提案正文'), '2026-01-01T00:00:00Z', [
+      { call_id: 'call-1', name: 'character.search', status: 'completed', arguments: { query: '林' }, result: { count: 1 } }
+    ])
 
     expect(source).toBe('原正文')
-    expect(proposal).toMatchObject({ status: 'pending', content: '提案正文', runId: 'run-1' })
+    expect(proposal).toMatchObject({
+      status: 'pending',
+      content: '提案正文',
+      runId: 'run-1',
+      tools: [{ call_id: 'call-1', name: 'character.search', status: 'completed', arguments: { query: '林' }, result: { count: 1 } }]
+    })
   })
 
   it('支持插入、有效选区替换、追加与拒绝', () => {

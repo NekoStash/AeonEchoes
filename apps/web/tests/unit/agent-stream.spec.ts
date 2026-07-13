@@ -69,11 +69,13 @@ describe('Agent Run SSE parser', () => {
       started(1),
       ': heartbeat\r\n\r\n',
       event('model.resolved', { type: 'model.resolved', sequence: 2, run_id: 'run-1', model_resolution: resolution }),
-      event('tool.started', { type: 'tool.started', sequence: 3, run_id: 'run-1', tool: { call_id: 'call-1', name: 'character.search', status: 'started' } }),
-      event('content.delta', { type: 'content.delta', sequence: 4, run_id: 'run-1', delta: '你好，' }),
-      event('tool.completed', { type: 'tool.completed', sequence: 5, run_id: 'run-1', tool: { call_id: 'call-1', name: 'character.search', status: 'completed' } }),
-      event('content.delta', { type: 'content.delta', sequence: 6, run_id: 'run-1', delta: '世界' }),
-      event('run.completed', { type: 'run.completed', sequence: 7, run_id: 'run-1', result: completedResult() })
+      event('content.delta', { type: 'content.delta', sequence: 3, run_id: 'run-1', delta: '暂' }),
+      event('content.reset', { type: 'content.reset', sequence: 4, run_id: 'run-1' }),
+      event('tool.started', { type: 'tool.started', sequence: 5, run_id: 'run-1', tool: { call_id: 'call-1', name: 'character.search', status: 'started', arguments: { project_id: 'project-1', query: '林' } } }),
+      event('tool.completed', { type: 'tool.completed', sequence: 6, run_id: 'run-1', tool: { call_id: 'call-1', name: 'character.search', status: 'completed', arguments: { project_id: 'project-1', query: '林' }, result: { count: 1 } } }),
+      event('content.delta', { type: 'content.delta', sequence: 7, run_id: 'run-1', delta: '你好，' }),
+      event('content.delta', { type: 'content.delta', sequence: 8, run_id: 'run-1', delta: '世界' }),
+      event('run.completed', { type: 'run.completed', sequence: 9, run_id: 'run-1', result: completedResult() })
     ].join('')
     const bytes = new TextEncoder().encode(source)
     const chineseByte = bytes.findIndex((value) => value > 127)
@@ -84,10 +86,15 @@ describe('Agent Run SSE parser', () => {
       onEvent: (streamEvent) => events.push(streamEvent)
     })
 
-    expect(events.map((item) => item.type)).toEqual(['run.started', 'model.resolved', 'tool.started', 'content.delta', 'tool.completed', 'content.delta', 'run.completed'])
-    expect(events.filter((item) => item.type === 'content.delta').map((item) => item.delta).join('')).toBe('你好，世界')
+    expect(events.map((item) => item.type)).toEqual(['run.started', 'model.resolved', 'content.delta', 'content.reset', 'tool.started', 'tool.completed', 'content.delta', 'content.delta', 'run.completed'])
+    expect(events.filter((item) => item.type === 'content.delta').map((item) => item.delta).join('')).toBe('暂你好，世界')
+    const startedTool = events.find((item) => item.type === 'tool.started')?.tool
+    expect(startedTool).toMatchObject({ call_id: 'call-1', name: 'character.search', status: 'started', arguments: { project_id: 'project-1', query: '林' } })
+    const completedTool = events.find((item) => item.type === 'tool.completed')?.tool
+    expect(completedTool).toMatchObject({ call_id: 'call-1', name: 'character.search', status: 'completed', arguments: { project_id: 'project-1', query: '林' }, result: { count: 1 } })
     expect(result).toEqual(completedResult())
   })
+
 
   it.each([
     ['未知事件', event('mystery.event', { type: 'mystery.event', sequence: 1, run_id: 'run-1' })],
@@ -100,8 +107,8 @@ describe('Agent Run SSE parser', () => {
     ['tool call_id 仅空白', `${started(1)}${event('tool.started', { type: 'tool.started', sequence: 2, run_id: 'run-1', tool: { call_id: '   ', name: 'search', status: 'started' } })}`],
     ['tool name 为空', `${started(1)}${event('tool.started', { type: 'tool.started', sequence: 2, run_id: 'run-1', tool: { call_id: 'call-1', name: '', status: 'started' } })}`],
     ['tool name 仅空白', `${started(1)}${event('tool.started', { type: 'tool.started', sequence: 2, run_id: 'run-1', tool: { call_id: 'call-1', name: '  ', status: 'started' } })}`],
-    ['tool 禁止 arguments', `${started(1)}${event('tool.started', { type: 'tool.started', sequence: 2, run_id: 'run-1', tool: { call_id: 'call-1', name: 'search', status: 'started', arguments: { secret: true } } })}`],
-    ['tool 禁止 result', `${started(1)}${event('tool.completed', { type: 'tool.completed', sequence: 2, run_id: 'run-1', tool: { call_id: 'call-1', name: 'search', status: 'completed', result: { manuscript: 'hidden' } } })}`],
+    ['tool arguments 不是对象', `${started(1)}${event('tool.started', { type: 'tool.started', sequence: 2, run_id: 'run-1', tool: { call_id: 'call-1', name: 'search', status: 'started', arguments: 'secret' } })}`],
+    ['tool result 不是对象', `${started(1)}${event('tool.completed', { type: 'tool.completed', sequence: 2, run_id: 'run-1', tool: { call_id: 'call-1', name: 'search', status: 'completed', result: 'hidden' } })}`],
     ['run.failed error 不是字符串', `${started(1)}${event('run.failed', { type: 'run.failed', sequence: 2, run_id: 'run-1', error: { message: 'boom' } })}`],
     ['run.failed error 为空', `${started(1)}${event('run.failed', { type: 'run.failed', sequence: 2, run_id: 'run-1', error: '' })}`]
   ])('%s 时 fail-fast 并记录 console.error', async (_label, source) => {

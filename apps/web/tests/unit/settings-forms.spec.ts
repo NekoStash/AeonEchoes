@@ -22,6 +22,47 @@ describe('settings contract forms', () => {
     expect(agentFormToConfig(form)).toMatchObject({ name: 'Writer', skill_ids: ['s1', 's2'], memory_policy: { scope: 'project' }, runtime_options: { temperature: 0.3 } })
   })
 
+  it('开启审计反思工具时写入 tool_ids 与 audit_max_rounds', () => {
+    const form = createAgentForm({
+      id: 'agent-1',
+      name: 'Writer',
+      role: 'writer',
+      enabled: true,
+      tool_ids: ['builtin:character.search'],
+      runtime_options: { temperature: 0.2 }
+    })
+    form.auditReflectEnabled = true
+    form.auditMaxRounds = '3'
+    const config = agentFormToConfig(form)
+    expect(config.tool_ids).toEqual(['builtin:character.search', 'builtin:chapter.audit'])
+    expect(config.runtime_options).toEqual({ temperature: 0.2, audit_max_rounds: 3 })
+  })
+
+  it('关闭审计反思工具时移除 tool 与轮数且保留其他 runtime_options', () => {
+    const form = createAgentForm({
+      id: 'agent-1',
+      name: 'Writer',
+      role: 'writer',
+      enabled: true,
+      tool_ids: ['builtin:character.search', 'builtin:chapter.audit'],
+      runtime_options: { temperature: 0.4, audit_max_rounds: 4 }
+    })
+    expect(form.auditReflectEnabled).toBe(true)
+    expect(form.auditMaxRounds).toBe('4')
+    form.auditReflectEnabled = false
+    const config = agentFormToConfig(form)
+    expect(config.tool_ids).toEqual(['builtin:character.search'])
+    expect(config.runtime_options).toEqual({ temperature: 0.4 })
+  })
+
+  it('审计轮数非法时 Fail Fast', () => {
+    const form = createAgentForm()
+    form.name = 'Writer'
+    form.auditReflectEnabled = true
+    form.auditMaxRounds = '0'
+    expect(() => agentFormToConfig(form)).toThrow(/audit_max_rounds/)
+  })
+
   it('MCP transport 缺少必需端点时失败', () => {
     const form = createMCPForm()
     form.name = 'Server'

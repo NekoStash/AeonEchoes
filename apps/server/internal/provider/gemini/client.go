@@ -81,7 +81,10 @@ func (c *Client) Generate(ctx context.Context, req provider.TextRequest) (provid
 	if strings.TrimSpace(req.Model) == "" {
 		return provider.ModelResponse{}, fmt.Errorf("gemini text request model must not be empty")
 	}
-	contents := geminiContents(req)
+	contents, err := geminiContents(req)
+	if err != nil {
+		return provider.ModelResponse{}, err
+	}
 	if len(contents) == 0 {
 		return provider.ModelResponse{}, fmt.Errorf("gemini text request requires at least one message")
 	}
@@ -112,7 +115,10 @@ func (c *Client) Stream(ctx context.Context, req provider.TextRequest) (<-chan p
 	if strings.TrimSpace(req.Model) == "" {
 		return nil, fmt.Errorf("gemini text request model must not be empty")
 	}
-	contents := geminiContents(req)
+	contents, err := geminiContents(req)
+	if err != nil {
+		return nil, err
+	}
 	if len(contents) == 0 {
 		return nil, fmt.Errorf("gemini text request requires at least one message")
 	}
@@ -304,23 +310,109 @@ func geminiGenerateConfig(req provider.TextRequest) (*genai.GenerateContentConfi
 	return config, nil
 }
 
-func geminiContents(req provider.TextRequest) []*genai.Content {
+func geminiContents(req provider.TextRequest) ([]*genai.Content, error) {
 	messages := make([]*genai.Content, 0, len(req.Messages)+1)
-	for _, msg := range req.Messages {
-		content := provider.MessageContent(msg)
-		if strings.TrimSpace(content) == "" || strings.EqualFold(msg.Role, "system") || strings.EqualFold(msg.Role, "developer") {
-			continue
+	// Gemini expects functionResponse parts on a user turn immediately after the
+	// model functionCall turn. Consecutive tool results are merged into one user content.
+	var pendingResponseParts []*genai.Part
+	flushResponses := func() {
+		if len(pendingResponseParts) == 0 {
+			return
 		}
-		role := genai.Role(genai.RoleUser)
-		if strings.EqualFold(msg.Role, "assistant") || strings.EqualFold(msg.Role, "model") {
-			role = genai.Role(genai.RoleModel)
-		}
-		messages = append(messages, genai.NewContentFromText(content, role))
+		messages = append(messages, genai.NewContentFromParts(pendingResponseParts, genai.RoleUser))
+		pendingResponseParts = nil
 	}
+	for index, msg := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		switch role {
+		case "system", "developer":
+			continue
+		case "assistant", "model":
+			flushResponses()
+			parts, err := geminiModelParts(msg, index)
+			if err != nil {
+				return nil, err
+			}
+			messages = append(messages, genai.NewContentFromParts(parts, genai.RoleModel))
+		case "tool":
+			part, err := geminiFunctionResponsePart(msg, index)
+			if err != nil {
+				return nil, err
+			}
+			pendingResponseParts = append(pendingResponseParts, part)
+		case "user", "":
+			flushResponses()
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				return nil, fmt.Errorf("gemini message[%d] user content must not be empty", index)
+			}
+			messages = append(messages, genai.NewContentFromText(content, genai.RoleUser))
+		default:
+			return nil, fmt.Errorf("gemini message[%d] has unsupported role %q", index, msg.Role)
+		}
+	}
+	flushResponses()
 	if strings.TrimSpace(req.UserPrompt) != "" {
 		messages = append(messages, genai.NewContentFromText(req.UserPrompt, genai.RoleUser))
 	}
-	return messages
+	return messages, nil
+}
+
+func geminiModelParts(msg provider.Message, index int) ([]*genai.Part, error) {
+	parts := make([]*genai.Part, 0, len(msg.ToolCalls)+1)
+	if content := strings.TrimSpace(msg.Content); content != "" {
+		parts = append(parts, genai.NewPartFromText(content))
+	}
+	for callIndex, call := range msg.ToolCalls {
+		name := strings.TrimSpace(call.Name)
+		if name == "" {
+			return nil, fmt.Errorf("gemini message[%d] tool_calls[%d] name must not be empty", index, callIndex)
+		}
+		args, err := decodeJSONObject(call.Arguments, fmt.Sprintf("gemini message[%d] tool_calls[%d] arguments", index, callIndex))
+		if err != nil {
+			return nil, err
+		}
+		part := genai.NewPartFromFunctionCall(name, args)
+		if id := strings.TrimSpace(call.ID); id != "" && part.FunctionCall != nil {
+			part.FunctionCall.ID = id
+		}
+		parts = append(parts, part)
+	}
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("gemini message[%d] assistant content or tool_calls must not be empty", index)
+	}
+	return parts, nil
+}
+
+func geminiFunctionResponsePart(msg provider.Message, index int) (*genai.Part, error) {
+	name := strings.TrimSpace(msg.Name)
+	if name == "" {
+		return nil, fmt.Errorf("gemini message[%d] tool role requires name", index)
+	}
+	response, err := decodeJSONObject([]byte(msg.Content), fmt.Sprintf("gemini message[%d] tool content", index))
+	if err != nil {
+		return nil, err
+	}
+	part := genai.NewPartFromFunctionResponse(name, response)
+	if id := strings.TrimSpace(msg.ToolCallID); id != "" && part.FunctionResponse != nil {
+		part.FunctionResponse.ID = id
+	}
+	return part, nil
+}
+
+func decodeJSONObject(raw []byte, label string) (map[string]any, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" {
+		return map[string]any{}, nil
+	}
+	var object map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &object); err != nil {
+		return nil, fmt.Errorf("%s must be a JSON object: %w", label, err)
+	}
+	if object == nil {
+		return map[string]any{}, nil
+	}
+	return object, nil
 }
 
 func geminiTools(tools []provider.ToolSpec) ([]*genai.Tool, error) {

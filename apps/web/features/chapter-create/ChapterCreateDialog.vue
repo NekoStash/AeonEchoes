@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { CHAPTER_STATUS_VALUES, type Chapter } from '~/entities/chapter'
-import type { StoryBibleChapter } from '~/entities/story-bible'
 import { createChapterDraft, toCreateChapterRequest, type ChapterCreateDraft } from './model'
 
 const { t } = useI18n()
 const props = defineProps<{
   open: boolean
   chapters: Chapter[]
-  plans: StoryBibleChapter[]
   loading?: boolean
   error?: string
 }>()
@@ -20,22 +18,12 @@ const emit = defineEmits<{
 const draft = ref<ChapterCreateDraft>(createChapterDraft())
 const validationError = ref('')
 const statusOptions = computed(() => CHAPTER_STATUS_VALUES.map((status) => ({ label: t(`status.chapter.${status}`), value: status })))
-const planOptions = computed(() => props.plans.map((plan, index) => ({
-  label: plan.title || t('projectOverview.chapterCreate.untitledPlan', { number: index + 1 }),
-  value: plan.id,
-  description: plan.summary
-})))
 
 watch(() => props.open, (open) => {
   if (!open) return
   draft.value = createChapterDraft()
   validationError.value = ''
 })
-
-function applyPlan(planId: string) {
-  const plan = props.plans.find((item) => item.id === planId)
-  draft.value = createChapterDraft(plan)
-}
 
 function confirm() {
   validationError.value = ''
@@ -58,19 +46,6 @@ function confirm() {
     @update:open="!loading && emit('update:open', $event)"
   >
     <form class="space-y-5" @submit.prevent="confirm">
-      <label v-if="plans.length" class="block space-y-2">
-        <span class="field-label">{{ t('projectOverview.chapterCreate.fromPlan') }}</span>
-        <UiSelect
-          :model-value="draft.planId"
-          :options="planOptions"
-          :disabled="loading"
-          :placeholder="t('projectOverview.chapterCreate.noPlan')"
-          searchable
-          :aria-label="t('projectOverview.chapterCreate.fromPlan')"
-          @update:model-value="applyPlan"
-        />
-      </label>
-
       <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
         <label class="space-y-2">
           <span class="field-label">{{ t('projectOverview.fields.chapterTitle') }}</span>

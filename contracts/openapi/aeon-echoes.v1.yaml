@@ -2385,7 +2385,12 @@ components:
         memory_policy:
           $ref: '#/components/schemas/ObjectMap'
         runtime_options:
-          $ref: '#/components/schemas/ObjectMap'
+          allOf:
+            - $ref: '#/components/schemas/ObjectMap'
+          description: >
+            Free-form runtime options. Recognized keys include audit_max_rounds (integer 1-6, default 2),
+            which bounds chapter.audit calls within a single agent run when tool_ids contains builtin:chapter.audit.
+            Nested LLM audit tools are opt-in via tool_ids and are not exposed by empty tool_ids defaults.
         metadata:
           $ref: '#/components/schemas/StringMap'
         created_at:
@@ -3339,13 +3344,13 @@ components:
     AgentRunStreamEvent:
       type: object
       description: >-
-        Unified SSE business-event data object validated by the server before emission. Exactly one type-specific payload is allowed: run.started requires run; model.resolved requires model_resolution; tool.started and tool.completed require tool with matching status; content.delta requires a non-empty delta; run.completed requires the complete AgentRunResult in result; run.failed requires a non-empty error. Heartbeats are SSE comments and are not represented by this schema.
+        Unified SSE business-event data object validated by the server before emission. Exactly one type-specific payload is allowed: run.started requires run; model.resolved requires model_resolution; tool.started and tool.completed require tool with matching status; content.delta requires a non-empty delta; content.reset clears provisional streamed text when a tool round supersedes it and carries no payload fields; run.completed requires the complete AgentRunResult in result; run.failed requires a non-empty error. Heartbeats are SSE comments and are not represented by this schema.
       additionalProperties: false
       required: [type, sequence, run_id]
       properties:
         type:
           type: string
-          enum: [run.started, model.resolved, tool.started, tool.completed, content.delta, run.completed, run.failed]
+          enum: [run.started, model.resolved, tool.started, tool.completed, content.delta, content.reset, run.completed, run.failed]
         sequence:
           type: integer
           format: int64
@@ -3368,7 +3373,7 @@ components:
           minLength: 1
     AgentRunStreamTool:
       type: object
-      description: Public tool lifecycle identity only. Tool arguments and results are intentionally excluded because they may contain secrets or manuscript content.
+      description: Tool lifecycle payload for Agent run SSE. Includes optional arguments and result so clients can inspect narrative tool I/O after a proposal is produced.
       additionalProperties: false
       required: [call_id, name, status]
       properties:
@@ -3381,6 +3386,15 @@ components:
         status:
           type: string
           enum: [started, completed]
+        arguments:
+          description: Tool call arguments as a JSON object when available (typically present from tool.started onward).
+          type: object
+          additionalProperties: true
+        result:
+          description: Tool execution result as a JSON object when status is completed.
+          type: object
+          additionalProperties: true
+
     SkillScanResult:
       type: object
       properties:

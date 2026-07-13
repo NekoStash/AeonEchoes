@@ -67,6 +67,17 @@ describe('AssistantPanel Agent 选择', () => {
     expect(screen.queryByText('editor.assistant.emptyAgentsTitle')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'common.retry' })).toBeVisible()
   })
+
+  it('空章节可生成章节方案并发出 planChapter', async () => {
+    const user = userEvent.setup()
+    const view = renderPanel([{ id: 'agent-1', name: '剧情架构师', role: 'plot-architect', enabled: true }], '', {
+      isEmptyChapter: true
+    })
+
+    expect(screen.getByText('editor.assistant.emptyChapterTitle')).toBeVisible()
+    await user.click(screen.getByTestId('plan-chapter-button'))
+    expect(view.emitted('planChapter')).toHaveLength(1)
+  })
 })
 
 describe('AssistantPanel 流式生成与覆盖提案', () => {
@@ -88,11 +99,60 @@ describe('AssistantPanel 流式生成与覆盖提案', () => {
     })
 
     expect(screen.getByTestId('agent-stream-content')).toHaveTextContent('首段增量')
+    expect(screen.getByTestId('agent-stream-char-count')).toHaveTextContent('editor.stream.charsOutput')
+    expect(screen.getByTestId('agent-stream-tools-toggle')).toHaveTextContent('editor.stream.tools')
+    expect(screen.queryByText('搜索设定')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('agent-stream-tools-toggle'))
     expect(screen.getByText('搜索设定')).toBeVisible()
     expect(screen.getByText('editor.stream.toolStatus.started')).toBeVisible()
     expect(screen.getByRole('status')).toHaveTextContent('editor.stream.status.tool-running')
     await user.click(screen.getByRole('button', { name: 'editor.stream.cancel' }))
     expect(view.emitted('cancelRun')).toHaveLength(1)
+  })
+
+  it('提案区可展开工具列表并查看输入输出', async () => {
+    const user = userEvent.setup()
+    renderPanel([{ id: 'agent-1', name: '写手', role: 'writer', enabled: true }], '', {
+      proposals: [{
+        id: 'proposal:run-tools',
+        agentId: 'agent-1',
+        runId: 'run-tools',
+        content: '提案正文',
+        status: 'pending',
+        createdAt: '2026-01-01T00:00:00Z',
+        result: {
+          run: { id: 'run-tools', agent_id: 'agent-1', status: 'completed' },
+          content: '提案正文',
+          model_resolution: {
+            route_key: 'writer',
+            resolution_source: 'agent',
+            provider_id: 'p1',
+            provider_name: 'P',
+            provider_type: 'openai',
+            model_id: 'm1',
+            model_name: 'M',
+            model_kind: 'text'
+          }
+        },
+        tools: [{
+          call_id: 'call-1',
+          name: 'character.upsert',
+          status: 'completed',
+          arguments: { project_id: 'project-1', name: '林深' },
+          result: { action: 'created', id: 'entity-1' }
+        }]
+      }]
+    })
+
+    expect(screen.getByTestId('agent-proposal-tools-toggle')).toBeVisible()
+    expect(screen.queryByText('character.upsert')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('agent-proposal-tools-toggle'))
+    expect(screen.getByText('character.upsert')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: /character\.upsert/ }))
+    expect(screen.getByText('editor.stream.toolInput')).toBeVisible()
+    expect(screen.getByText(/"name": "林深"/)).toBeVisible()
+    expect(screen.getByText('editor.stream.toolOutput')).toBeVisible()
+    expect(screen.getByText(/"action": "created"/)).toBeVisible()
   })
 
   it('finalizing 保持运行锁并隐藏取消按钮', () => {
@@ -162,7 +222,7 @@ describe('AssistantPanel 流式生成与覆盖提案', () => {
       }
     }
     const view = renderPanel([], '', {
-      proposals: [{ id: 'proposal:run-1', agentId: 'agent-1', runId: 'run-1', content: '完整提案', status: 'pending', createdAt: '2026-01-01T00:00:00Z', result }],
+      proposals: [{ id: 'proposal:run-1', agentId: 'agent-1', runId: 'run-1', content: '完整提案', status: 'pending', createdAt: '2026-01-01T00:00:00Z', result, tools: [] }],
       streamState: { status: 'completed', chapterId: 'chapter-1', runId: 'run-1', content: '完整提案', tools: [], modelResolution: result.model_resolution, error: '' }
     })
 

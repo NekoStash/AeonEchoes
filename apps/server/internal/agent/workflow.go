@@ -443,7 +443,7 @@ func (r *WorkflowRunner) DraftChapter(ctx context.Context, req DraftRequest) (Dr
 	loopResult, err := r.generateWithTools(ctx, client, selectionModel, provider.TextRequest{
 		Model:           selectionModel.Model.Name,
 		SystemPrompt:    writerSystemPrompt(),
-		UserPrompt:      fmt.Sprintf("章节写作简报：%s\n\n上下文包 JSON：%s", req.Brief, string(promptBytes)),
+		UserPrompt:      draftUserPrompt(req, string(promptBytes)),
 		MaxOutputTokens: firstPositive(req.MaxOutputTokens, selectionModel.Model.MaxOutputTokens, 1800),
 		Temperature:     0.7,
 	})
@@ -487,7 +487,8 @@ func (r *WorkflowRunner) generateWithTools(ctx context.Context, client provider.
 	if !selection.Model.SupportsTools {
 		return ToolLoopResult{}, fmt.Errorf("selected model %q does not support tools", selection.Model.ID)
 	}
-	req.Tools = NarrativeToolSpecs()
+	// Writing workflows never expose opt-in nested LLM tools such as chapter.audit.
+	req.Tools = NarrativeToolSpecsForWorkflow()
 	return RunToolLoop(ctx, client, req, NewToolExecutor(r.store), defaultToolLoopMaxRounds)
 }
 
@@ -882,15 +883,57 @@ func deterministicBible(seed domain.ProjectSeed) domain.StoryBible {
 }
 
 func chapterIdeaSystemPrompt() string {
-	return "你是 AI 小说创作平台中的 Plot Architect Agent。你的任务是为当前单章生成章节想法/章节方案，而不是写正文。必须只使用提供的 ContextPack 与用户意图，输出 Markdown 半结构化 brief，至少包含：本章目标、承接与铺垫、场景节拍、冲突/转折、角色状态变化、伏笔处理、写作注意。"
+	return strings.Join([]string{
+		"你是 AI 小说创作平台中的 Plot Architect Agent。",
+		"你的任务是为当前单章生成章节想法/章节方案，而不是写正文。",
+		"必须只使用提供的 ContextPack 与用户意图，并在需要时通过工具把新实体同步到项目图谱。",
+		"工具强制流程：",
+		"1）新角色必须先 character.search 再 character.upsert；",
+		"2）新事件必须先 event.search 再 event.upsert；",
+		"3）伏笔/情节线必须先 plot_thread.search 再 plot_thread.upsert，status 使用 open 或 closed，并按需要填写 opened_chapter_id / closed_chapter_id；",
+		"4）角色关系使用 relationship.upsert；",
+		"5）所有工具参数必须带 project_id，且 project_id 必须来自上下文包/用户请求，不得编造；",
+		"6）完成全部必要工具调用并读取工具结果后，再输出最终 Markdown brief。",
+		"最终输出必须是 Markdown 半结构化 brief，至少包含：本章目标、承接与铺垫、场景节拍、冲突/转折、角色状态变化、伏笔处理、写作注意。",
+		"其中“伏笔处理”必须明确写出打开/推进/回收了哪些 plot_thread，并与工具写入结果一致。",
+	}, "")
 }
 
 func chapterIdeaUserPrompt(req ChapterIdeaRequest, contextPackJSON string) string {
-	return fmt.Sprintf("章节：%s\n章节方案输入：%s\n\n上下文包 JSON：%s\n\n请输出可直接交给 Writer Agent 续写正文的单章方案，不要写正文。", firstText(req.Title, req.ChapterID, "未命名章节"), req.Brief, contextPackJSON)
+	return fmt.Sprintf(
+		"project_id：%s\n章节：%s\n章节方案输入：%s\n\n上下文包 JSON：%s\n\n请先用工具同步本方案涉及的新角色、事件、伏笔/情节线与关系（所有工具参数必须带上述 project_id），再输出可直接交给 Writer Agent 续写正文的单章方案，不要写正文。",
+		strings.TrimSpace(req.ProjectID),
+		firstText(req.Title, req.ChapterID, "未命名章节"),
+		req.Brief,
+		contextPackJSON,
+	)
 }
 
 func writerSystemPrompt() string {
-	return "你是 AI 小说创作平台中的 Writer Agent。只使用提供的 ContextPack 写作，不假设完整小说上下文；如上下文不足，应在正文中保持克制，不新增破坏连续性的事实。如果写作简报包含章节方案，必须以该方案为主要结构依据，同时保持正文自然流畅。"
+	return strings.Join([]string{
+		"你是 AI 小说创作平台中的 Writer Agent。",
+		"只使用提供的 ContextPack 写作，不假设完整小说上下文；如上下文不足，应在正文中保持克制，不新增破坏连续性的事实。",
+		"如果写作简报包含章节方案，必须以该方案为主要结构依据，同时保持正文自然流畅。",
+		"写作过程中的图谱同步要求：",
+		"1）发现 ContextPack 未覆盖的新角色时，先 character.search 再 character.upsert，然后再写入正文；",
+		"2）发现新事件时，先 event.search 再 event.upsert；",
+		"3）发现新伏笔/情节线或需要关闭伏笔时，先 plot_thread.search 再 plot_thread.upsert（status=open/closed，并填写 opened_chapter_id/closed_chapter_id）；",
+		"4）明确角色关系时调用 relationship.upsert；",
+		"5）所有工具参数必须带 project_id，且 project_id 必须来自上下文包/用户请求；",
+		"6）至少对本章新出现且 ContextPack 未覆盖的实体完成 search+upsert。",
+		"最终输出必须是可直接写入章节编辑器的纯正文本身：不要输出 JSON、工具计划、解释、标题层级、列表标记、代码块、粗体/斜体标记或其他 Markdown 语法。",
+		"正文使用自然段落与换行即可，禁止用 #、*、-、```、[]() 等 Markdown 格式组织内容。",
+	}, "")
+}
+
+func draftUserPrompt(req DraftRequest, contextPackJSON string) string {
+	return fmt.Sprintf(
+		"project_id：%s\n章节：%s\n章节写作简报：%s\n\n上下文包 JSON：%s\n\n请在写作中按需调用角色/事件/伏笔工具（所有工具参数必须带上述 project_id），完成必要工具调用后输出正文。",
+		strings.TrimSpace(req.ProjectID),
+		firstText(req.Title, req.ChapterID, "未命名章节"),
+		req.Brief,
+		contextPackJSON,
+	)
 }
 
 func characterProfilesSystemPrompt() string {

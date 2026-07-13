@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpenText, GitFork, ListTree, UsersRound } from '@lucide/vue'
+import { GitFork, ListTree, Sparkles, UsersRound } from '@lucide/vue'
 import type { Chapter } from '~/entities/chapter'
 import type { StoryBible } from '~/entities/story-bible'
 
@@ -24,8 +24,8 @@ defineProps<{
 
       <dl class="grid grid-cols-2 border-l-4 border-foreground bg-muted/45">
         <div class="border-b border-r border-border p-5">
-          <dt class="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground"><BookOpenText class="h-4 w-4" aria-hidden="true" />{{ t('projectOverview.summary.plans') }}</dt>
-          <dd class="mt-3 font-serif text-4xl">{{ bible.chapter_plan.length }}</dd>
+          <dt class="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground"><Sparkles class="h-4 w-4" aria-hidden="true" />{{ t('projectOverview.summary.foreshadows') }}</dt>
+          <dd class="mt-3 font-serif text-4xl">{{ bible.foreshadows.length }}</dd>
         </div>
         <div class="border-b border-border p-5">
           <dt class="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground"><ListTree class="h-4 w-4" aria-hidden="true" />{{ t('projectOverview.summary.realChapters') }}</dt>

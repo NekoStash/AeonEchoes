@@ -23,7 +23,7 @@ describe('ChapterCreateDialog', () => {
   it('章节状态选项完整使用统一中文键', async () => {
     const user = userEvent.setup()
     render(ChapterCreateDialog, {
-      props: { open: true, chapters: [], plans: [] },
+      props: { open: true, chapters: [] },
       global: { ...global, stubs: { Teleport: true } }
     })
 
@@ -38,7 +38,7 @@ describe('ChapterCreateDialog', () => {
   it('取消不会发出确认事件', async () => {
     const user = userEvent.setup()
     const view = render(ChapterCreateDialog, {
-      props: { open: true, chapters: [], plans: [] },
+      props: { open: true, chapters: [] },
       global: { ...global, stubs: { Teleport: true } }
     })
 
@@ -51,7 +51,7 @@ describe('ChapterCreateDialog', () => {
   it('填写并确认后才发出真实章节创建请求', async () => {
     const user = userEvent.setup()
     const view = render(ChapterCreateDialog, {
-      props: { open: true, chapters: [], plans: [] },
+      props: { open: true, chapters: [] },
       global: { ...global, stubs: { Teleport: true } }
     })
 
@@ -60,7 +60,8 @@ describe('ChapterCreateDialog', () => {
     await user.click(screen.getByRole('button', { name: '确认新建章节' }))
 
     expect(view.emitted().confirm).toEqual([[
-      { number: 1, title: '第一章', status: 'drafting', summary: undefined, metadata: undefined }
+      { number: 1, title: '第一章', status: 'drafting', summary: undefined }
     ]])
+    expect(screen.queryByText('引用章节规划')).not.toBeInTheDocument()
   })
 })

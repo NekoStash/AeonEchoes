@@ -167,6 +167,10 @@ func (r *Registry) ListProviderTools(ctx context.Context, cfg domain.AgentConfig
 			if name == "" || !currentBuiltins[name] {
 				continue
 			}
+			// Opt-in tools (for example chapter.audit) stay hidden unless tool_ids explicitly lists them.
+			if defaultBuiltinOnly && agent.IsOptInBuiltinTool(name) {
+				continue
+			}
 		}
 		spec, ok, err := providerToolSpec(tool)
 		if err != nil {

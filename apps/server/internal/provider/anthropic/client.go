@@ -147,7 +147,10 @@ func anthropicMessageParams(req provider.TextRequest) (anthropicsdk.MessageNewPa
 	if strings.TrimSpace(req.Model) == "" {
 		return anthropicsdk.MessageNewParams{}, fmt.Errorf("anthropic text request model must not be empty")
 	}
-	messages := anthropicMessages(req)
+	messages, err := anthropicMessages(req)
+	if err != nil {
+		return anthropicsdk.MessageNewParams{}, err
+	}
 	if len(messages) == 0 {
 		return anthropicsdk.MessageNewParams{}, fmt.Errorf("anthropic text request requires at least one user or assistant message")
 	}
@@ -223,26 +226,109 @@ func normalizeAnthropicBaseURL(baseURL string) string {
 	return trimmed
 }
 
-func anthropicMessages(req provider.TextRequest) []anthropicsdk.MessageParam {
+func anthropicMessages(req provider.TextRequest) ([]anthropicsdk.MessageParam, error) {
 	messages := make([]anthropicsdk.MessageParam, 0, len(req.Messages)+1)
-	for _, msg := range req.Messages {
-		content := provider.MessageContent(msg)
-		if strings.TrimSpace(content) == "" {
-			continue
+	// Anthropic requires tool_result blocks to live in a user message that
+	// immediately follows the assistant tool_use message. Consecutive tool
+	// results from the same tool round are therefore merged into one user turn.
+	var pendingToolResults []anthropicsdk.ContentBlockParamUnion
+	flushToolResults := func() {
+		if len(pendingToolResults) == 0 {
+			return
 		}
-		switch strings.ToLower(strings.TrimSpace(msg.Role)) {
+		messages = append(messages, anthropicsdk.NewUserMessage(pendingToolResults...))
+		pendingToolResults = nil
+	}
+	for index, msg := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
+		switch role {
 		case "system", "developer":
 			continue
 		case "assistant":
-			messages = append(messages, anthropicsdk.NewAssistantMessage(anthropicsdk.NewTextBlock(content)))
-		default:
+			flushToolResults()
+			blocks, err := anthropicAssistantBlocks(msg, index)
+			if err != nil {
+				return nil, err
+			}
+			messages = append(messages, anthropicsdk.NewAssistantMessage(blocks...))
+		case "tool":
+			block, err := anthropicToolResultBlock(msg, index)
+			if err != nil {
+				return nil, err
+			}
+			pendingToolResults = append(pendingToolResults, block)
+		case "user", "":
+			flushToolResults()
+			content := strings.TrimSpace(msg.Content)
+			if content == "" {
+				return nil, fmt.Errorf("anthropic message[%d] user content must not be empty", index)
+			}
 			messages = append(messages, anthropicsdk.NewUserMessage(anthropicsdk.NewTextBlock(content)))
+		default:
+			return nil, fmt.Errorf("anthropic message[%d] has unsupported role %q", index, msg.Role)
 		}
 	}
+	flushToolResults()
 	if strings.TrimSpace(req.UserPrompt) != "" {
 		messages = append(messages, anthropicsdk.NewUserMessage(anthropicsdk.NewTextBlock(req.UserPrompt)))
 	}
-	return messages
+	return messages, nil
+}
+
+func anthropicAssistantBlocks(msg provider.Message, index int) ([]anthropicsdk.ContentBlockParamUnion, error) {
+	blocks := make([]anthropicsdk.ContentBlockParamUnion, 0, len(msg.ToolCalls)+1)
+	if content := strings.TrimSpace(msg.Content); content != "" {
+		blocks = append(blocks, anthropicsdk.NewTextBlock(content))
+	}
+	for callIndex, call := range msg.ToolCalls {
+		name := strings.TrimSpace(call.Name)
+		if name == "" {
+			return nil, fmt.Errorf("anthropic message[%d] tool_calls[%d] name must not be empty", index, callIndex)
+		}
+		id := strings.TrimSpace(call.ID)
+		if id == "" {
+			return nil, fmt.Errorf("anthropic message[%d] tool_calls[%d] id must not be empty", index, callIndex)
+		}
+		input, err := decodeToolCallInput(call.Arguments, index, callIndex)
+		if err != nil {
+			return nil, err
+		}
+		blocks = append(blocks, anthropicsdk.NewToolUseBlock(id, input, name))
+	}
+	if len(blocks) == 0 {
+		return nil, fmt.Errorf("anthropic message[%d] assistant content or tool_calls must not be empty", index)
+	}
+	return blocks, nil
+}
+
+func anthropicToolResultBlock(msg provider.Message, index int) (anthropicsdk.ContentBlockParamUnion, error) {
+	toolCallID := strings.TrimSpace(msg.ToolCallID)
+	if toolCallID == "" {
+		return anthropicsdk.ContentBlockParamUnion{}, fmt.Errorf("anthropic message[%d] tool role requires tool_call_id", index)
+	}
+	content := msg.Content
+	if strings.TrimSpace(content) == "" {
+		content = "{}"
+	}
+	return anthropicsdk.NewToolResultBlock(toolCallID, content, false), nil
+}
+
+func decodeToolCallInput(raw json.RawMessage, messageIndex, callIndex int) (any, error) {
+	if len(raw) == 0 {
+		return map[string]any{}, nil
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" {
+		return map[string]any{}, nil
+	}
+	var input any
+	if err := json.Unmarshal([]byte(trimmed), &input); err != nil {
+		return nil, fmt.Errorf("anthropic message[%d] tool_calls[%d] arguments must be valid JSON: %w", messageIndex, callIndex, err)
+	}
+	if input == nil {
+		return map[string]any{}, nil
+	}
+	return input, nil
 }
 
 func anthropicTools(tools []provider.ToolSpec) ([]anthropicsdk.ToolUnionParam, error) {

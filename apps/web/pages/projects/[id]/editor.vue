@@ -23,9 +23,10 @@ import AssistantPanel from '~/widgets/assistant-panel/AssistantPanel.vue'
 import WritingWorkspace from '~/widgets/writing-workspace/WritingWorkspace.vue'
 import type { AgentRunResult, AgentRunStreamEvent, AgentRunStreamState, AgentRunStreamTool } from '~/entities/agent'
 import { preferredAgent, useAgentStore } from '~/entities/agent'
-import type { Chapter, ChapterVersion } from '~/entities/chapter'
+import type { Chapter, ChapterStatus, ChapterVersion } from '~/entities/chapter'
 import { useChapterStore } from '~/entities/chapter'
 import { useStoryBibleStore } from '~/entities/story-bible'
+import type { ModelResolution } from '~/lib/types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -66,8 +67,10 @@ const chapterLoadError = ref('')
 const agentLoadError = ref('')
 const loading = ref(true)
 const loadingAgents = ref(false)
+const planningChapter = ref(false)
 const loadingVersions = computed(() => chapterStore.versionListRequest.loading)
 const savingVersion = computed(() => chapterStore.versionSaveRequest.loading)
+const statusUpdating = computed(() => chapterStore.updateRequest.loading)
 const assistantOpen = ref(false)
 const fullscreen = ref(false)
 const diffOpen = ref(false)
@@ -94,6 +97,8 @@ let streamController: AbortController | null = null
 const dirty = computed(() => title.value !== baseTitle.value || content.value !== baseContent.value)
 const metrics = computed(() => countWritingMetrics(content.value))
 const selectedText = computed(() => content.value.slice(selection.value.start, selection.value.end))
+const isEmptyChapter = computed(() => versions.value.length === 0 && !content.value.trim())
+const preferredRole = computed(() => isEmptyChapter.value ? 'plot-architect' as const : undefined)
 const diagnostics = computed(() => ({
   modelResolution: streamState.modelResolution || latestAgentRun.value?.model_resolution || null,
   toolTrace: latestAgentRun.value?.tool_trace || []
@@ -171,13 +176,17 @@ async function loadEditor() {
   }
 }
 
+function resolvePreferredAgentId() {
+  return preferredAgent(agents.value, projectId.value, preferredRole.value)?.id || ''
+}
+
 async function loadAgents() {
   loadingAgents.value = true
   agentLoadError.value = ''
   try {
     await agentStore.load(agentListOptions.value)
     if (!selectedAgentId.value || !agents.value.some((agent) => agent.id === selectedAgentId.value)) {
-      selectedAgentId.value = preferredAgent(agents.value, projectId.value)?.id || ''
+      selectedAgentId.value = resolvePreferredAgentId()
     }
   } catch (cause) {
     console.error('[AeonEchoes Editor] Failed to load agents.', cause)
@@ -225,6 +234,11 @@ async function loadCurrentChapter() {
     selection.value = { start: content.value.length, end: content.value.length }
     prompt.value = chapter.summary || t('editor.assistant.defaultPrompt', { title: chapter.title })
     hydrateLocalDraft()
+    // 空章优先 plot-architect；章节切换后若当前选择无效则重选
+    if (!selectedAgentId.value || !agents.value.some((agent) => agent.id === selectedAgentId.value) || isEmptyChapter.value) {
+      const preferredId = resolvePreferredAgentId()
+      if (preferredId) selectedAgentId.value = preferredId
+    }
   } catch (cause) {
     console.error('[AeonEchoes Editor] Failed to load chapter versions.', cause)
     pageError.value = chapterStore.versionListRequest.error?.message || (cause instanceof Error ? cause.message : t('editor.errors.loadVersionsFailed'))
@@ -331,6 +345,102 @@ async function syncRealChapterTitle(chapter: Chapter, nextTitle: string) {
   return result.data
 }
 
+async function updateChapterStatus(status: ChapterStatus) {
+  if (strictResolution.value.state !== 'ready') {
+    pageError.value = t('editor.errors.realChapterRequired')
+    toast.error(pageError.value)
+    return
+  }
+  const chapter = strictResolution.value.chapter
+  if (chapter.status === status) return
+  pageError.value = ''
+  try {
+    await chapterStore.update(projectId.value, {
+      chapter_id: chapter.id,
+      number: chapter.number,
+      title: chapter.title,
+      status,
+      summary: chapter.summary,
+      metadata: chapter.metadata
+    })
+    toast.success(t('editor.feedback.statusUpdated'))
+  } catch (cause) {
+    console.error('[AeonEchoes Editor] Failed to update chapter status.', cause)
+    pageError.value = chapterStore.updateRequest.error?.message
+      || (cause instanceof Error ? cause.message : t('editor.errors.updateStatusFailed'))
+    toast.error(pageError.value)
+  }
+}
+
+function emptyModelResolution(): ModelResolution {
+  return {
+    route_key: '',
+    resolution_source: 'chapter-idea',
+    provider_id: '',
+    provider_name: '',
+    provider_type: 'openai-responses',
+    model_id: '',
+    model_name: '',
+    model_kind: 'text'
+  }
+}
+
+async function planChapter() {
+  if (planningChapter.value || runningAgent.value) {
+    console.error('[AeonEchoes Editor] Refused concurrent chapter planning.')
+    return
+  }
+  if (strictResolution.value.state !== 'ready') {
+    pageError.value = t('editor.errors.realChapterRequired')
+    toast.error(pageError.value)
+    return
+  }
+  const chapter = strictResolution.value.chapter
+  const brief = (prompt.value || chapter.summary || chapter.title || title.value).trim()
+  if (!brief) {
+    pageError.value = t('editor.errors.planBriefRequired')
+    toast.error(pageError.value)
+    return
+  }
+
+  planningChapter.value = true
+  pageError.value = ''
+  try {
+    const contextSelection = buildContextSelection(chapters.value, storyBible.value, projectId.value, chapter.id, contextState.value)
+    const result = await useApi().generateChapterIdea(projectId.value, chapter.id, {
+      chapter_id: chapter.id,
+      title: title.value || chapter.title,
+      brief,
+      prompt: prompt.value.trim() || undefined,
+      context_selection: contextSelection
+    })
+    const idea = result.data.chapter_idea.trim()
+    if (!idea) {
+      throw new Error(t('editor.errors.generatePlanFailed'))
+    }
+    const agentId = selectedAgentId.value || resolvePreferredAgentId() || 'chapter-idea'
+    const proposal = createAgentProposal(agentId, {
+      run: {
+        id: `chapter-idea:${chapter.id}:${Date.now()}`,
+        agent_id: agentId,
+        project_id: projectId.value,
+        status: 'completed'
+      },
+      content: idea,
+      model_resolution: result.data.model_resolution || emptyModelResolution(),
+      tool_trace: (result.data.tool_trace || []).map((name) => ({ name }))
+    })
+    proposals.value = [proposal, ...proposals.value]
+    toast.success(t('editor.feedback.planReady'))
+  } catch (cause) {
+    console.error('[AeonEchoes Editor] Failed to generate chapter idea.', cause)
+    pageError.value = cause instanceof Error ? cause.message : t('editor.errors.generatePlanFailed')
+    toast.error(pageError.value)
+  } finally {
+    planningChapter.value = false
+  }
+}
+
 async function saveVersion() {
   if (strictResolution.value.state !== 'ready') {
     pageError.value = t('editor.errors.realChapterRequired')
@@ -410,6 +520,11 @@ function handleAgentStreamEvent(event: AgentRunStreamEvent, session: number, run
     streamState.status = 'streaming'
     return
   }
+  if (event.type === 'content.reset') {
+    streamState.content = ''
+    streamState.status = 'streaming'
+    return
+  }
   if (event.type === 'run.failed') {
     streamState.status = 'failed'
     streamState.error = event.error
@@ -472,11 +587,12 @@ async function runAgent() {
       onEvent: (event) => handleAgentStreamEvent(event, session, runChapterId)
     })
     if (session !== streamSession || runChapterId !== chapterId.value || streamState.runId !== result.run.id) return
-    const proposal = createAgentProposal(agent.id, result)
+    const proposal = createAgentProposal(agent.id, result, new Date().toISOString(), streamState.tools.map((tool) => ({ ...tool })))
     latestAgentRun.value = result
     streamState.content = result.content
     streamState.modelResolution = result.model_resolution
     proposals.value = [proposal, ...proposals.value]
+
     streamState.status = 'completed'
     toast.success(t('editor.proposals.received'))
   } catch (cause) {
@@ -618,10 +734,12 @@ function loadVersion(versionId: string) {
           :dirty="dirty"
           :saving="savingVersion"
           :fullscreen="fullscreen"
+          :status-updating="statusUpdating"
           @update:title="title = $event"
           @update:content="content = $event"
           @update:selected-chapter-id="selectChapter"
           @update:fullscreen="fullscreen = $event"
+          @update:status="updateChapterStatus"
           @selection="selection = $event"
           @save="saveVersion"
           @assistant="assistantOpen = true"
@@ -648,11 +766,14 @@ function loadVersion(versionId: string) {
             :stream-state="streamState"
             :loading-versions="loadingVersions"
             :diagnostics="diagnostics"
+            :planning-chapter="planningChapter"
+            :is-empty-chapter="isEmptyChapter"
             @update:prompt="prompt = $event"
             @update:selected-agent-id="selectedAgentId = $event"
             @update:context-state="contextState = $event"
             @retry-agents="loadAgents"
             @run="runAgent"
+            @plan-chapter="planChapter"
             @cancel-run="cancelAgentRun"
             @insert="handleProposal($event, 'insert')"
             @replace="handleProposal($event, 'replace')"
@@ -692,11 +813,14 @@ function loadVersion(versionId: string) {
           :stream-state="streamState"
           :loading-versions="loadingVersions"
           :diagnostics="diagnostics"
+          :planning-chapter="planningChapter"
+          :is-empty-chapter="isEmptyChapter"
           @update:prompt="prompt = $event"
           @update:selected-agent-id="selectedAgentId = $event"
           @update:context-state="contextState = $event"
           @retry-agents="loadAgents"
           @run="runAgent"
+          @plan-chapter="planChapter"
           @cancel-run="cancelAgentRun"
           @insert="handleProposal($event, 'insert')"
           @replace="handleProposal($event, 'replace')"

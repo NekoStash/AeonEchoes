@@ -15,6 +15,7 @@ func TestAgentRunStreamEventTypeExcludesHeartbeatComments(t *testing.T) {
 		ToolStarted,
 		ToolCompleted,
 		ContentDelta,
+		ContentReset,
 		RunCompleted,
 		RunFailed,
 	}
@@ -25,7 +26,7 @@ func TestAgentRunStreamEventTypeExcludesHeartbeatComments(t *testing.T) {
 	}
 }
 
-func TestAgentRunStreamToolContainsOnlyPublicLifecycleIdentity(t *testing.T) {
+func TestAgentRunStreamToolContainsPublicLifecycleIdentity(t *testing.T) {
 	tool := AgentRunStreamTool{CallId: "call-1", Name: "character.search", Status: Started}
 	if err := tool.Validate(); err != nil || !tool.Valid() {
 		t.Fatalf("valid public tool rejected: %v", err)
@@ -34,6 +35,7 @@ func TestAgentRunStreamToolContainsOnlyPublicLifecycleIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
+	// Identity-only payloads remain valid; arguments/result are optional inspection fields.
 	if string(payload) != `{"call_id":"call-1","name":"character.search","status":"started"}` {
 		t.Fatalf("public tool payload = %s", payload)
 	}

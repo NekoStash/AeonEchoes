@@ -136,6 +136,20 @@ export type ProviderDeleteResponse = {
   status: string
 }
 
+export type ChapterIdeaResult = {
+  chapter_idea: string
+  workflow?: AIWorkflow
+  model_resolution?: ModelResolution
+  tool_trace?: string[]
+}
+
+export type DraftChapterResult = {
+  chapter_version?: ChapterVersion
+  workflow?: AIWorkflow
+  model_resolution?: ModelResolution
+  tool_trace?: string[]
+}
+
 type ModelSaveRequest = GeneratedApi.ModelRequest
 
 type BackendProjectSeedRequest = GeneratedApi.ProjectSeed
@@ -226,6 +240,8 @@ export interface ApiClient extends ApiDomains {
   updateChapter(projectId: string, request: UpdateChapterRequest): Promise<ApiResult<Chapter>>
   listChapterVersions(projectId: string, chapterId: string): Promise<ApiResult<ChapterVersion[]>>
   saveChapterVersion(projectId: string, version: ChapterVersionWriteRequest): Promise<ApiResult<SaveChapterVersionResponse>>
+  generateChapterIdea(projectId: string, chapterId: string, body?: GeneratedApi.ChapterIdeaRequest): Promise<ApiResult<ChapterIdeaResult>>
+  draftChapter(projectId: string, chapterId: string, body?: GeneratedApi.DraftRequest): Promise<ApiResult<DraftChapterResult>>
   listAgents(options?: AgentListOptions): Promise<ApiResult<AgentConfig[]>>
   saveAgent(agent: AgentConfig, mode?: 'create' | 'edit'): Promise<ApiResult<AgentConfig>>
   deleteAgent(id: string): Promise<ApiResult<{ status: string }>>
@@ -1065,6 +1081,45 @@ function normalizeIndexJob(value: unknown, index = 0, endpoint = 'indexJob'): In
   }
 }
 
+function normalizeChapterIdeaResponse(value: unknown): ChapterIdeaResult {
+  const endpoint = 'generateChapterIdea'
+  const payload = requireApiRecord(value, endpoint)
+  const chapterIdea = requireApiString(payload.chapter_idea, endpoint, 'chapter_idea')
+  return {
+    chapter_idea: chapterIdea,
+    workflow: payload.workflow === undefined ? undefined : normalizeWorkflow(payload.workflow, endpoint),
+    model_resolution: payload.model_resolution === undefined
+      ? undefined
+      : normalizeModelResolution(payload.model_resolution, endpoint),
+    tool_trace: optionalApiArray(
+      payload.tool_trace,
+      endpoint,
+      'tool_trace',
+      (item, index) => requireApiString(item, endpoint, `tool_trace[${index}]`, { allowEmpty: true })
+    )
+  }
+}
+
+function normalizeDraftChapterResponse(value: unknown): DraftChapterResult {
+  const endpoint = 'draftChapter'
+  const payload = requireApiRecord(value, endpoint)
+  return {
+    chapter_version: payload.chapter_version === undefined
+      ? undefined
+      : normalizeChapterVersion(payload.chapter_version, 0, endpoint),
+    workflow: payload.workflow === undefined ? undefined : normalizeWorkflow(payload.workflow, endpoint),
+    model_resolution: payload.model_resolution === undefined
+      ? undefined
+      : normalizeModelResolution(payload.model_resolution, endpoint),
+    tool_trace: optionalApiArray(
+      payload.tool_trace,
+      endpoint,
+      'tool_trace',
+      (item, index) => requireApiString(item, endpoint, `tool_trace[${index}]`, { allowEmpty: true })
+    )
+  }
+}
+
 function normalizeSaveChapterVersionResponse(value: unknown): SaveChapterVersionResponse {
   const endpoint = 'createChapterVersion'
   const response = requireApiRecord(value, endpoint)
@@ -1405,6 +1460,48 @@ export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient 
         (response) => normalizeSaveChapterVersionResponse(response)
       )
     },
+    generateChapterIdea(projectId, chapterId, body = {}) {
+      const normalizedProjectId = requirePathId(projectId, 'project_id')
+      const normalizedChapterId = requirePathId(chapterId, 'chapter_id')
+      return mapApi(
+        'generateChapterIdea',
+        () => apiSdk.generateChapterIdea({
+          path: { projectID: normalizedProjectId, chapterID: normalizedChapterId },
+          body: {
+            ...body,
+            chapter_id: body.chapter_id || normalizedChapterId,
+            context_selection: body.context_selection
+              ? contextSelectionToBackend(body.context_selection)
+              : undefined,
+            reference_selection: body.reference_selection
+              ? contextSelectionToBackend(body.reference_selection)
+              : undefined
+          }
+        }),
+        (response) => normalizeChapterIdeaResponse(response)
+      )
+    },
+    draftChapter(projectId, chapterId, body = {}) {
+      const normalizedProjectId = requirePathId(projectId, 'project_id')
+      const normalizedChapterId = requirePathId(chapterId, 'chapter_id')
+      return mapApi(
+        'draftChapter',
+        () => apiSdk.draftChapter({
+          path: { projectID: normalizedProjectId, chapterID: normalizedChapterId },
+          body: {
+            ...body,
+            chapter_id: body.chapter_id || normalizedChapterId,
+            context_selection: body.context_selection
+              ? contextSelectionToBackend(body.context_selection)
+              : undefined,
+            reference_selection: body.reference_selection
+              ? contextSelectionToBackend(body.reference_selection)
+              : undefined
+          }
+        }),
+        (response) => normalizeDraftChapterResponse(response)
+      )
+    },
     listAgents(options) {
       return mapApi(
         'listAgents',
@@ -1590,7 +1687,9 @@ export function createApiClient(rawBaseUrl: string, locale?: string): ApiClient 
       createChapter: client.createChapter,
       updateChapter: client.updateChapter,
       listChapterVersions: client.listChapterVersions,
-      saveChapterVersion: client.saveChapterVersion
+      saveChapterVersion: client.saveChapterVersion,
+      generateChapterIdea: client.generateChapterIdea,
+      draftChapter: client.draftChapter
     },
     graph: {
       expandGraph: client.expandGraph,

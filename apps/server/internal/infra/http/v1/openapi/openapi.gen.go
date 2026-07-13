@@ -17,6 +17,7 @@ import (
 // Defines values for AgentRunStreamEventType.
 const (
 	ContentDelta  AgentRunStreamEventType = "content.delta"
+	ContentReset  AgentRunStreamEventType = "content.reset"
 	ModelResolved AgentRunStreamEventType = "model.resolved"
 	RunCompleted  AgentRunStreamEventType = "run.completed"
 	RunFailed     AgentRunStreamEventType = "run.failed"
@@ -29,6 +30,8 @@ const (
 func (e AgentRunStreamEventType) Valid() bool {
 	switch e {
 	case ContentDelta:
+		return true
+	case ContentReset:
 		return true
 	case ModelResolved:
 		return true
@@ -288,7 +291,7 @@ type AgentRunResult struct {
 	ToolTrace       *[]ToolTrace     `json:"tool_trace,omitempty"`
 }
 
-// AgentRunStreamEvent Unified SSE business-event data object validated by the server before emission. Exactly one type-specific payload is allowed: run.started requires run; model.resolved requires model_resolution; tool.started and tool.completed require tool with matching status; content.delta requires a non-empty delta; run.completed requires the complete AgentRunResult in result; run.failed requires a non-empty error. Heartbeats are SSE comments and are not represented by this schema.
+// AgentRunStreamEvent Unified SSE business-event data object validated by the server before emission. Exactly one type-specific payload is allowed: run.started requires run; model.resolved requires model_resolution; tool.started and tool.completed require tool with matching status; content.delta requires a non-empty delta; content.reset clears provisional streamed text when a tool round supersedes it and carries no payload fields; run.completed requires the complete AgentRunResult in result; run.failed requires a non-empty error. Heartbeats are SSE comments and are not represented by this schema.
 type AgentRunStreamEvent struct {
 	Delta           *string          `json:"delta,omitempty"`
 	Error           *string          `json:"error,omitempty"`
@@ -298,7 +301,7 @@ type AgentRunStreamEvent struct {
 	RunId           string           `json:"run_id"`
 	Sequence        int64            `json:"sequence"`
 
-	// Tool Public tool lifecycle identity only. Tool arguments and results are intentionally excluded because they may contain secrets or manuscript content.
+	// Tool Tool lifecycle payload for Agent run SSE. Includes optional arguments and result so clients can inspect narrative tool I/O after a proposal is produced.
 	Tool *AgentRunStreamTool     `json:"tool,omitempty"`
 	Type AgentRunStreamEventType `json:"type"`
 }
@@ -306,10 +309,15 @@ type AgentRunStreamEvent struct {
 // AgentRunStreamEventType defines model for AgentRunStreamEvent.Type.
 type AgentRunStreamEventType string
 
-// AgentRunStreamTool Public tool lifecycle identity only. Tool arguments and results are intentionally excluded because they may contain secrets or manuscript content.
+// AgentRunStreamTool Tool lifecycle payload for Agent run SSE. Includes optional arguments and result so clients can inspect narrative tool I/O after a proposal is produced.
 type AgentRunStreamTool struct {
-	CallId string                   `json:"call_id"`
-	Name   string                   `json:"name"`
+	// Arguments Tool call arguments as a JSON object when available (typically present from tool.started onward).
+	Arguments *map[string]interface{} `json:"arguments,omitempty"`
+	CallId    string                  `json:"call_id"`
+	Name      string                  `json:"name"`
+
+	// Result Tool execution result as a JSON object when status is completed.
+	Result *map[string]interface{}  `json:"result,omitempty"`
 	Status AgentRunStreamToolStatus `json:"status"`
 }
 

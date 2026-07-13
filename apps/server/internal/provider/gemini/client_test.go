@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -90,5 +91,64 @@ func TestStreamKeepsAnonymousSameNameCallsWithDifferentArguments(t *testing.T) {
 	}
 	if final.ToolCalls[1].Name != "search" || string(final.ToolCalls[1].Arguments) != `{"q":"beta"}` {
 		t.Fatalf("second tool call = %+v", final.ToolCalls[1])
+	}
+}
+
+func TestGenerateSerializesNativeToolHistory(t *testing.T) {
+	var seen map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&seen); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"responseId":"gem_hist","modelVersion":"gemini-test","candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"done"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`))
+	}))
+	defer server.Close()
+
+	client, err := (Factory{HTTPClient: server.Client()}).NewTextClient(domain.ProviderConfig{Type: domain.ProviderGemini, BaseURL: server.URL, APIKey: "test-key"})
+	if err != nil {
+		t.Fatalf("NewTextClient() error: %v", err)
+	}
+	_, err = client.Generate(context.Background(), provider.TextRequest{
+		Model: "gemini-test",
+		Messages: []provider.Message{
+			{Role: "user", Content: "查找角色"},
+			{
+				Role: "assistant",
+				ToolCalls: []provider.ToolCall{{
+					ID:        "call_1",
+					Type:      "function_call",
+					Name:      "character.search",
+					Arguments: json.RawMessage(`{"project_id":"p1","query":"林烬"}`),
+				}},
+			},
+			{Role: "tool", Name: "character.search", ToolCallID: "call_1", Content: `{"count":0}`},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+	raw, err := json.Marshal(seen["contents"])
+	if err != nil {
+		t.Fatalf("marshal contents: %v", err)
+	}
+	payload := string(raw)
+	if !strings.Contains(payload, `"functionCall"`) || !strings.Contains(payload, `"character.search"`) {
+		t.Fatalf("functionCall missing from payload: %s", payload)
+	}
+	if !strings.Contains(payload, `"functionResponse"`) || !strings.Contains(payload, `"call_1"`) {
+		t.Fatalf("functionResponse missing from payload: %s", payload)
+	}
+	if strings.Contains(payload, "Tool result for") || strings.Contains(payload, "Assistant requested tool calls") {
+		t.Fatalf("payload still uses text fallback history: %s", payload)
+	}
+}
+
+func TestGeminiContentsRejectsToolWithoutName(t *testing.T) {
+	_, err := geminiContents(provider.TextRequest{
+		Messages: []provider.Message{{Role: "tool", ToolCallID: "call_1", Content: `{}`}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "requires name") {
+		t.Fatalf("error = %v, want requires name", err)
 	}
 }

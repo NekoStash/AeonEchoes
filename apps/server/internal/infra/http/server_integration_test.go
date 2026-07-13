@@ -795,7 +795,7 @@ func TestHandlerStreamAgentRunSSEContract(t *testing.T) {
 		}
 	})
 
-	t.Run("tool lifecycle events exclude arguments and results", func(t *testing.T) {
+	t.Run("tool lifecycle events include arguments and results for client inspection", func(t *testing.T) {
 		store := memory.NewStore()
 		providerCfg, err := store.CreateProvider(domain.ProviderConfig{ID: "provider_http_tool_privacy", Name: "HTTP Tool Privacy Provider", Type: domain.ProviderOpenAI, Enabled: true})
 		if err != nil {
@@ -809,20 +809,19 @@ func TestHandlerStreamAgentRunSSEContract(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateAgentConfig() error: %v", err)
 		}
-		argumentSecret := "argument-secret-api-key"
-		resultSecret := "result-secret-novel-body"
-		largeResult := strings.Repeat(resultSecret, 4096)
-		if _, err := store.SaveEntity(domain.Entity{ProjectID: "project-tool-privacy", Name: "Secret Character", Type: "character", Summary: argumentSecret + largeResult, Status: "active"}); err != nil {
+		argumentQuery := "林烬"
+		resultMarker := "result-marker-character"
+		if _, err := store.SaveEntity(domain.Entity{ProjectID: "project-tool-privacy", Name: "林烬", Type: "character", Summary: resultMarker, Status: "active"}); err != nil {
 			t.Fatalf("SaveEntity() error: %v", err)
 		}
-		arguments, err := json.Marshal(map[string]any{"project_id": "project-tool-privacy", "query": argumentSecret})
+		arguments, err := json.Marshal(map[string]any{"project_id": "project-tool-privacy", "query": argumentQuery})
 		if err != nil {
 			t.Fatalf("marshal tool arguments: %v", err)
 		}
 		toolRound := provider.ModelResponse{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{{ID: "call-private", Name: "character.search", Arguments: arguments}}}
 		finalRound := provider.ModelResponse{Content: "safe final proposal", FinishReason: "stop"}
 		textClient := &integrationFakeTextClient{streamRounds: [][]provider.StreamEvent{
-			{{Type: "content.delta", Delta: argumentSecret}, {Type: "final", Response: &toolRound, Done: true}},
+			{{Type: "content.delta", Delta: "provisional"}, {Type: "final", Response: &toolRound, Done: true}},
 			{{Type: "content.delta", Delta: "safe final proposal"}, {Type: "final", Response: &finalRound, Done: true}},
 		}}
 		runtime := agent.NewRuntime(store, agent.NewModelRouter(store, agent.NewAgentRoleRegistry()), nil, &integrationFakeTextClientFactory{client: textClient}, integrationFixedToolCatalog{tools: []provider.ToolSpec{agent.NarrativeToolSpecs()[0]}})
@@ -831,18 +830,31 @@ func TestHandlerStreamAgentRunSSEContract(t *testing.T) {
 		response := sendJSON(t, server.Handler(), http.MethodPost, "/api/v1/agents/"+agentCfg.ID+"/runs/stream", map[string]any{"project_id": "project-tool-privacy", "input": map[string]any{"brief": "write"}})
 		assertStatus(t, response, http.StatusOK)
 		body := response.Body.String()
-		if strings.Contains(body, argumentSecret) || strings.Contains(body, resultSecret) || strings.Contains(body, largeResult) {
-			t.Fatalf("SSE exposed tool arguments or result content: %s", body)
-		}
 		events := decodeSSEAgentEvents(t, body)
 		var tools []agent.AgentRunStreamTool
+		var sawReset bool
 		for _, event := range events {
+			if event.Type == agent.AgentRunEventContentReset {
+				sawReset = true
+			}
 			if event.Tool != nil {
 				tools = append(tools, *event.Tool)
 			}
 		}
+		if !sawReset {
+			t.Fatalf("expected content.reset after provisional tool-round deltas, body=%s", body)
+		}
 		if len(tools) != 2 || tools[0].CallID != "call-private" || tools[0].Status != "started" || tools[1].Status != "completed" {
-			t.Fatalf("public tool lifecycle = %+v", tools)
+			t.Fatalf("tool lifecycle = %+v", tools)
+		}
+		if len(tools[0].Arguments) == 0 || !strings.Contains(string(tools[0].Arguments), argumentQuery) {
+			t.Fatalf("tool.started missing arguments: %+v", tools[0])
+		}
+		if len(tools[1].Result) == 0 || !strings.Contains(string(tools[1].Result), resultMarker) {
+			t.Fatalf("tool.completed missing result: %+v", tools[1])
+		}
+		if !strings.Contains(body, "safe final proposal") {
+			t.Fatalf("final proposal missing from stream body: %s", body)
 		}
 	})
 }

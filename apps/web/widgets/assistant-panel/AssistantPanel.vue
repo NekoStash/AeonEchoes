@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bot, Check, ChevronDown, History, Play, Plus, Replace, RotateCcw, Square, X } from '@lucide/vue'
+import { Bot, Check, ChevronDown, History, Lightbulb, Play, Plus, Replace, RotateCcw, Square, X } from '@lucide/vue'
 import { computed, ref } from 'vue'
 import UiBadge from '~/components/ui/Badge.vue'
 import UiButton from '~/components/ui/Button.vue'
@@ -16,7 +16,7 @@ import type { ContextSelectState } from '~/features/context-select'
 import type { EditorDraftSnapshot } from '~/features/editor-draft-recovery'
 import type { ModelResolution, StoryBible, ToolTrace } from '~/lib/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   agents: AgentConfig[]
   projectId: string
   agentLoadError: string
@@ -35,7 +35,12 @@ const props = defineProps<{
   streamState: AgentRunStreamState
   loadingVersions: boolean
   diagnostics: { modelResolution: ModelResolution | null; toolTrace: ToolTrace[] }
-}>()
+  planningChapter?: boolean
+  isEmptyChapter?: boolean
+}>(), {
+  planningChapter: false,
+  isEmptyChapter: false
+})
 
 const emit = defineEmits<{
   'update:prompt': [value: string]
@@ -43,6 +48,7 @@ const emit = defineEmits<{
   'update:contextState': [value: ContextSelectState]
   retryAgents: []
   run: []
+  planChapter: []
   cancelRun: []
   insert: [proposalId: string]
   replace: [proposalId: string]
@@ -57,6 +63,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const diagnosticsOpen = ref(false)
+/** Collapsed by default: stream tool list + each tool I/O + proposal tool list. */
+const streamToolsOpen = ref(false)
+const openToolKeys = ref<string[]>([])
+const openProposalToolLists = ref<string[]>([])
 const agentOptions = computed(() => props.agents.map((agent) => ({
   label: agent.name,
   value: agent.id,
@@ -68,6 +78,10 @@ const syncedCharacters = computed(() => (props.bible?.characters || []).filter((
 const showStreamingCard = computed(() => props.streamState.status !== 'idle'
   && !props.proposals.some((proposal) => proposal.runId === props.streamState.runId))
 const showStreamWaiting = computed(() => !props.streamState.content && props.runningAgent)
+const streamCharCount = computed(() => Array.from(props.streamState.content || '').length)
+const showStreamCharCount = computed(() => props.streamState.status !== 'idle'
+  && props.streamState.status !== 'completed'
+  && (streamCharCount.value > 0 || props.runningAgent))
 const canCancelRun = computed(() => canCancelAgentRun(props.streamState.status))
 const streamTone = computed(() => {
   if (props.streamState.status === 'failed') return 'danger' as const
@@ -75,6 +89,7 @@ const streamTone = computed(() => {
   if (props.streamState.status === 'completed') return 'success' as const
   return 'info' as const
 })
+const canPlanChapter = computed(() => !props.runningAgent && !props.planningChapter)
 
 function toolLabel(tool: AgentRunStreamTool) {
   return tool.name.trim() || t('editor.stream.unknownTool')
@@ -82,6 +97,45 @@ function toolLabel(tool: AgentRunStreamTool) {
 
 function toolStatus(tool: AgentRunStreamTool) {
   return t(`editor.stream.toolStatus.${tool.status}`)
+}
+
+function toolKey(prefix: string, tool: AgentRunStreamTool, index: number) {
+  return `${prefix}:${tool.call_id || tool.name || 'tool'}:${index}`
+}
+
+function isToolOpen(key: string) {
+  return openToolKeys.value.includes(key)
+}
+
+function toggleToolOpen(key: string) {
+  if (isToolOpen(key)) openToolKeys.value = openToolKeys.value.filter((item) => item !== key)
+  else openToolKeys.value = [...openToolKeys.value, key]
+}
+
+function isProposalToolsOpen(proposalId: string) {
+  return openProposalToolLists.value.includes(proposalId)
+}
+
+function toggleProposalToolsOpen(proposalId: string) {
+  if (isProposalToolsOpen(proposalId)) {
+    openProposalToolLists.value = openProposalToolLists.value.filter((item) => item !== proposalId)
+  } else {
+    openProposalToolLists.value = [...openProposalToolLists.value, proposalId]
+  }
+}
+
+function formatToolPayload(value: unknown) {
+  if (value === undefined || value === null) return ''
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch (cause) {
+    console.error('[AeonEchoes AssistantPanel] Failed to format tool payload.', cause)
+    return String(value)
+  }
+}
+
+function toolHasDetails(tool: AgentRunStreamTool) {
+  return Boolean(tool.arguments || tool.result)
 }
 
 function patchContext(patch: Partial<ContextSelectState>) {
@@ -161,8 +215,25 @@ function versionLabel(version: ChapterVersion) {
           :placeholder="t('editor.assistant.promptPlaceholder')"
           @update:model-value="emit('update:prompt', $event)"
         />
+        <UiInlineNotice
+          v-if="isEmptyChapter"
+          tone="info"
+          :title="t('editor.assistant.emptyChapterTitle')"
+          :description="t('editor.assistant.emptyChapterDescription')"
+        />
+        <UiButton
+          class="w-full"
+          :variant="isEmptyChapter ? 'default' : 'outline'"
+          :loading="planningChapter"
+          :disabled="!canPlanChapter"
+          data-testid="plan-chapter-button"
+          @click="emit('planChapter')"
+        >
+          <Lightbulb class="h-4 w-4" />
+          {{ planningChapter ? t('editor.actions.planningChapter') : t('editor.actions.planChapter') }}
+        </UiButton>
         <div class="grid gap-2" :class="canCancelRun ? 'grid-cols-[1fr_auto]' : 'grid-cols-1'">
-          <UiButton class="w-full" :loading="runningAgent" :disabled="runningAgent || !selectedAgentId || !prompt.trim()" @click="emit('run')">
+          <UiButton class="w-full" :loading="runningAgent" :disabled="runningAgent || planningChapter || !selectedAgentId || !prompt.trim()" @click="emit('run')">
             <Play class="h-4 w-4" />
             {{ t('editor.actions.runAgent') }}
           </UiButton>
@@ -239,17 +310,66 @@ function versionLabel(version: ChapterVersion) {
           </div>
           <span v-if="streamState.runId" class="max-w-36 truncate text-[11px] text-muted-foreground">{{ streamState.runId }}</span>
         </div>
+        <p
+          v-if="showStreamCharCount"
+          data-testid="agent-stream-char-count"
+          class="mt-2 text-xs text-muted-foreground"
+          aria-live="polite"
+        >
+          {{ t('editor.stream.charsOutput', { count: streamCharCount }) }}
+        </p>
         <pre
           v-if="streamState.content"
           data-testid="agent-stream-content"
           class="mt-3 max-h-72 overflow-auto whitespace-pre-wrap font-serif text-sm leading-7 subtle-scrollbar"
         >{{ streamState.content }}</pre>
         <p v-else-if="showStreamWaiting" class="mt-3 text-sm text-muted-foreground">{{ t('editor.stream.waiting') }}</p>
-        <div v-if="streamState.tools.length" class="mt-3 space-y-2 border-t border-current/10 pt-3">
-          <p class="text-xs font-semibold">{{ t('editor.stream.tools') }}</p>
-          <div v-for="(tool, index) in streamState.tools" :key="`${index}-${toolLabel(tool)}`" class="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span class="truncate">{{ toolLabel(tool) }}</span>
-            <UiBadge tone="muted">{{ toolStatus(tool) || t('editor.stream.toolRunning') }}</UiBadge>
+        <div v-if="streamState.tools.length" data-testid="agent-stream-tools" class="mt-3 border-t border-current/10 pt-3">
+          <button
+            type="button"
+            class="focus-ring flex w-full items-center justify-between gap-3 py-1 text-left text-xs font-semibold"
+            :aria-expanded="streamToolsOpen"
+            data-testid="agent-stream-tools-toggle"
+            @click="streamToolsOpen = !streamToolsOpen"
+          >
+            <span>{{ t('editor.stream.tools') }} · {{ streamState.tools.length }}</span>
+            <ChevronDown :class="['h-4 w-4 shrink-0 transition-transform', streamToolsOpen && 'rotate-180']" aria-hidden="true" />
+          </button>
+          <div v-if="streamToolsOpen" class="mt-2 space-y-2">
+            <div
+              v-for="(tool, index) in streamState.tools"
+              :key="toolKey('stream', tool, index)"
+              class="border border-current/10 bg-background/30"
+              data-testid="agent-stream-tool-item"
+            >
+              <button
+                type="button"
+                class="focus-ring flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs"
+                :aria-expanded="isToolOpen(toolKey('stream', tool, index))"
+                :disabled="!toolHasDetails(tool)"
+                @click="toolHasDetails(tool) && toggleToolOpen(toolKey('stream', tool, index))"
+              >
+                <span class="min-w-0 truncate font-medium text-foreground">{{ toolLabel(tool) }}</span>
+                <span class="flex shrink-0 items-center gap-2">
+                  <UiBadge tone="muted">{{ toolStatus(tool) || t('editor.stream.toolRunning') }}</UiBadge>
+                  <ChevronDown
+                    v-if="toolHasDetails(tool)"
+                    :class="['h-3.5 w-3.5 transition-transform', isToolOpen(toolKey('stream', tool, index)) && 'rotate-180']"
+                    aria-hidden="true"
+                  />
+                </span>
+              </button>
+              <div v-if="isToolOpen(toolKey('stream', tool, index)) && toolHasDetails(tool)" class="space-y-2 border-t border-current/10 px-3 py-2">
+                <div v-if="tool.arguments">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{{ t('editor.stream.toolInput') }}</p>
+                  <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-5 subtle-scrollbar">{{ formatToolPayload(tool.arguments) }}</pre>
+                </div>
+                <div v-if="tool.result">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{{ t('editor.stream.toolOutput') }}</p>
+                  <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-5 subtle-scrollbar">{{ formatToolPayload(tool.result) }}</pre>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <UiInlineNotice
@@ -260,7 +380,7 @@ function versionLabel(version: ChapterVersion) {
           :description="streamState.error"
         />
       </article>
-      <article v-for="proposal in proposals" :key="proposal.id" class="border border-current/15 bg-background/45 p-4">
+      <article v-for="proposal in proposals" :key="proposal.id" class="border border-current/15 bg-background/45 p-4" data-testid="agent-proposal-card">
         <div class="flex items-center justify-between gap-3">
           <UiBadge :tone="proposal.status === 'pending' ? 'info' : proposal.status === 'applied' ? 'success' : 'muted'">
             {{ t(`editor.proposals.status.${proposal.status}`) }}
@@ -268,6 +388,54 @@ function versionLabel(version: ChapterVersion) {
           <span class="text-[11px] text-muted-foreground">{{ new Date(proposal.createdAt).toLocaleString() }}</span>
         </div>
         <pre class="mt-3 max-h-72 overflow-auto whitespace-pre-wrap font-serif text-sm leading-7 subtle-scrollbar">{{ proposal.content }}</pre>
+        <div v-if="proposal.tools?.length" class="mt-3 border-t border-current/10 pt-3" data-testid="agent-proposal-tools">
+          <button
+            type="button"
+            class="focus-ring flex w-full items-center justify-between gap-3 py-1 text-left text-xs font-semibold"
+            :aria-expanded="isProposalToolsOpen(proposal.id)"
+            data-testid="agent-proposal-tools-toggle"
+            @click="toggleProposalToolsOpen(proposal.id)"
+          >
+            <span>{{ t('editor.proposals.tools') }} · {{ proposal.tools.length }}</span>
+            <ChevronDown :class="['h-4 w-4 shrink-0 transition-transform', isProposalToolsOpen(proposal.id) && 'rotate-180']" aria-hidden="true" />
+          </button>
+          <div v-if="isProposalToolsOpen(proposal.id)" class="mt-2 space-y-2">
+            <div
+              v-for="(tool, index) in proposal.tools"
+              :key="toolKey(proposal.id, tool, index)"
+              class="border border-current/10 bg-background/30"
+              data-testid="agent-proposal-tool-item"
+            >
+              <button
+                type="button"
+                class="focus-ring flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs"
+                :aria-expanded="isToolOpen(toolKey(proposal.id, tool, index))"
+                :disabled="!toolHasDetails(tool)"
+                @click="toolHasDetails(tool) && toggleToolOpen(toolKey(proposal.id, tool, index))"
+              >
+                <span class="min-w-0 truncate font-medium text-foreground">{{ toolLabel(tool) }}</span>
+                <span class="flex shrink-0 items-center gap-2">
+                  <UiBadge tone="muted">{{ toolStatus(tool) || t('editor.stream.toolRunning') }}</UiBadge>
+                  <ChevronDown
+                    v-if="toolHasDetails(tool)"
+                    :class="['h-3.5 w-3.5 transition-transform', isToolOpen(toolKey(proposal.id, tool, index)) && 'rotate-180']"
+                    aria-hidden="true"
+                  />
+                </span>
+              </button>
+              <div v-if="isToolOpen(toolKey(proposal.id, tool, index)) && toolHasDetails(tool)" class="space-y-2 border-t border-current/10 px-3 py-2">
+                <div v-if="tool.arguments">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{{ t('editor.stream.toolInput') }}</p>
+                  <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-5 subtle-scrollbar">{{ formatToolPayload(tool.arguments) }}</pre>
+                </div>
+                <div v-if="tool.result">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{{ t('editor.stream.toolOutput') }}</p>
+                  <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-5 subtle-scrollbar">{{ formatToolPayload(tool.result) }}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div v-if="proposal.status === 'pending'" class="mt-4 grid grid-cols-2 gap-2">
           <UiButton size="sm" variant="outline" @click="emit('insert', proposal.id)"><Plus class="h-4 w-4" />{{ t('editor.proposals.insert') }}</UiButton>
           <UiButton size="sm" variant="outline" :disabled="!selectedText" @click="emit('replace', proposal.id)"><Replace class="h-4 w-4" />{{ t('editor.proposals.replace') }}</UiButton>

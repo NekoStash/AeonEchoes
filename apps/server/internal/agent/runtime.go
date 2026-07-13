@@ -36,16 +36,21 @@ const (
 	AgentRunEventToolStarted   = "tool.started"
 	AgentRunEventToolCompleted = "tool.completed"
 	AgentRunEventContentDelta  = "content.delta"
+	AgentRunEventContentReset  = "content.reset"
 	AgentRunEventCompleted     = "run.completed"
 	AgentRunEventFailed        = "run.failed"
 )
 
 // AgentRunStreamTool describes one tool lifecycle event after its arguments are complete.
+// Arguments are included from tool.started; Result is included on tool.completed.
 type AgentRunStreamTool struct {
-	CallID string `json:"call_id"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
+	CallID    string          `json:"call_id"`
+	Name      string          `json:"name"`
+	Status    string          `json:"status"`
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+	Result    json.RawMessage `json:"result,omitempty"`
 }
+
 
 // AgentRunStreamEvent is the stable SSE data object shared with API clients.
 type AgentRunStreamEvent struct {
@@ -106,6 +111,10 @@ func (e AgentRunStreamEvent) Validate() error {
 		if e.Run != nil || e.Result != nil || e.ModelResolution != nil || e.Tool != nil || e.Error != "" {
 			return fmt.Errorf("content.delta contains fields reserved for another event type")
 		}
+	case AgentRunEventContentReset:
+		if e.Delta != "" || e.Run != nil || e.Result != nil || e.ModelResolution != nil || e.Tool != nil || e.Error != "" {
+			return fmt.Errorf("content.reset contains fields reserved for another event type")
+		}
 	case AgentRunEventCompleted:
 		if e.Result == nil || e.Result.Run.ID != e.RunID || e.Result.Run.Status != domain.AgentRunStatusCompleted || strings.TrimSpace(e.Result.Content) == "" || strings.TrimSpace(e.Result.ModelResolution.ModelID) == "" {
 			return fmt.Errorf("run.completed requires a complete matching AgentRunResult")
@@ -137,8 +146,22 @@ func (t AgentRunStreamTool) validateForEvent(eventType string) error {
 	if t.Status != expectedStatus {
 		return fmt.Errorf("%s tool status must be %q", eventType, expectedStatus)
 	}
+	if len(t.Arguments) > 0 && !json.Valid(t.Arguments) {
+		return fmt.Errorf("%s tool arguments must be valid JSON", eventType)
+	}
+	if eventType == AgentRunEventToolCompleted {
+		if len(t.Result) == 0 {
+			return fmt.Errorf("%s tool requires result", eventType)
+		}
+		if !json.Valid(t.Result) {
+			return fmt.Errorf("%s tool result must be valid JSON", eventType)
+		}
+	} else if len(t.Result) > 0 {
+		return fmt.Errorf("%s tool must not include result", eventType)
+	}
 	return nil
 }
+
 
 type runtimeExecution struct {
 	run       domain.AgentRun
@@ -194,12 +217,14 @@ type ToolCatalog interface {
 
 // Runtime coordinates agent execution against configured models, skills and tools.
 type Runtime struct {
-	store    RuntimeStore
-	router   *ModelRouter
-	builder  *ContextPackBuilder
-	clients  TextClientFactory
-	tools    ToolCatalog
-	toolExec ToolStore
+	store          RuntimeStore
+	router         *ModelRouter
+	builder        *ContextPackBuilder
+	clients        TextClientFactory
+	tools          ToolCatalog
+	toolExec       ToolStore
+	chapterAuditor ChapterAuditor
+	rulesAuditor   ContinuityAuditor
 }
 
 func NewRuntime(store RuntimeStore, router *ModelRouter, builder *ContextPackBuilder, providers TextClientFactory, tools ToolCatalog) *Runtime {
@@ -207,7 +232,11 @@ func NewRuntime(store RuntimeStore, router *ModelRouter, builder *ContextPackBui
 	if candidate, ok := store.(ToolStore); ok {
 		toolExec = candidate
 	}
-	return &Runtime{store: store, router: router, builder: builder, clients: providers, tools: tools, toolExec: toolExec}
+	runtime := &Runtime{store: store, router: router, builder: builder, clients: providers, tools: tools, toolExec: toolExec, rulesAuditor: NewRuleBasedContinuityAuditor()}
+	if router != nil && providers != nil {
+		runtime.chapterAuditor = NewLLMChapterAuditor(router, providers, builder, runtime.rulesAuditor, toolExec)
+	}
+	return runtime
 }
 
 func (r *Runtime) Run(ctx context.Context, req AgentRunRequest) (AgentRunResult, error) {
@@ -323,15 +352,18 @@ func (r *Runtime) executePrepared(ctx context.Context, prepared preparedRuntimeE
 		if r.toolExec == nil {
 			return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, fmt.Errorf("agent runtime tool executor store is not configured")
 		}
+		executor, err := r.newToolExecutor(prepared.config)
+		if err != nil {
+			return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, err
+		}
 		var loopResult ToolLoopResult
-		var err error
 		if streaming {
 			if hooks == nil {
 				return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, fmt.Errorf("agent runtime streaming hooks are not configured")
 			}
-			loopResult, err = RunToolLoopStream(ctx, prepared.client, prepared.textRequest, NewToolExecutor(r.toolExec), defaultToolLoopMaxRounds, *hooks)
+			loopResult, err = RunToolLoopStream(ctx, prepared.client, prepared.textRequest, executor, defaultToolLoopMaxRounds, *hooks)
 		} else {
-			loopResult, err = RunToolLoop(ctx, prepared.client, prepared.textRequest, NewToolExecutor(r.toolExec), defaultToolLoopMaxRounds)
+			loopResult, err = RunToolLoop(ctx, prepared.client, prepared.textRequest, executor, defaultToolLoopMaxRounds)
 		}
 		if err != nil {
 			return AgentRunResult{Run: prepared.run, ModelResolution: prepared.modelResolution}, err
@@ -410,6 +442,9 @@ func (r *Runtime) streamExecution(ctx context.Context, execution runtimeExecutio
 		OnContentDelta: func(delta string) error {
 			return emit(AgentRunStreamEvent{Type: AgentRunEventContentDelta, Delta: delta})
 		},
+		OnContentReset: func() error {
+			return emit(AgentRunStreamEvent{Type: AgentRunEventContentReset})
+		},
 		OnToolStarted: func(record ToolExecutionRecord) error {
 			tool, err := streamTool(record, "started")
 			if err != nil {
@@ -433,6 +468,18 @@ func (r *Runtime) streamExecution(ctx context.Context, execution runtimeExecutio
 	if err := emit(AgentRunStreamEvent{Type: AgentRunEventCompleted, Result: &result}); err != nil && ctx.Err() == nil {
 		r.failStreamingExecution(execution.run, result, err, emit)
 	}
+}
+
+func (r *Runtime) newToolExecutor(cfg domain.AgentConfig) (*ToolExecutor, error) {
+	maxRounds, err := ParseAuditMaxRounds(cfg.RuntimeOptions)
+	if err != nil {
+		return nil, err
+	}
+	return NewToolExecutor(r.toolExec, ToolExecutorOptions{
+		ChapterAuditor: r.chapterAuditor,
+		RulesAuditor:   r.rulesAuditor,
+		AuditLimiter:   NewAuditCallLimiter(maxRounds),
+	}), nil
 }
 
 func (r *Runtime) failExecution(run domain.AgentRun, result AgentRunResult, cause error) (AgentRunResult, error) {
@@ -459,8 +506,24 @@ func streamTool(record ToolExecutionRecord, status string) (AgentRunStreamTool, 
 	if tool.CallID == "" || tool.Name == "" {
 		return AgentRunStreamTool{}, fmt.Errorf("stream tool call_id and name must not be empty")
 	}
+	if len(record.Arguments) > 0 {
+		if !json.Valid(record.Arguments) {
+			return AgentRunStreamTool{}, fmt.Errorf("stream tool %q arguments must be valid JSON", tool.Name)
+		}
+		tool.Arguments = append(json.RawMessage(nil), record.Arguments...)
+	}
+	if status == "completed" {
+		if len(record.Result) == 0 {
+			return AgentRunStreamTool{}, fmt.Errorf("stream tool %q completed without result payload", tool.Name)
+		}
+		if !json.Valid(record.Result) {
+			return AgentRunStreamTool{}, fmt.Errorf("stream tool %q result must be valid JSON", tool.Name)
+		}
+		tool.Result = append(json.RawMessage(nil), record.Result...)
+	}
 	return tool, nil
 }
+
 
 func (r *Runtime) createRunningRun(req AgentRunRequest, projectID string) (domain.AgentRun, error) {
 	input := copyAnyMapRuntime(req.Input)

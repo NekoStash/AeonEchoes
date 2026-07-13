@@ -474,6 +474,7 @@
       "title": "Project overview",
       "eyebrow": "Project dossier",
       "plans": "Chapter plans",
+      "foreshadows": "Foreshadows",
       "realChapters": "Real chapters"
     },
     "storyBibleSections": {
@@ -545,7 +546,7 @@
       "sectionDescription": "Real chapters start at 0. A create request is sent only after this dialog is opened, completed, and confirmed. Cancelled or failed attempts never enter the chapter list.",
       "action": "New chapter",
       "title": "Create real chapter",
-      "description": "The real chapter is created only after confirmation. You may use a chapter plan as initial content.",
+      "description": "The real chapter is created only after confirmation.",
       "fromPlan": "Use chapter plan",
       "noPlan": "Do not use a plan",
       "untitledPlan": "Untitled plan {number}",
@@ -553,6 +554,11 @@
       "creating": "Creating chapter",
       "titleRequired": "Chapter title is required.",
       "failed": "Chapter creation failed. Check the input and try again."
+    },
+    "chapterStatus": {
+      "label": "Chapter status: {title}",
+      "updated": "Chapter status updated",
+      "failed": "Failed to update chapter status"
     },
     "realChapters": {
       "eyebrow": "Chapter Store · read-only list",
@@ -587,7 +593,8 @@
     },
     "errors": {
       "loadFailed": "Failed to load the project workspace.",
-      "saveFailed": "Failed to save the Story Bible."
+      "saveFailed": "Failed to save the Story Bible.",
+      "chapterNotFound": "The chapter to update was not found."
     }
   },
   "tooltips": {
@@ -981,12 +988,15 @@
       "fullscreen": "Fullscreen prose",
       "exitFullscreen": "Exit fullscreen",
       "createVersion": "Create version",
-      "runAgent": "Run Agent"
+      "runAgent": "Run Agent",
+      "planChapter": "Generate chapter plan",
+      "planningChapter": "Generating chapter plan"
     },
     "fields": {
       "title": "Chapter title",
       "titlePlaceholder": "Enter chapter title",
-      "contentPlaceholder": "Start writing here…"
+      "contentPlaceholder": "Start writing here…",
+      "chapterStatus": "Chapter status"
     },
     "assistant": {
       "title": "AI proposals",
@@ -1003,18 +1013,24 @@
       "promptPlaceholder": "Describe the writing proposal you want from the Agent…",
       "defaultPrompt": "Provide a reviewable writing proposal for “{title}”.",
       "sheetTitle": "AI assistant",
-      "sheetDescription": "Choose context and run an Agent. You decide how every result is applied."
+      "sheetDescription": "Choose context and run an Agent. You decide how every result is applied.",
+      "emptyChapterTitle": "This chapter is empty",
+      "emptyChapterDescription": "There is no saved version or body text yet. Generate a chapter plan before writing."
     },
     "stream": {
       "cancel": "Cancel generation",
       "waiting": "Connecting and waiting for the first content chunk…",
-      "tools": "Tool progress",
+      "charsOutput": "{count} characters output",
+      "tools": "Tool calls",
       "toolRunning": "Running",
+      "toolInput": "Input",
+      "toolOutput": "Output",
       "unknownTool": "Unknown tool",
       "toolStatus": {
         "started": "Running",
         "completed": "Completed"
       },
+
       "failedTitle": "Generation failed",
       "cancelledTitle": "Generation cancelled",
       "cancelledDescription": "Generation was cancelled. Received partial prose remains visible but cannot be applied.",
@@ -1035,6 +1051,7 @@
       "emptyTitle": "No proposals",
       "emptyDescription": "Agent results appear here before they can affect prose.",
       "received": "Agent proposal received",
+      "tools": "Tool calls",
       "insert": "Insert",
       "replace": "Replace selection",
       "append": "Append",
@@ -1049,6 +1066,7 @@
         "rejected": "Rejected"
       }
     },
+
     "recovery": {
       "title": "Local recovery draft found",
       "description": "This browser saved a draft at {time} that differs from the backend version.",
@@ -1247,9 +1265,10 @@
     "jobAttempts": "{id} · {count} attempts",
     "feedback": {
       "planReady": "Chapter plan updated",
-      "draftAppended": "Draft appended to content",
+      "draftAppended": "Draft appended to the chapter body",
       "versionSaved": "Real chapter version created",
-      "versionLoaded": "Loaded"
+      "versionLoaded": "Loaded",
+      "statusUpdated": "Chapter status updated"
     },
     "diagnostics": {
       "eyebrow": "Diagnostics",
@@ -1363,7 +1382,9 @@
       "generateDraftFailed": "Failed to generate AI draft",
       "saveVersionFailed": "Failed to save chapter version",
       "loadAgentsFailed": "Failed to load agent configs",
-      "noAgentConfigured": "No enabled agent is available. Create and enable a writing or plot agent in Agent Management first."
+      "noAgentConfigured": "No enabled agent is available. Create and enable a writing or plot agent in Agent Management first.",
+      "updateStatusFailed": "Failed to update chapter status",
+      "planBriefRequired": "Provide an instruction, summary, or title before generating a chapter plan."
     }
   },
   "agents": {
@@ -1772,10 +1793,14 @@
       "messages": { "loading": "Loading model configuration", "loadFailed": "Failed to load model configuration", "saved": "Model saved", "saveFailed": "Failed to save model", "routingSaved": "Usage routing saved", "routingSaveFailed": "Failed to save usage routing", "deleted": "Model deleted", "deleteFailed": "Failed to delete model" }
     },
     "agents": {
-      "title": "Agent resources", "description": "Manage Agents, Skills, MCP Servers, and Tools as tasks. Only real contract operations for save, enable, scan, test, and refresh are shown.", "search": "Find current resources", "searchPlaceholder": "Search name, ID, source, role, status, or binding", "addAgent": "Add Agent", "addSkill": "Add Skill", "addMCP": "Add MCP Server", "scanSkills": "Scan default skills", "enable": "Enable", "disable": "Disable", "test": "Test", "refreshTools": "Refresh tools", "noDescription": "No description.", "noResults": "No matching resources.", "inheritModel": "Inherit role route", "deleteTitle": "Delete resource", "deleteDescription": "Delete “{name}”? This cannot be undone.", "secretBlankHelp": "Leave blank to avoid overwriting stored secrets; only new values are submitted.", "jsonHelp": "memory_policy and runtime_options accept arbitrary JSON objects; metadata values must be strings.",
+      "title": "Agent resources", "description": "Manage Agents, Skills, MCP Servers, and Tools as tasks. Only real contract operations for save, enable, scan, test, and refresh are shown.", "search": "Find current resources", "searchPlaceholder": "Search name, ID, source, role, status, or binding", "addAgent": "Add Agent", "addSkill": "Add Skill", "addMCP": "Add MCP Server", "scanSkills": "Scan default skills", "enable": "Enable", "disable": "Disable", "test": "Test", "refreshTools": "Refresh tools", "noDescription": "No description.", "noResults": "No matching resources.", "inheritModel": "Inherit role route", "deleteTitle": "Delete resource", "deleteDescription": "Delete “{name}”? This cannot be undone.", "secretBlankHelp": "Leave blank to avoid overwriting stored secrets; only new values are submitted.", "jsonHelp": "memory_policy and runtime_options accept arbitrary JSON objects; metadata values must be strings. Audit rounds are managed by the dedicated switch above and write runtime_options.audit_max_rounds.",
+      "auditReflectEnabled": "Allow audit reflection tool",
+      "auditReflectHelp": "When enabled, this agent may call builtin:chapter.audit to send chapter prose and key context to the continuity-auditor model and receive revision advice.",
+      "auditMaxRounds": "Audit max call rounds",
+      "auditMaxRoundsHelp": "Maximum chapter.audit calls inside one agent run. Range 1–6, default 2.",
       "resources": { "agents": "Agents", "skills": "Skills", "mcp": "MCP Servers", "tools": "Tools" },
       "resourceDescriptions": { "agents": "Role, model, prompt, and bindings", "skills": "Inline content, sources, and scan results", "mcp": "Connection, secrets, environment, and tool refresh", "tools": "Read-only catalog and enabled state" },
-      "sections": { "identity": "Identity and execution", "bindings": "Resource bindings", "runtime": "Memory and runtime options", "environment": "Headers and environment" },
+      "sections": { "identity": "Identity and execution", "bindings": "Resource bindings", "audit": "Audit and reflection", "runtime": "Memory and runtime options", "environment": "Headers and environment" },
       "dialog": { "createTitle": "Add Agent", "editTitle": "Edit Agent", "description": "Maintain project, role, model, prompt, bindings, memory policy, and runtime options from the Agent contract." },
       "skillDialog": { "createTitle": "Add Skill", "editTitle": "Edit Skill", "description": "Maintain Skill source, project, path, content, enabled state, and metadata." },
       "mcpDialog": { "createTitle": "Add MCP Server", "editTitle": "Edit MCP Server", "description": "Maintain MCP transport, endpoint, arguments, headers, secrets, environment, timeout, and metadata." },

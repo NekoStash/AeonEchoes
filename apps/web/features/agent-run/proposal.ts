@@ -1,4 +1,4 @@
-import type { AgentRunResult } from '~/entities/agent'
+import type { AgentRunResult, AgentRunStreamTool } from '~/entities/agent'
 import type { TextSelection } from '~/features/chapter-write'
 import { normalizeTextSelection } from '~/features/chapter-write'
 
@@ -13,6 +13,8 @@ export interface AgentProposal {
   status: ProposalStatus
   createdAt: string
   result: AgentRunResult
+  /** Tool lifecycle snapshots captured during the run (with optional input/output). */
+  tools: AgentRunStreamTool[]
 }
 
 export interface ProposalApplication {
@@ -21,7 +23,12 @@ export interface ProposalApplication {
   selection: TextSelection
 }
 
-export function createAgentProposal(agentId: string, result: AgentRunResult, now = new Date().toISOString()): AgentProposal {
+export function createAgentProposal(
+  agentId: string,
+  result: AgentRunResult,
+  now = new Date().toISOString(),
+  tools: AgentRunStreamTool[] = []
+): AgentProposal {
   const content = result.content.trim()
   if (!content) throw new Error('Agent Run returned an empty proposal.')
   if (!result.run.id) throw new Error('Agent Run result is missing its run ID.')
@@ -32,9 +39,11 @@ export function createAgentProposal(agentId: string, result: AgentRunResult, now
     content,
     status: 'pending',
     createdAt: now,
-    result
+    result,
+    tools: tools.map((tool) => ({ ...tool }))
   }
 }
+
 
 export function applyAgentProposal(
   source: string,

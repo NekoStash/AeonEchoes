@@ -123,15 +123,32 @@ func TestListProviderToolsOmitsObsoleteBuiltinEvenIfStillActive(t *testing.T) {
 
 	want := map[string]bool{}
 	for _, spec := range agent.NarrativeToolSpecs() {
+		if agent.IsOptInBuiltinTool(spec.Name) {
+			continue
+		}
 		want[spec.Name] = true
 	}
 	if len(tools) != len(want) {
-		t.Fatalf("ListProviderTools() count = %d, want %d", len(tools), len(want))
+		t.Fatalf("ListProviderTools() count = %d, want %d (default excludes opt-in tools)", len(tools), len(want))
 	}
 	for _, tool := range tools {
 		if !want[tool.Name] {
 			t.Fatalf("ListProviderTools() unexpected tool %q", tool.Name)
 		}
+		if agent.IsOptInBuiltinTool(tool.Name) {
+			t.Fatalf("ListProviderTools() exposed opt-in tool %q without tool_ids", tool.Name)
+		}
+	}
+
+	// Explicit tool_ids may opt into nested LLM audit tools.
+	optInTools, err := registry.ListProviderTools(context.Background(), domain.AgentConfig{
+		ToolIDs: []string{agent.BuiltinChapterAuditToolID},
+	})
+	if err != nil {
+		t.Fatalf("ListProviderTools(opt-in) error: %v", err)
+	}
+	if len(optInTools) != 1 || optInTools[0].Name != agent.ChapterAuditToolName {
+		t.Fatalf("ListProviderTools(opt-in) = %+v, want only %s", optInTools, agent.ChapterAuditToolName)
 	}
 }
 

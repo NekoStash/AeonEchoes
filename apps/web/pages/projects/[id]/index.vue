@@ -6,8 +6,8 @@ import { useChapterStore } from '~/entities/chapter'
 import type { StoryBible } from '~/entities/story-bible'
 import { useStoryBibleStore } from '~/entities/story-bible'
 import { ChapterCreateDialog } from '~/features/chapter-create'
-import { ChapterPlanEditor } from '~/features/chapter-plan'
 import { CharacterSyncPanel, type CharacterSyncState } from '~/features/character-sync'
+import type { ChapterStatus } from '~/entities/chapter'
 import {
   cloneStoryBible,
   isConflictError,
@@ -44,6 +44,8 @@ const pageError = ref('')
 const characterSyncError = ref('')
 const chapterCreateError = ref('')
 const chapterCreateOpen = ref(false)
+const chapterStatusError = ref('')
+const toast = useToast()
 const storyBibleSection = ref<HTMLElement | null>(null)
 const pendingLeaveCleanup = ref<null | (() => void)>(null)
 const pendingNavigation = ref<null | { resolve: (allow: boolean) => void }>(null)
@@ -215,6 +217,33 @@ async function createChapter(request: CreateChapterRequest) {
     chapterCreateError.value = chapterStore.createRequest.error?.message || (error instanceof Error ? error.message : t('projectOverview.chapterCreate.failed'))
   }
 }
+
+async function updateChapterStatus(payload: { chapterId: string; status: ChapterStatus }) {
+  const chapter = chapters.value.find((item) => item.id === payload.chapterId)
+  if (!chapter) {
+    chapterStatusError.value = t('projectOverview.errors.chapterNotFound')
+    toast.error(chapterStatusError.value)
+    return
+  }
+  if (chapter.status === payload.status) return
+  chapterStatusError.value = ''
+  try {
+    await chapterStore.update(projectId.value, {
+      chapter_id: chapter.id,
+      number: chapter.number,
+      title: chapter.title,
+      status: payload.status,
+      summary: chapter.summary,
+      metadata: chapter.metadata
+    })
+    toast.success(t('projectOverview.chapterStatus.updated'))
+  } catch (error) {
+    console.error('[AeonEchoes Project Workspace] Failed to update chapter status.', error)
+    chapterStatusError.value = chapterStore.updateRequest.error?.message
+      || (error instanceof Error ? error.message : t('projectOverview.chapterStatus.failed'))
+    toast.error(chapterStatusError.value)
+  }
+}
 </script>
 
 <template>
@@ -307,11 +336,6 @@ async function createChapter(request: CreateChapterRequest) {
           :disabled="isBusy || isDirty || saveState === 'conflict'"
           @sync="syncCharacters"
         />
-        <ChapterPlanEditor
-          :model-value="editableBible.chapter_plan"
-          :disabled="isBusy"
-          @update:model-value="editableBible = { ...editableBible, chapter_plan: $event }"
-        />
 
         <section class="border-y-4 border-double border-foreground py-8">
           <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -327,13 +351,25 @@ async function createChapter(request: CreateChapterRequest) {
           </div>
         </section>
 
-        <ChapterTree :project-id="projectId" :chapters="chapters" :loading="chapterStore.listRequest.loading" />
+        <UiInlineNotice
+          v-if="chapterStatusError"
+          tone="danger"
+          :title="t('projectOverview.chapterStatus.failed')"
+          :description="chapterStatusError"
+        />
+
+        <ChapterTree
+          :project-id="projectId"
+          :chapters="chapters"
+          :loading="chapterStore.listRequest.loading"
+          :updating="chapterStore.updateRequest.loading"
+          @update-status="updateChapterStatus"
+        />
       </main>
 
       <ChapterCreateDialog
         v-model:open="chapterCreateOpen"
         :chapters="chapters"
-        :plans="editableBible.chapter_plan"
         :loading="chapterStore.createRequest.loading"
         :error="chapterCreateError"
         @confirm="createChapter"

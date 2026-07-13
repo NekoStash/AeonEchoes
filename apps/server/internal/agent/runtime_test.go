@@ -169,12 +169,14 @@ func TestAgentRunStreamEventValidateContracts(t *testing.T) {
 	valid := []AgentRunStreamEvent{
 		{Type: AgentRunEventStarted, Sequence: 1, RunID: runID, Run: &running},
 		{Type: AgentRunEventModelResolved, Sequence: 2, RunID: runID, ModelResolution: &resolution},
-		{Type: AgentRunEventToolStarted, Sequence: 3, RunID: runID, Tool: &AgentRunStreamTool{CallID: "call-1", Name: "character.search", Status: "started"}},
-		{Type: AgentRunEventToolCompleted, Sequence: 4, RunID: runID, Tool: &AgentRunStreamTool{CallID: "call-1", Name: "character.search", Status: "completed"}},
+		{Type: AgentRunEventToolStarted, Sequence: 3, RunID: runID, Tool: &AgentRunStreamTool{CallID: "call-1", Name: "character.search", Status: "started", Arguments: json.RawMessage(`{"project_id":"p1","query":"林"}`)}},
+		{Type: AgentRunEventToolCompleted, Sequence: 4, RunID: runID, Tool: &AgentRunStreamTool{CallID: "call-1", Name: "character.search", Status: "completed", Arguments: json.RawMessage(`{"project_id":"p1","query":"林"}`), Result: json.RawMessage(`{"count":1}`)}},
 		{Type: AgentRunEventContentDelta, Sequence: 5, RunID: runID, Delta: "delta"},
-		{Type: AgentRunEventCompleted, Sequence: 6, RunID: runID, Result: &result},
-		{Type: AgentRunEventFailed, Sequence: 7, RunID: runID, Error: "failed"},
+		{Type: AgentRunEventContentReset, Sequence: 6, RunID: runID},
+		{Type: AgentRunEventCompleted, Sequence: 7, RunID: runID, Result: &result},
+		{Type: AgentRunEventFailed, Sequence: 8, RunID: runID, Error: "failed"},
 	}
+
 	for _, event := range valid {
 		if err := event.Validate(); err != nil || !event.Valid() {
 			t.Fatalf("valid event %q rejected: %v", event.Type, err)
@@ -186,10 +188,13 @@ func TestAgentRunStreamEventValidateContracts(t *testing.T) {
 		{Type: AgentRunEventModelResolved, Sequence: 1, RunID: runID},
 		{Type: AgentRunEventToolStarted, Sequence: 1, RunID: runID, Tool: &AgentRunStreamTool{CallID: "", Name: "character.search", Status: "started"}},
 		{Type: AgentRunEventToolCompleted, Sequence: 1, RunID: runID, Tool: &AgentRunStreamTool{CallID: "call-1", Name: "character.search", Status: "started"}},
+		{Type: AgentRunEventToolCompleted, Sequence: 1, RunID: runID, Tool: &AgentRunStreamTool{CallID: "call-1", Name: "character.search", Status: "completed"}},
+		{Type: AgentRunEventToolStarted, Sequence: 1, RunID: runID, Tool: &AgentRunStreamTool{CallID: "call-1", Name: "character.search", Status: "started", Result: json.RawMessage(`{"too":"early"}`)}},
 		{Type: AgentRunEventContentDelta, Sequence: 1, RunID: runID},
 		{Type: AgentRunEventCompleted, Sequence: 1, RunID: runID},
 		{Type: AgentRunEventFailed, Sequence: 1, RunID: runID},
 	}
+
 	for _, event := range invalid {
 		if err := event.Validate(); err == nil || event.Valid() {
 			t.Fatalf("invalid event %q accepted: %+v", event.Type, event)
@@ -508,19 +513,15 @@ func TestRuntimeStreamToolRoundBufferLimitFailsPersistedRun(t *testing.T) {
 	}
 }
 
-func TestBoundedToolRoundDeltaBufferFragmentLimit(t *testing.T) {
-	buffer := &boundedToolRoundDeltaBuffer{}
-	for index := 0; index < maxToolRoundBufferedDeltaFragments; index++ {
-		if err := buffer.OnContentDelta("x"); err != nil {
-			t.Fatalf("fragment %d rejected early: %v", index, err)
-		}
-	}
-	if err := buffer.OnContentDelta("x"); err == nil || !strings.Contains(err.Error(), "fragment limit") {
-		t.Fatalf("fragment overflow error = %v", err)
+func TestLiveContentDeltaSinkByteLimit(t *testing.T) {
+	sink := &liveContentDeltaSink{emit: func(string) error { return nil }}
+	oversized := strings.Repeat("x", maxToolRoundBufferedDeltaBytes+1)
+	if err := sink.OnContentDelta(oversized); err == nil || !strings.Contains(err.Error(), "byte limit") {
+		t.Fatalf("byte overflow error = %v", err)
 	}
 }
 
-func TestRunToolLoopStreamBuffersIntermediateTextUntilFinalRound(t *testing.T) {
+func TestRunToolLoopStreamForwardsLiveTextAndResetsBeforeToolRound(t *testing.T) {
 	store := memory.NewStore()
 	first := provider.ModelResponse{Content: "不要泄漏", FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{{ID: "call_1", Name: "character.search", Arguments: json.RawMessage(`{"project_id":"project-stream","query":"林"}`)}}}
 	second := provider.ModelResponse{Content: "最终提案", FinishReason: "stop"}
@@ -533,6 +534,12 @@ func TestRunToolLoopStreamBuffersIntermediateTextUntilFinalRound(t *testing.T) {
 	result, err := RunToolLoopStream(context.Background(), client, provider.TextRequest{Model: "stream-model", UserPrompt: "write", Tools: NarrativeToolSpecs()}, NewToolExecutor(store), 4, ToolLoopStreamHooks{
 		OnContentDelta: func(delta string) error {
 			content += delta
+			lifecycle = append(lifecycle, "delta:"+delta)
+			return nil
+		},
+		OnContentReset: func() error {
+			content = ""
+			lifecycle = append(lifecycle, "reset")
 			return nil
 		},
 		OnToolStarted: func(record ToolExecutionRecord) error {
@@ -553,8 +560,14 @@ func TestRunToolLoopStreamBuffersIntermediateTextUntilFinalRound(t *testing.T) {
 	if content != "最终提案" || result.Response.Content != "最终提案" {
 		t.Fatalf("content=%q result=%+v", content, result)
 	}
-	if len(lifecycle) != 2 || lifecycle[0] != "started:character.search" || lifecycle[1] != "completed:character.search" {
+	wantLifecycle := []string{"delta:不要", "delta:泄漏", "reset", "started:character.search", "completed:character.search", "delta:最终", "delta:提案"}
+	if len(lifecycle) != len(wantLifecycle) {
 		t.Fatalf("lifecycle = %+v", lifecycle)
+	}
+	for index, item := range wantLifecycle {
+		if lifecycle[index] != item {
+			t.Fatalf("lifecycle = %+v", lifecycle)
+		}
 	}
 	if client.generateCalls != 0 || len(client.streamRequests) != 2 {
 		t.Fatalf("client calls: generate=%d streams=%d", client.generateCalls, len(client.streamRequests))

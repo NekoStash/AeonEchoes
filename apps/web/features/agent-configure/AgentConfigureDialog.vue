@@ -30,6 +30,32 @@ function roleLabel(role: string) { const key = `agents.roles.${role.replace(/-/g
         <label class="space-y-2"><span class="field-label">ID</span><UiInput v-model="form.id" :disabled="mode === 'edit'" /></label><label class="space-y-2"><span class="field-label">project_id</span><UiInput v-model="form.project_id" /></label><label class="space-y-2"><span class="field-label">{{ t('settings.fields.name') }}</span><UiInput v-model="form.name" /></label><label class="space-y-2"><span class="field-label">role</span><UiSelect v-model="form.role" :options="roleOptions" /></label><label class="space-y-2 md:col-span-2"><span class="field-label">model_id</span><UiSelect v-model="form.model_id" :options="modelOptions" :placeholder="t('settings.agents.inheritModel')" searchable /></label><label class="space-y-2 md:col-span-2"><span class="field-label">{{ t('settings.fields.description') }}</span><UiInput v-model="form.description" /></label><label class="space-y-2 md:col-span-2"><span class="field-label">system_prompt</span><UiTextarea v-model="form.system_prompt" :rows="7" /></label><UiSwitch v-model="form.enabled" class="md:col-span-2" :label="t('settings.fields.enabled')" />
       </div></section>
       <section class="border border-border"><div class="border-b border-border bg-surface-muted px-4 py-3"><h3 class="text-xs font-black uppercase tracking-[0.16em]">{{ t('settings.agents.sections.bindings') }}</h3></div><div class="grid gap-4 p-4 md:grid-cols-3"><label class="space-y-2"><span class="field-label">skill_ids</span><UiTextarea v-model="form.skillIdsText" :rows="6" /></label><label class="space-y-2"><span class="field-label">tool_ids</span><UiTextarea v-model="form.toolIdsText" :rows="6" /></label><label class="space-y-2"><span class="field-label">mcp_server_ids</span><UiTextarea v-model="form.mcpServerIdsText" :rows="6" /></label></div></section>
+      <section class="border border-border">
+        <div class="border-b border-border bg-surface-muted px-4 py-3">
+          <h3 class="text-xs font-black uppercase tracking-[0.16em]">{{ t('settings.agents.sections.audit') }}</h3>
+        </div>
+        <div class="grid gap-4 p-4 md:grid-cols-2">
+          <UiSwitch
+            v-model="form.auditReflectEnabled"
+            class="md:col-span-2"
+            data-testid="agent-audit-reflect-enabled"
+            :label="t('settings.agents.auditReflectEnabled')"
+          />
+          <p class="md:col-span-2 text-xs leading-6 text-muted-foreground">{{ t('settings.agents.auditReflectHelp') }}</p>
+          <label class="space-y-2">
+            <span class="field-label">{{ t('settings.agents.auditMaxRounds') }}</span>
+            <UiInput
+              v-model="form.auditMaxRounds"
+              type="number"
+              min="1"
+              max="6"
+              data-testid="agent-audit-max-rounds"
+              :disabled="!form.auditReflectEnabled"
+            />
+          </label>
+          <p class="text-xs leading-6 text-muted-foreground">{{ t('settings.agents.auditMaxRoundsHelp') }}</p>
+        </div>
+      </section>
       <section class="border border-border"><div class="border-b border-border bg-surface-muted px-4 py-3"><h3 class="text-xs font-black uppercase tracking-[0.16em]">{{ t('settings.agents.sections.runtime') }}</h3></div><div class="grid gap-4 p-4 lg:grid-cols-3"><label class="space-y-2"><span class="field-label">memory_policy</span><UiTextarea v-model="form.memoryPolicyText" :rows="7" /></label><label class="space-y-2"><span class="field-label">runtime_options</span><UiTextarea v-model="form.runtimeOptionsText" :rows="7" /></label><label class="space-y-2"><span class="field-label">metadata</span><UiTextarea v-model="form.metadataText" :rows="7" /></label></div><p class="px-4 pb-4 text-xs text-muted-foreground">{{ t('settings.agents.jsonHelp') }}</p></section>
     </div>
     <template #footer><div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><UiButton variant="outline" :disabled="saving" @click="emit('update:open', false)">{{ t('actions.cancel') }}</UiButton><UiButton :loading="saving" @click="submit"><Save class="h-4 w-4" />{{ t('actions.saveConfig') }}</UiButton></div></template>

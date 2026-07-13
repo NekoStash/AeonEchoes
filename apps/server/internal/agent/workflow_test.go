@@ -411,7 +411,17 @@ func TestWorkflowRunnerGenerateChapterIdeaUsesPlotArchitectBrief(t *testing.T) {
 	if req.MaxOutputTokens != 777 {
 		t.Fatalf("GenerateChapterIdea() max output tokens = %d, want request override 777", req.MaxOutputTokens)
 	}
-	if !strings.Contains(req.SystemPrompt, "Plot Architect Agent") || !requestContainsText(req, "不要写正文") {
+	if !strings.Contains(req.SystemPrompt, "Plot Architect Agent") ||
+		!strings.Contains(req.SystemPrompt, "character.search") ||
+		!strings.Contains(req.SystemPrompt, "character.upsert") ||
+		!strings.Contains(req.SystemPrompt, "event.search") ||
+		!strings.Contains(req.SystemPrompt, "event.upsert") ||
+		!strings.Contains(req.SystemPrompt, "plot_thread.search") ||
+		!strings.Contains(req.SystemPrompt, "plot_thread.upsert") ||
+		!strings.Contains(req.SystemPrompt, "relationship.upsert") ||
+		!strings.Contains(req.SystemPrompt, "伏笔处理") ||
+		!requestContainsText(req, "不要写正文") ||
+		!requestContainsText(req, "project_id："+projectID) {
 		t.Fatalf("GenerateChapterIdea() prompt does not describe chapter idea contract: system=%q user=%q messages=%+v", req.SystemPrompt, req.UserPrompt, req.Messages)
 	}
 	if result.ContextPack.Role != domain.AgentRolePlotArchitect || result.ContextPack.ProjectID != projectID {
@@ -447,6 +457,16 @@ func TestWorkflowRunnerDraftChapterWithIdeaRoutesBothStagesAndPersistsLink(t *te
 	}
 	if !requestContainsText(textClient.requests[1], "## 本章目标") {
 		t.Fatalf("DraftChapterWithIdea() writer prompt did not include generated chapter idea: user=%q messages=%+v", textClient.requests[1].UserPrompt, textClient.requests[1].Messages)
+	}
+	writerReq := textClient.requests[1]
+	if !strings.Contains(writerReq.SystemPrompt, "Writer Agent") ||
+		!strings.Contains(writerReq.SystemPrompt, "character.search") ||
+		!strings.Contains(writerReq.SystemPrompt, "character.upsert") ||
+		!strings.Contains(writerReq.SystemPrompt, "plot_thread.upsert") ||
+		!strings.Contains(writerReq.SystemPrompt, "纯正文本身") ||
+		!strings.Contains(writerReq.SystemPrompt, "Markdown") ||
+		!requestContainsText(writerReq, "project_id："+projectID) {
+		t.Fatalf("DraftChapterWithIdea() writer prompt missing tool contract: system=%q user=%q", writerReq.SystemPrompt, writerReq.UserPrompt)
 	}
 	if result.Draft.Workflow.Input["chapter_idea_workflow_id"] != result.ChapterIdea.Workflow.ID {
 		t.Fatalf("DraftChapterWithIdea() workflow input idea link = %q, want %q", result.Draft.Workflow.Input["chapter_idea_workflow_id"], result.ChapterIdea.Workflow.ID)

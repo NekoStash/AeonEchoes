@@ -474,6 +474,7 @@
       "title": "项目总览",
       "eyebrow": "项目档案",
       "plans": "章节规划",
+      "foreshadows": "伏笔",
       "realChapters": "真实章节"
     },
     "storyBibleSections": {
@@ -545,7 +546,7 @@
       "sectionDescription": "真实章节默认数量为 0。只有打开对话框、填写并确认后才会发送创建请求；取消或失败不会写入章节列表。",
       "action": "新建章节",
       "title": "新建真实章节",
-      "description": "确认后才会创建真实章节。可以引用一条章节规划作为初始内容。",
+      "description": "确认后才会创建真实章节。",
       "fromPlan": "引用章节规划",
       "noPlan": "不引用规划",
       "untitledPlan": "未命名规划 {number}",
@@ -553,6 +554,11 @@
       "creating": "正在新建章节",
       "titleRequired": "章节标题不能为空。",
       "failed": "新建章节失败，请检查输入后重试。"
+    },
+    "chapterStatus": {
+      "label": "章节状态：{title}",
+      "updated": "章节状态已更新",
+      "failed": "章节状态更新失败"
     },
     "realChapters": {
       "eyebrow": "Chapter Store · 只读列表",
@@ -587,7 +593,8 @@
     },
     "errors": {
       "loadFailed": "项目工作台加载失败。",
-      "saveFailed": "故事设定集保存失败。"
+      "saveFailed": "故事设定集保存失败。",
+      "chapterNotFound": "找不到要更新的章节。"
     }
   },
   "tooltips": {
@@ -981,12 +988,15 @@
       "fullscreen": "正文全屏",
       "exitFullscreen": "退出全屏",
       "createVersion": "创建版本",
-      "runAgent": "运行 Agent"
+      "runAgent": "运行 Agent",
+      "planChapter": "生成章节方案",
+      "planningChapter": "正在生成章节方案"
     },
     "fields": {
       "title": "章节标题",
       "titlePlaceholder": "输入章节标题",
-      "contentPlaceholder": "从这里开始写作……"
+      "contentPlaceholder": "从这里开始写作……",
+      "chapterStatus": "章节状态"
     },
     "assistant": {
       "title": "AI 提案",
@@ -1003,18 +1013,24 @@
       "promptPlaceholder": "说明你希望 Agent 提供什么写作提案……",
       "defaultPrompt": "为《{title}》提供可审阅的写作提案。",
       "sheetTitle": "AI 助手",
-      "sheetDescription": "选择上下文并运行 Agent；结果必须由你决定如何应用。"
+      "sheetDescription": "选择上下文并运行 Agent；结果必须由你决定如何应用。",
+      "emptyChapterTitle": "当前是空章节",
+      "emptyChapterDescription": "尚无已保存版本与正文，可先生成章节方案再写作。"
     },
     "stream": {
       "cancel": "取消生成",
       "waiting": "正在连接并等待首段内容……",
-      "tools": "工具进度",
+      "charsOutput": "已输出 {count} 字",
+      "tools": "工具调用",
       "toolRunning": "执行中",
+      "toolInput": "输入",
+      "toolOutput": "输出",
       "unknownTool": "未知工具",
       "toolStatus": {
         "started": "执行中",
         "completed": "已完成"
       },
+
       "failedTitle": "生成失败",
       "cancelledTitle": "生成已取消",
       "cancelledDescription": "生成已取消；已接收的部分正文仅供查看，不能应用。",
@@ -1035,6 +1051,7 @@
       "emptyTitle": "暂无提案",
       "emptyDescription": "运行 Agent 后，结果会先出现在这里。",
       "received": "Agent 提案已收到",
+      "tools": "工具调用",
       "insert": "插入",
       "replace": "替换选区",
       "append": "追加",
@@ -1049,6 +1066,7 @@
         "rejected": "已拒绝"
       }
     },
+
     "recovery": {
       "title": "发现本地恢复草稿",
       "description": "此浏览器在 {time} 保存了不同于后端版本的草稿。",
@@ -1241,7 +1259,8 @@
       "planReady": "章节方案已更新",
       "draftAppended": "草稿已追加到正文",
       "versionSaved": "真实章节版本已创建",
-      "versionLoaded": "已载入"
+      "versionLoaded": "已载入",
+      "statusUpdated": "章节状态已更新"
     },
     "diagnostics": {
       "eyebrow": "执行诊断",
@@ -1355,7 +1374,9 @@
       "generateDraftFailed": "AI 草稿生成失败",
       "saveVersionFailed": "章节版本保存失败",
       "loadAgentsFailed": "智能体配置加载失败",
-      "noAgentConfigured": "没有可用的启用智能体。请先在智能体管理中创建并启用写作或剧情智能体。"
+      "noAgentConfigured": "没有可用的启用智能体。请先在智能体管理中创建并启用写作或剧情智能体。",
+      "updateStatusFailed": "章节状态更新失败",
+      "planBriefRequired": "生成章节方案前请先填写指令、摘要或标题。"
     }
   },
   "agents": {
@@ -1807,10 +1828,14 @@
       "deleteTitle": "删除资源",
       "deleteDescription": "确认删除“{name}”？该操作不可撤销。",
       "secretBlankHelp": "留空不会覆盖后端已存密钥；这里只提交新值。",
-      "jsonHelp": "memory_policy 和 runtime_options 接受任意 JSON 对象；metadata 的值必须是字符串。",
+      "jsonHelp": "memory_policy 和 runtime_options 接受任意 JSON 对象；metadata 的值必须是字符串。审计轮数由上方专用开关管理，会写入 runtime_options.audit_max_rounds。",
+      "auditReflectEnabled": "允许审计反思工具",
+      "auditReflectHelp": "开启后，该 Agent 可调用 builtin:chapter.audit，把章节正文与关键上下文交给连续性审计模型，返回修改建议。",
+      "auditMaxRounds": "审计最大调用轮数",
+      "auditMaxRoundsHelp": "同一 Agent 运行内 chapter.audit 最多调用次数，范围 1–6，默认 2。",
       "resources": { "agents": "Agents", "skills": "Skills", "mcp": "MCP Servers", "tools": "Tools" },
       "resourceDescriptions": { "agents": "角色、模型、提示词与绑定", "skills": "内联内容、来源与扫描结果", "mcp": "连接、密钥、环境与工具刷新", "tools": "只读目录与启停状态" },
-      "sections": { "identity": "身份与执行", "bindings": "资源绑定", "runtime": "内存与运行选项", "environment": "请求头与环境变量" },
+      "sections": { "identity": "身份与执行", "bindings": "资源绑定", "audit": "审计与反思", "runtime": "内存与运行选项", "environment": "请求头与环境变量" },
       "dialog": { "createTitle": "新增 Agent", "editTitle": "编辑 Agent", "description": "维护 Agent 契约中的项目、角色、模型、提示词、绑定、内存策略和运行参数。" },
       "skillDialog": { "createTitle": "新增 Skill", "editTitle": "编辑 Skill", "description": "维护 Skill 的来源、项目、路径、内容、状态与 metadata。" },
       "mcpDialog": { "createTitle": "新增 MCP Server", "editTitle": "编辑 MCP Server", "description": "维护 MCP transport、端点、参数、请求头、密钥、环境变量、超时与 metadata。" },

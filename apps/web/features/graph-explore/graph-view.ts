@@ -70,3 +70,19 @@ export function relatedEdges(edges: GraphEdge[], selectionId: string): GraphEdge
 function normalizeSearch(value: unknown) {
   return String(value ?? '').trim().toLocaleLowerCase()
 }
+
+/**
+ * CSS 变量多为 space-separated 组件值（如 `220 15% 12%`）。
+ * Cytoscape 只认逗号式 HSL：`hsl(220, 15%, 12%)`。
+ */
+export function cssColor(token: string, fallback: string, readToken?: (name: string) => string): string {
+  const value = (readToken?.(token) ?? '').trim()
+  if (!value) return fallback
+  if (value.startsWith('#') || value.startsWith('rgb') || value.startsWith('hsl')) return value
+  const parts = value.split(/[\s,/]+/).filter(Boolean)
+  if (parts.length >= 3) {
+    const [h, s, l] = parts
+    return `hsl(${h}, ${s}, ${l})`
+  }
+  return `hsl(${value})`
+}

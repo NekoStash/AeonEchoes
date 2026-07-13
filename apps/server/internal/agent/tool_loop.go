@@ -32,13 +32,29 @@ type ToolLoopResult struct {
 	ToolCalls []ToolExecutionRecord  `json:"tool_calls,omitempty"`
 }
 
-// ToolExecutor executes whitelisted narrative graph tools emitted by text models.
-type ToolExecutor struct {
-	store ToolStore
+// ToolExecutorOptions configures optional nested services used by privileged tools.
+type ToolExecutorOptions struct {
+	ChapterAuditor ChapterAuditor
+	RulesAuditor   ContinuityAuditor
+	AuditLimiter   *AuditCallLimiter
 }
 
-func NewToolExecutor(store ToolStore) *ToolExecutor {
-	return &ToolExecutor{store: store}
+// ToolExecutor executes whitelisted narrative graph tools emitted by text models.
+type ToolExecutor struct {
+	store          ToolStore
+	chapterAuditor ChapterAuditor
+	rulesAuditor   ContinuityAuditor
+	auditLimiter   *AuditCallLimiter
+}
+
+func NewToolExecutor(store ToolStore, opts ...ToolExecutorOptions) *ToolExecutor {
+	executor := &ToolExecutor{store: store}
+	if len(opts) > 0 {
+		executor.chapterAuditor = opts[0].ChapterAuditor
+		executor.rulesAuditor = opts[0].RulesAuditor
+		executor.auditLimiter = opts[0].AuditLimiter
+	}
+	return executor
 }
 
 func RunToolLoop(ctx context.Context, client provider.TextModelClient, baseReq provider.TextRequest, executor *ToolExecutor, maxRounds int) (ToolLoopResult, error) {
@@ -92,9 +108,13 @@ func RunToolLoop(ctx context.Context, client provider.TextModelClient, baseReq p
 	return ToolLoopResult{}, fmt.Errorf("tool loop exceeded max rounds %d; last response finish_reason=%q content_len=%d tool_calls=%d", maxRounds, final.FinishReason, len(final.Content), len(final.ToolCalls))
 }
 
-// ToolLoopStreamHooks receives final-round text and completed tool execution lifecycle events.
+// ToolLoopStreamHooks receives live text and tool execution lifecycle events.
+// OnContentDelta is invoked as soon as provider content.delta arrives.
+// OnContentReset is invoked when a streamed partial is discarded because the
+// model decided to call tools instead of finishing prose.
 type ToolLoopStreamHooks struct {
 	OnContentDelta  func(delta string) error
+	OnContentReset  func() error
 	OnToolStarted   func(record ToolExecutionRecord) error
 	OnToolCompleted func(record ToolExecutionRecord) error
 }
@@ -109,44 +129,37 @@ func (f contentDeltaSinkFunc) OnContentDelta(delta string) error {
 	return f(delta)
 }
 
-type boundedToolRoundDeltaBuffer struct {
-	fragments []string
-	bytes     int
+// liveContentDeltaSink forwards deltas immediately and tracks whether any
+// partial text has been published for the current model round.
+type liveContentDeltaSink struct {
+	emit    func(delta string) error
+	emitted bool
+	bytes   int
 }
 
-func (b *boundedToolRoundDeltaBuffer) OnContentDelta(delta string) error {
+func (s *liveContentDeltaSink) OnContentDelta(delta string) error {
 	if delta == "" {
 		return nil
 	}
-	if len(b.fragments) >= maxToolRoundBufferedDeltaFragments {
-		return fmt.Errorf("streaming tool round delta buffer exceeded fragment limit %d", maxToolRoundBufferedDeltaFragments)
-	}
-	if len(delta) > maxToolRoundBufferedDeltaBytes-b.bytes {
-		return fmt.Errorf("streaming tool round delta buffer exceeded byte limit %d", maxToolRoundBufferedDeltaBytes)
-	}
-	b.fragments = append(b.fragments, delta)
-	b.bytes += len(delta)
-	return nil
-}
-
-func (b *boundedToolRoundDeltaBuffer) Replay(sink func(delta string) error) error {
-	if sink == nil {
+	if s.emit == nil {
 		return fmt.Errorf("streaming tool loop content delta hook is not configured")
 	}
-	for _, delta := range b.fragments {
-		if err := sink(delta); err != nil {
-			return err
-		}
+	if len(delta) > maxToolRoundBufferedDeltaBytes-s.bytes {
+		return fmt.Errorf("streaming tool round content exceeded byte limit %d", maxToolRoundBufferedDeltaBytes)
 	}
+	s.bytes += len(delta)
+	if err := s.emit(delta); err != nil {
+		return err
+	}
+	s.emitted = true
 	return nil
 }
 
 // RunToolLoopStream executes every model round through the provider streaming API.
-// Each round buffers text until its final response proves that no tool call was
-// requested. This prevents intermediate tool-planning prose from leaking while
-// bounding memory to maxToolRoundBufferedDeltaBytes and fragments. The final
-// no-tool round is replayed only after that decision, trading token immediacy for
-// proposal integrity on tool-enabled runs.
+// Content deltas are forwarded live so clients can show progressive proposal
+// text and character counts. If a round ends with tool calls after partial text
+// was already streamed, OnContentReset clears the provisional partial before
+// tool lifecycle events continue.
 func RunToolLoopStream(ctx context.Context, client provider.TextModelClient, baseReq provider.TextRequest, executor *ToolExecutor, maxRounds int, hooks ToolLoopStreamHooks) (ToolLoopResult, error) {
 	if client == nil {
 		return ToolLoopResult{}, fmt.Errorf("streaming tool loop text client is not configured")
@@ -156,6 +169,9 @@ func RunToolLoopStream(ctx context.Context, client provider.TextModelClient, bas
 	}
 	if len(baseReq.Tools) == 0 {
 		return ToolLoopResult{}, fmt.Errorf("streaming tool loop requires at least one tool spec")
+	}
+	if hooks.OnContentDelta == nil {
+		return ToolLoopResult{}, fmt.Errorf("streaming tool loop content delta hook is not configured")
 	}
 	if maxRounds <= 0 {
 		maxRounds = defaultToolLoopMaxRounds
@@ -172,17 +188,22 @@ func RunToolLoopStream(ctx context.Context, client provider.TextModelClient, bas
 	var final provider.ModelResponse
 	for round := 1; round <= maxRounds; round++ {
 		req.Messages = messages
-		buffer := &boundedToolRoundDeltaBuffer{}
-		resp, err := consumeTextStream(ctx, client, req, buffer)
+		sink := &liveContentDeltaSink{emit: hooks.OnContentDelta}
+		resp, err := consumeTextStream(ctx, client, req, sink)
 		if err != nil {
 			return ToolLoopResult{}, err
 		}
 		final = resp
 		if len(resp.ToolCalls) == 0 {
-			if err := buffer.Replay(hooks.OnContentDelta); err != nil {
+			return ToolLoopResult{Response: resp, Trace: trace, ToolCalls: records}, nil
+		}
+		if sink.emitted {
+			if hooks.OnContentReset == nil {
+				return ToolLoopResult{}, fmt.Errorf("streaming tool loop content reset hook is not configured")
+			}
+			if err := hooks.OnContentReset(); err != nil {
 				return ToolLoopResult{}, err
 			}
-			return ToolLoopResult{Response: resp, Trace: trace, ToolCalls: records}, nil
 		}
 		calls := append([]provider.ToolCall(nil), resp.ToolCalls...)
 		for index := range calls {
@@ -379,6 +400,15 @@ func NarrativeToolSpecs() []provider.ToolSpec {
 			"start":      intSchema("Start chapter number"),
 			"end":        intSchema("End chapter number"),
 		}),
+		toolSpec(ChapterAuditToolName, "Opt-in continuity audit and reflection: send chapter draft and key context to the continuity-auditor model and receive structured revision advice. Bounded by runtime_options.audit_max_rounds per agent run.", map[string]any{
+			"project_id":   strSchema("Project id"),
+			"chapter_id":   strSchema("Optional chapter id used to load latest content when draft is empty"),
+			"draft":        strSchema("Chapter draft text to audit"),
+			"title":        strSchema("Optional chapter title"),
+			"brief":        strSchema("Optional writing brief"),
+			"chapter_idea": strSchema("Optional chapter plan/idea"),
+			"focus":        arrayStringSchema("Optional focus areas such as continuity, character, pacing"),
+		}, "project_id"),
 		toolSpec("graph.expand", "Expand narrative graph from optional entity ids.", map[string]any{
 			"project_id": strSchema("Project id"),
 			"entity_ids": arrayStringSchema("Seed entity ids"),
@@ -433,11 +463,42 @@ func (e *ToolExecutor) Execute(ctx context.Context, call provider.ToolCall) (any
 		return e.listChapters(args)
 	case "chapter.get_range":
 		return e.chapterRange(args)
+	case ChapterAuditToolName:
+		return e.chapterAudit(ctx, args)
 	case "graph.expand":
 		return e.graphExpand(args)
 	default:
 		return nil, fmt.Errorf("tool %q is not whitelisted", name)
 	}
+}
+
+func (e *ToolExecutor) chapterAudit(ctx context.Context, args map[string]any) (ChapterAuditResult, error) {
+	if e.chapterAuditor == nil {
+		return ChapterAuditResult{}, fmt.Errorf("chapter.audit is not configured on this runtime")
+	}
+	if e.auditLimiter != nil {
+		if _, _, err := e.auditLimiter.TryConsume(); err != nil {
+			return ChapterAuditResult{}, err
+		}
+	}
+	projectID, err := requireToolString(args, "project_id")
+	if err != nil {
+		return ChapterAuditResult{}, err
+	}
+	draft := optionalString(args, "draft")
+	chapterID := optionalString(args, "chapter_id")
+	if draft == "" && chapterID == "" {
+		return ChapterAuditResult{}, fmt.Errorf("chapter.audit requires draft or chapter_id")
+	}
+	return e.chapterAuditor.Audit(ctx, ChapterAuditRequest{
+		ProjectID:   projectID,
+		ChapterID:   chapterID,
+		Draft:       draft,
+		Title:       optionalString(args, "title"),
+		Brief:       optionalString(args, "brief"),
+		ChapterIdea: optionalString(args, "chapter_idea"),
+		Focus:       optionalStringSlice(args, "focus"),
+	})
 }
 
 func (e *ToolExecutor) searchEntities(args map[string]any, types []string) (map[string]any, error) {
