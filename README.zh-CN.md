@@ -572,7 +572,11 @@ apps/web/
 
 ## 许可证
 
-当前包清单标记为 **private / UNLICENSED**。在仓库添加正式 LICENSE 之前，权利与分发条款归仓库所有者保留。
+本项目采用 **GNU Affero General Public License v3.0 only**（`AGPL-3.0-only`）授权。
+
+完整文本见 [`LICENSE`](./LICENSE)。
+
+简要说明：你可以在 AGPLv3 条款下使用、研究、分享与修改本软件。若你将修改后的版本作为网络服务运行，还必须向该服务的使用者提供对应的完整源代码。
 
 ---
 

@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Development workspace for Aeon Echoes.",
+  "license": "AGPL-3.0-only",
   "packageManager": "yarn@4.17.0",
   "workspaces": [
     "apps/web",

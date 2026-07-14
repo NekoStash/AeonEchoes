@@ -572,7 +572,11 @@ The product is under active development. Expect API and UI churn while the OpenA
 
 ## License
 
-This repository is currently marked **private / UNLICENSED** in package manifests. Rights and distribution terms are reserved by the repository owner unless a license file is added later.
+This project is licensed under the **GNU Affero General Public License v3.0 only** (`AGPL-3.0-only`).
+
+See [`LICENSE`](./LICENSE) for the full text.
+
+In short: you may use, study, share, and modify this software under AGPLv3. If you run a modified version as a network service, you must also offer the corresponding source code to users of that service.
 
 ---
 
